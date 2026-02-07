@@ -1,0 +1,2 @@
+useDynLib(vscgd, .registration = TRUE)
+export(vscgd)

@@ -1,0 +1,25 @@
+# Build artifacts
+*.o
+*.so
+*.dylib
+*.dll
+*.tar.gz
+
+# R package build
+r-package/src/*.o
+r-package/src/*.so
+r-package/src/*.d
+r-package/src/symbols.rds
+
+# VS Code extension
+vscode-extension/node_modules/
+vscode-extension/out/
+vscode-extension/*.vsix
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+!.vscode/launch.json

@@ -1,0 +1,48 @@
+{
+  "name": "vscgd-vscode",
+  "displayName": "vscgd - R Plot Viewer",
+  "description": "Renders R graphics from the vscgd device in a VS Code webview",
+  "version": "0.0.1",
+  "publisher": "vscgd",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Visualization"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      { "command": "vscgd.showPlotPane", "title": "vscgd: Show Plot Pane" },
+      { "command": "vscgd.previousPlot", "title": "vscgd: Previous Plot" },
+      { "command": "vscgd.nextPlot", "title": "vscgd: Next Plot" },
+      { "command": "vscgd.clearHistory", "title": "vscgd: Clear Plot History" },
+      { "command": "vscgd.exportPng", "title": "vscgd: Export as PNG" },
+      { "command": "vscgd.exportSvg", "title": "vscgd: Export as SVG" },
+      { "command": "vscgd.exportPdf", "title": "vscgd: Export as PDF" }
+    ],
+    "keybindings": [
+      { "command": "vscgd.previousPlot", "key": "alt+left", "when": "vscgd.hasPlots" },
+      { "command": "vscgd.nextPlot", "key": "alt+right", "when": "vscgd.hasPlots" }
+    ],
+    "configuration": {
+      "title": "vscgd",
+      "properties": {
+        "vscgd.historyLimit": {
+          "type": "number",
+          "default": 50,
+          "description": "Maximum number of plots to retain in history per session"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}

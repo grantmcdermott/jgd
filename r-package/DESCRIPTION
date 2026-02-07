@@ -1,0 +1,14 @@
+Package: vscgd
+Title: VS Code Graphics Device for R
+Version: 0.0.1
+Authors@R: person("vscgd authors", role = c("aut", "cre"), email = "vscgd@example.com")
+Description: A graphics device that records R plotting operations and streams
+    them to a VS Code extension for rendering in a webview. The device acts as
+    a recorder, capturing display-list operations as JSON and transmitting them
+    over a Unix domain socket. All rendering occurs in the browser via Canvas2D.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.1
+NeedsCompilation: yes
+SystemRequirements: none
