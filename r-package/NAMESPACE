@@ -1,2 +1,2 @@
-useDynLib(vscgd, .registration = TRUE)
-export(vscgd)
+useDynLib(jgd, .registration = TRUE)
+export(jgd)

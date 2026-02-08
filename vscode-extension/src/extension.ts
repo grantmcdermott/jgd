@@ -9,10 +9,10 @@ let webviewProvider: PlotWebviewProvider;
 let statusBarItem: vscode.StatusBarItem;
 
 export function activate(context: vscode.ExtensionContext) {
-    console.log('vscgd: extension activating');
+    console.log('jgd: extension activating');
 
     history = new PlotHistory(
-        vscode.workspace.getConfiguration('vscgd').get('historyLimit', 50)
+        vscode.workspace.getConfiguration('jgd').get('historyLimit', 50)
     );
 
     webviewProvider = new PlotWebviewProvider(context.extensionUri, history);
@@ -20,55 +20,51 @@ export function activate(context: vscode.ExtensionContext) {
     server = new SocketServer(history, webviewProvider);
     server.start();
 
-    // Status bar
     statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    statusBarItem.command = 'vscgd.showPlotPane';
-    statusBarItem.text = '$(graph) vscgd: waiting';
+    statusBarItem.command = 'jgd.showPlotPane';
+    statusBarItem.text = '$(graph) jgd: waiting';
     statusBarItem.show();
     context.subscriptions.push(statusBarItem);
 
     server.onConnectionChange((count) => {
         statusBarItem.text = count > 0
-            ? `$(graph) vscgd: ${count} session${count > 1 ? 's' : ''}`
-            : '$(graph) vscgd: waiting';
+            ? `$(graph) jgd: ${count} session${count > 1 ? 's' : ''}`
+            : '$(graph) jgd: waiting';
     });
 
-    // Commands
     context.subscriptions.push(
-        vscode.commands.registerCommand('vscgd.showPlotPane', () => {
+        vscode.commands.registerCommand('jgd.showPlotPane', () => {
             webviewProvider.reveal();
         }),
-        vscode.commands.registerCommand('vscgd.previousPlot', () => {
+        vscode.commands.registerCommand('jgd.previousPlot', () => {
             webviewProvider.navigatePrevious();
         }),
-        vscode.commands.registerCommand('vscgd.nextPlot', () => {
+        vscode.commands.registerCommand('jgd.nextPlot', () => {
             webviewProvider.navigateNext();
         }),
-        vscode.commands.registerCommand('vscgd.clearHistory', () => {
+        vscode.commands.registerCommand('jgd.clearHistory', () => {
             history.clear();
             webviewProvider.refresh();
         }),
-        vscode.commands.registerCommand('vscgd.exportPng', () => {
+        vscode.commands.registerCommand('jgd.exportPng', () => {
             webviewProvider.exportPlot('png');
         }),
-        vscode.commands.registerCommand('vscgd.exportSvg', () => {
+        vscode.commands.registerCommand('jgd.exportSvg', () => {
             webviewProvider.exportPlot('svg');
         }),
-        vscode.commands.registerCommand('vscgd.exportPdf', () => {
+        vscode.commands.registerCommand('jgd.exportPdf', () => {
             webviewProvider.exportPlot('pdf');
         })
     );
 
-    // Set VSCGD_SOCKET env var for all terminals spawned by VS Code
     server.onReady(() => {
-        context.environmentVariableCollection.replace('VSCGD_SOCKET', server.getSocketPath());
+        context.environmentVariableCollection.replace('JGD_SOCKET', server.getSocketPath());
     });
 
-    // Set context for keybinding conditions
-    vscode.commands.executeCommand('setContext', 'vscgd.hasPlots', false);
+    vscode.commands.executeCommand('setContext', 'jgd.hasPlots', false);
 
     history.onDidChange(() => {
-        vscode.commands.executeCommand('setContext', 'vscgd.hasPlots', history.count() > 0);
+        vscode.commands.executeCommand('setContext', 'jgd.hasPlots', history.count() > 0);
     });
 }
 

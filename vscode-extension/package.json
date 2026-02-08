@@ -1,9 +1,9 @@
 {
-  "name": "vscgd-vscode",
-  "displayName": "vscgd - R Plot Viewer",
-  "description": "Renders R graphics from the vscgd device in a VS Code webview",
+  "name": "jgd-vscode",
+  "displayName": "jgd - R Plot Viewer",
+  "description": "Renders R graphics from the jgd device in a VS Code webview",
   "version": "0.0.1",
-  "publisher": "vscgd",
+  "publisher": "jgd",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -12,22 +12,22 @@
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "vscgd.showPlotPane", "title": "vscgd: Show Plot Pane" },
-      { "command": "vscgd.previousPlot", "title": "vscgd: Previous Plot" },
-      { "command": "vscgd.nextPlot", "title": "vscgd: Next Plot" },
-      { "command": "vscgd.clearHistory", "title": "vscgd: Clear Plot History" },
-      { "command": "vscgd.exportPng", "title": "vscgd: Export as PNG" },
-      { "command": "vscgd.exportSvg", "title": "vscgd: Export as SVG" },
-      { "command": "vscgd.exportPdf", "title": "vscgd: Export as PDF" }
+      { "command": "jgd.showPlotPane", "title": "jgd: Show Plot Pane" },
+      { "command": "jgd.previousPlot", "title": "jgd: Previous Plot" },
+      { "command": "jgd.nextPlot", "title": "jgd: Next Plot" },
+      { "command": "jgd.clearHistory", "title": "jgd: Clear Plot History" },
+      { "command": "jgd.exportPng", "title": "jgd: Export as PNG" },
+      { "command": "jgd.exportSvg", "title": "jgd: Export as SVG" },
+      { "command": "jgd.exportPdf", "title": "jgd: Export as PDF" }
     ],
     "keybindings": [
-      { "command": "vscgd.previousPlot", "key": "alt+left", "when": "vscgd.hasPlots" },
-      { "command": "vscgd.nextPlot", "key": "alt+right", "when": "vscgd.hasPlots" }
+      { "command": "jgd.previousPlot", "key": "alt+left", "when": "jgd.hasPlots" },
+      { "command": "jgd.nextPlot", "key": "alt+right", "when": "jgd.hasPlots" }
     ],
     "configuration": {
-      "title": "vscgd",
+      "title": "jgd",
       "properties": {
-        "vscgd.historyLimit": {
+        "jgd.historyLimit": {
           "type": "number",
           "default": 50,
           "description": "Maximum number of plots to retain in history per session"

@@ -28,26 +28,22 @@ typedef int sock_t;
 #define SOCK_ERR errno
 #endif
 
-void transport_init(vscgd_transport_t *t) {
+void transport_init(jgd_transport_t *t) {
     t->fd = (int)SOCK_INVALID;
     t->socket_path[0] = '\0';
     t->connected = 0;
 }
 
-/* Try to find the socket path from:
-   1. VSCGD_SOCKET env var
-   2. options("vscgd.socket")
-   3. Discovery file in tmpdir */
 static int discover_socket_path(char *out, size_t outsize) {
     /* 1. Environment variable */
-    const char *env = getenv("VSCGD_SOCKET");
+    const char *env = getenv("JGD_SOCKET");
     if (env && env[0]) {
         snprintf(out, outsize, "%s", env);
         return 0;
     }
 
-    /* 2. R option (called from C) */
-    SEXP opt = Rf_GetOption1(Rf_install("vscgd.socket"));
+    /* 2. R option */
+    SEXP opt = Rf_GetOption1(Rf_install("jgd.socket"));
     if (opt != R_NilValue && TYPEOF(opt) == STRSXP && LENGTH(opt) > 0) {
         const char *s = CHAR(STRING_ELT(opt, 0));
         if (s && s[0]) {
@@ -56,7 +52,7 @@ static int discover_socket_path(char *out, size_t outsize) {
         }
     }
 
-    /* 3. Discovery file — try multiple locations */
+    /* 3. Discovery file */
     const char *tmpdirs[] = {
         getenv("TMPDIR"),
         getenv("TMP"),
@@ -67,7 +63,7 @@ static int discover_socket_path(char *out, size_t outsize) {
     for (int t = 0; tmpdirs[t]; t++) {
         if (!tmpdirs[t] || !tmpdirs[t][0]) continue;
         char discovery[1024];
-        snprintf(discovery, sizeof(discovery), "%s/vscgd-discovery.json", tmpdirs[t]);
+        snprintf(discovery, sizeof(discovery), "%s/jgd-discovery.json", tmpdirs[t]);
 
         FILE *f = fopen(discovery, "r");
         if (!f) continue;
@@ -100,12 +96,12 @@ static int discover_socket_path(char *out, size_t outsize) {
     return -1;
 }
 
-int transport_connect(vscgd_transport_t *t) {
+int transport_connect(jgd_transport_t *t) {
     if (t->connected) return 0;
 
     if (t->socket_path[0] == '\0') {
         if (discover_socket_path(t->socket_path, sizeof(t->socket_path)) != 0) {
-            REprintf("vscgd: cannot find socket path. Set VSCGD_SOCKET or start the VS Code extension.\n");
+            REprintf("jgd: cannot find socket path. Set JGD_SOCKET or start the VS Code extension.\n");
             return -1;
         }
     }
@@ -117,7 +113,7 @@ int transport_connect(vscgd_transport_t *t) {
 
     sock_t s = socket(AF_UNIX, SOCK_STREAM, 0);
     if (s == SOCK_INVALID) {
-        REprintf("vscgd: socket() failed: %d\n", SOCK_ERR);
+        REprintf("jgd: socket() failed: %d\n", SOCK_ERR);
         return -1;
     }
 
@@ -127,7 +123,7 @@ int transport_connect(vscgd_transport_t *t) {
     snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", t->socket_path);
 
     if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        REprintf("vscgd: connect(%s) failed: %d\n", t->socket_path, SOCK_ERR);
+        REprintf("jgd: connect(%s) failed: %d\n", t->socket_path, SOCK_ERR);
         SOCK_CLOSE(s);
         return -1;
     }
@@ -137,7 +133,7 @@ int transport_connect(vscgd_transport_t *t) {
     return 0;
 }
 
-int transport_send(vscgd_transport_t *t, const char *data, size_t len) {
+int transport_send(jgd_transport_t *t, const char *data, size_t len) {
     if (!t->connected) return -1;
 
     sock_t s = (sock_t)t->fd;
@@ -150,7 +146,6 @@ int transport_send(vscgd_transport_t *t, const char *data, size_t len) {
         }
         sent += (size_t)n;
     }
-    /* Send trailing newline for NDJSON framing */
     char nl = '\n';
     if (send(s, &nl, 1, 0) <= 0) {
         t->connected = 0;
@@ -159,7 +154,7 @@ int transport_send(vscgd_transport_t *t, const char *data, size_t len) {
     return 0;
 }
 
-int transport_has_data(vscgd_transport_t *t) {
+int transport_has_data(jgd_transport_t *t) {
     if (!t->connected) return 0;
     sock_t s = (sock_t)t->fd;
     struct pollfd pfd;
@@ -168,7 +163,7 @@ int transport_has_data(vscgd_transport_t *t) {
     return poll(&pfd, 1, 0) > 0 ? 1 : 0;
 }
 
-int transport_recv_line(vscgd_transport_t *t, char *buf, size_t bufsize, int timeout_ms) {
+int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeout_ms) {
     if (!t->connected) return -1;
 
     sock_t s = (sock_t)t->fd;
@@ -180,7 +175,6 @@ int transport_recv_line(vscgd_transport_t *t, char *buf, size_t bufsize, int tim
     int pr = poll(&pfd, 1, timeout_ms);
     if (pr <= 0) return -1;
 #else
-    /* Windows: use select */
     fd_set readfds;
     FD_ZERO(&readfds);
     FD_SET(s, &readfds);
@@ -203,7 +197,7 @@ int transport_recv_line(vscgd_transport_t *t, char *buf, size_t bufsize, int tim
     return (int)pos;
 }
 
-void transport_close(vscgd_transport_t *t) {
+void transport_close(jgd_transport_t *t) {
     if (t->fd != (int)SOCK_INVALID) {
         SOCK_CLOSE((sock_t)t->fd);
         t->fd = (int)SOCK_INVALID;
@@ -211,9 +205,8 @@ void transport_close(vscgd_transport_t *t) {
     t->connected = 0;
 }
 
-int transport_reconnect(vscgd_transport_t *t) {
+int transport_reconnect(jgd_transport_t *t) {
     transport_close(t);
-    /* Re-discover in case the extension restarted with a new socket */
     t->socket_path[0] = '\0';
     for (int attempt = 0; attempt < 3; attempt++) {
         if (transport_connect(t) == 0) return 0;

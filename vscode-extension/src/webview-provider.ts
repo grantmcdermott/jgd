@@ -1,6 +1,4 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
 import { PlotHistory, PlotFrame } from './plot-history';
 
 export class PlotWebviewProvider {
@@ -73,7 +71,6 @@ export class PlotWebviewProvider {
 
     async measureText(request: any): Promise<any> {
         if (!this.panel) {
-            // Fallback: return 0 (will use approximation on R side)
             return { type: 'metrics_response', id: request.id, width: 0, ascent: 0, descent: 0 };
         }
 
@@ -90,7 +87,6 @@ export class PlotWebviewProvider {
                 gc: request.gc
             });
 
-            // Timeout after 500ms
             setTimeout(() => {
                 if (this.pendingMetrics.has(id)) {
                     this.pendingMetrics.delete(id);
@@ -102,7 +98,7 @@ export class PlotWebviewProvider {
 
     private createPanel() {
         this.panel = vscode.window.createWebviewPanel(
-            'vscgd.plotPane',
+            'jgd.plotPane',
             'R Plot',
             vscode.ViewColumn.Beside,
             {
@@ -185,7 +181,6 @@ export class PlotWebviewProvider {
         if (!uri) return;
 
         if (msg.data) {
-            // data is base64 encoded
             const buf = Buffer.from(msg.data, 'base64');
             await vscode.workspace.fs.writeFile(uri, buf);
             vscode.window.showInformationMessage(`Plot exported to ${uri.fsPath}`);
@@ -338,7 +333,7 @@ function mapFontFamily(family) {
     return family + ', sans-serif';
 }
 
-function replay(plot) {
+async function replay(plot) {
     const dpr = window.devicePixelRatio || 1;
     const containerW = container.clientWidth;
     const containerH = container.clientHeight;
@@ -360,10 +355,8 @@ function replay(plot) {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.scale(dpr * scale, dpr * scale);
 
-    // R device coords: origin top-left, y increases downward — same as Canvas2D
-    ctx.save(); // Base state for clip restore
+    ctx.save();
 
-    // Background
     if (plot.device.bg) {
         ctx.fillStyle = plot.device.bg;
         ctx.fillRect(0, 0, plotW, plotH);
@@ -371,18 +364,13 @@ function replay(plot) {
         ctx.clearRect(0, 0, plotW, plotH);
     }
 
-    // Replay ops
     const ops = plot.ops;
-    console.log('vscgd replay: ' + ops.length + ' ops');
     for (let i = 0; i < ops.length; i++) {
-        if (i < 20 || ops[i].op === 'rect' || ops[i].op === 'line') {
-            console.log('op[' + i + ']:', JSON.stringify(ops[i]).substring(0, 200));
-        }
-        renderOp(ctx, ops[i], plotH);
+        await renderOp(ctx, ops[i], plotH);
     }
 }
 
-function renderOp(ctx, op, plotH) {
+async function renderOp(ctx, op, plotH) {
     switch (op.op) {
         case 'line': {
             applyGc(ctx, op.gc);
@@ -459,8 +447,8 @@ function renderOp(ctx, op, plotH) {
             break;
         }
         case 'clip': {
-            ctx.restore();  // Pop previous clip (back to base y-flip state)
-            ctx.save();     // Push base state again for next clip
+            ctx.restore();
+            ctx.save();
             ctx.beginPath();
             ctx.rect(op.x0, op.y0, op.x1 - op.x0, op.y1 - op.y0);
             ctx.clip();
@@ -484,20 +472,30 @@ function renderOp(ctx, op, plotH) {
         }
         case 'raster': {
             const img = new Image();
-            img.onload = () => {
-                ctx.save();
-                if (op.rot) {
-                    ctx.translate(op.x, op.y);
-                    ctx.rotate(op.rot * Math.PI / 180);
-                    ctx.translate(-op.x, -op.y);
-                }
-                ctx.imageSmoothingEnabled = !!op.interpolate;
-                // R raster: x,y is bottom-left; w,h is target size
-                // In our flipped coords, y is already bottom-left
-                ctx.drawImage(img, op.x, op.y - op.h, op.w, op.h);
-                ctx.restore();
-            };
             img.src = op.data;
+            await img.decode();
+            ctx.save();
+            const dw = op.w;
+            const dh = op.h;
+            // R raster callback: (x,y) is bottom-left of destination in device coords.
+            // Our device is top-down (y=0 at top). So:
+            //   positive h: raster goes upward from y, top-left = (x, y - h)
+            //   negative h: raster goes upward from y, top-left = (x, y + h) since h<0 means y+h < y
+            // In both cases: top-left y = y - abs(h)
+            const aw = Math.abs(dw);
+            const ah = Math.abs(dh);
+            const dx = dw >= 0 ? op.x : op.x + dw;
+            const dy = op.y - ah;
+            if (op.rot) {
+                const cx = dx + aw / 2;
+                const cy = dy + ah / 2;
+                ctx.translate(cx, cy);
+                ctx.rotate(-op.rot * Math.PI / 180);
+                ctx.translate(-cx, -cy);
+            }
+            ctx.imageSmoothingEnabled = !!op.interpolate;
+            ctx.drawImage(img, dx, dy, aw, ah);
+            ctx.restore();
             break;
         }
     }
@@ -546,7 +544,6 @@ function handleExport(format) {
             reader.readAsArrayBuffer(blob);
         }, 'image/png');
     }
-    // SVG and PDF export: TODO in Phase 2
 }
 `;
 }

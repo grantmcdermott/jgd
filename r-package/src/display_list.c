@@ -3,9 +3,9 @@
 #include <string.h>
 #include <stdio.h>
 
-void page_init(vscgd_page_t *p, double width, double height, double dpi, int bg) {
+void page_init(jgd_page_t *p, double width, double height, double dpi, int bg) {
     jw_init(&p->jw);
-    jw_arr_start(&p->jw); /* start the ops array */
+    jw_arr_start(&p->jw);
     p->op_count = 0;
     p->width = width;
     p->height = height;
@@ -14,11 +14,11 @@ void page_init(vscgd_page_t *p, double width, double height, double dpi, int bg)
     p->finalized = 0;
 }
 
-void page_free(vscgd_page_t *p) {
+void page_free(jgd_page_t *p) {
     jw_free(&p->jw);
 }
 
-json_writer_t *page_writer(vscgd_page_t *p) {
+json_writer_t *page_writer(jgd_page_t *p) {
     return &p->jw;
 }
 
@@ -44,7 +44,6 @@ void lty_write_json(json_writer_t *w, int lty, double lwd) {
     jw_key(w, "lty");
     jw_arr_start(w);
     if (lty != LTY_SOLID && lty != LTY_BLANK) {
-        /* Extract 4-bit nibbles from lty, scale by lwd */
         for (int i = 0; i < 8; i++) {
             int nibble = (lty >> (4 * i)) & 0xF;
             if (nibble == 0) break;
@@ -77,11 +76,9 @@ void gc_write_json(json_writer_t *w, const pGEcontext gc) {
     jw_obj_end(w);
 }
 
-void page_serialize_frame(vscgd_page_t *p, const char *session_id, json_writer_t *out, int incremental) {
-    /* Temporarily close the ops array, snapshot, then reopen */
+void page_serialize_frame(jgd_page_t *p, const char *session_id, json_writer_t *out, int incremental) {
     int was_comma = p->jw.needs_comma;
 
-    /* Close array to get valid JSON */
     jw_arr_end(&p->jw);
 
     jw_reset(out);
@@ -105,16 +102,15 @@ void page_serialize_frame(vscgd_page_t *p, const char *session_id, json_writer_t
     color_write_json(out, p->bg);
     jw_obj_end(out);
 
-    /* Embed the ops array as raw JSON */
     jw_key(out, "ops");
     const char *ops_json = jw_result(&p->jw);
     size_t ops_len = jw_length(&p->jw);
     jw_raw(out, ops_json, ops_len);
 
-    jw_obj_end(out); /* plot */
-    jw_obj_end(out); /* top-level */
+    jw_obj_end(out);
+    jw_obj_end(out);
 
-    /* Reopen: remove the trailing ']' so more ops can be appended */
+    /* Reopen: remove trailing ']' so more ops can be appended */
     p->jw.len--;
     p->jw.buf[p->jw.len] = '\0';
     p->jw.needs_comma = was_comma;

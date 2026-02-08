@@ -1,11 +1,11 @@
-Package: vscgd
-Title: VS Code Graphics Device for R
+Package: jgd
+Title: JSON Graphics Device for R
 Version: 0.0.1
-Authors@R: person("vscgd authors", role = c("aut", "cre"), email = "vscgd@example.com")
+Authors@R: person("jgd authors", role = c("aut", "cre"), email = "jgd@example.com")
 Description: A graphics device that records R plotting operations and streams
-    them to a VS Code extension for rendering in a webview. The device acts as
-    a recorder, capturing display-list operations as JSON and transmitting them
-    over a Unix domain socket. All rendering occurs in the browser via Canvas2D.
+    them as JSON to an external renderer over a Unix domain socket. The device
+    acts as a recorder — all rendering occurs in the client (e.g. a VS Code
+    webview, browser tab, or any NDJSON-capable frontend) via Canvas2D.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

@@ -47,47 +47,42 @@ export class SocketServer {
 
     start() {
         const token = crypto.randomBytes(8).toString('hex');
-        this.socketPath = path.join(os.tmpdir(), `vscgd-${token}.sock`);
+        this.socketPath = path.join(os.tmpdir(), `jgd-${token}.sock`);
 
-        // Clean up stale socket file
         try { fs.unlinkSync(this.socketPath); } catch {}
 
-        // Forward webview resize to all R sessions
         this.webviewProvider.onResize((w, h) => {
             this.broadcast({ type: 'resize', width: w, height: h });
         });
 
         this.server = net.createServer((socket) => this.handleConnection(socket));
         this.server.listen(this.socketPath, () => {
-            console.log('vscgd: socket server listening at', this.socketPath);
-            // Write discovery file to multiple locations for discoverability
+            console.log('jgd: socket server listening at', this.socketPath);
             const discoveryContent = JSON.stringify({
                 socketPath: this.socketPath,
                 pid: process.pid
             });
             const locations = [
-                path.join(os.tmpdir(), 'vscgd-discovery.json'),
-                '/tmp/vscgd-discovery.json',
-                '/private/tmp/vscgd-discovery.json'
+                path.join(os.tmpdir(), 'jgd-discovery.json'),
+                '/tmp/jgd-discovery.json',
+                '/private/tmp/jgd-discovery.json'
             ];
             for (const loc of locations) {
                 try {
                     fs.writeFileSync(loc, discoveryContent);
-                    console.log('vscgd: wrote discovery file to', loc);
+                    console.log('jgd: wrote discovery file to', loc);
                 } catch (e) {
-                    console.warn('vscgd: failed to write discovery to', loc, e);
+                    console.warn('jgd: failed to write discovery to', loc, e);
                 }
             }
 
-            // Set env var for current process (inherited by child terminals)
-            process.env['VSCGD_SOCKET'] = this.socketPath;
+            process.env['JGD_SOCKET'] = this.socketPath;
 
-            // Notify ready listeners
             for (const l of this.readyListeners) l();
         });
 
         this.server.on('error', (err) => {
-            console.error('vscgd socket server error:', err);
+            console.error('jgd socket server error:', err);
         });
     }
 
@@ -98,8 +93,8 @@ export class SocketServer {
         this.sessions.clear();
         this.server?.close();
         try { fs.unlinkSync(this.socketPath); } catch {}
-        try { fs.unlinkSync(path.join(os.tmpdir(), 'vscgd-discovery.json')); } catch {}
-        try { fs.unlinkSync('/tmp/vscgd-discovery.json'); } catch {}
+        try { fs.unlinkSync(path.join(os.tmpdir(), 'jgd-discovery.json')); } catch {}
+        try { fs.unlinkSync('/tmp/jgd-discovery.json'); } catch {}
     }
 
     private handleConnection(socket: net.Socket) {
@@ -108,7 +103,6 @@ export class SocketServer {
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
 
-        // Send current panel dimensions to R
         const dims = this.webviewProvider.getPanelDimensions();
         if (dims) {
             socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');
@@ -132,7 +126,7 @@ export class SocketServer {
         });
 
         socket.on('error', (err) => {
-            console.error(`vscgd session ${sessionId} error:`, err.message);
+            console.error(`jgd session ${sessionId} error:`, err.message);
             this.sessions.delete(sessionId);
             this.notifyConnectionChange();
         });
@@ -155,7 +149,6 @@ export class SocketServer {
                     break;
 
                 case 'metrics_request':
-                    // Forward to webview for measurement, then respond
                     this.webviewProvider.measureText(msg).then((response) => {
                         const resp = JSON.stringify(response) + '\n';
                         session.socket.write(resp);
@@ -166,11 +159,10 @@ export class SocketServer {
                     break;
             }
         } catch (e) {
-            console.error('vscgd: failed to parse message:', e);
+            console.error('jgd: failed to parse message:', e);
         }
     }
 
-    /** Send a message to a specific R session */
     sendToSession(sessionId: string, msg: object) {
         const session = this.sessions.get(sessionId);
         if (session) {
@@ -178,7 +170,6 @@ export class SocketServer {
         }
     }
 
-    /** Broadcast a message to all R sessions */
     broadcast(msg: object) {
         const data = JSON.stringify(msg) + '\n';
         for (const session of this.sessions.values()) {

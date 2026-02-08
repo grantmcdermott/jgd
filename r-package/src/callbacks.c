@@ -11,45 +11,34 @@
 #include <string.h>
 #include <stdlib.h>
 
-/* Forward declarations */
-static void check_incoming(vscgd_state_t *st, pDevDesc dd);
-static void apply_pending_resize(vscgd_state_t *st, pDevDesc dd);
+static void check_incoming(jgd_state_t *st, pDevDesc dd);
+static void apply_pending_resize(jgd_state_t *st, pDevDesc dd);
 
-/* Helper: get our state from the device descriptor */
-static vscgd_state_t *get_state(pDevDesc dd) {
-    return (vscgd_state_t *)dd->deviceSpecific;
+static jgd_state_t *get_state(pDevDesc dd) {
+    return (jgd_state_t *)dd->deviceSpecific;
 }
 
-/* Helper: send the current page as a frame */
-static void flush_frame(vscgd_state_t *st, int incremental) {
+static void flush_frame(jgd_state_t *st, int incremental) {
     page_serialize_frame(&st->page, st->session_id, &st->frame_buf, incremental);
     transport_send(&st->transport, jw_result(&st->frame_buf), jw_length(&st->frame_buf));
 }
 
 /* --- Device callbacks --- */
 
-static void cb_activate(const pDevDesc dd) {
-    (void)dd;
-}
-
-static void cb_deactivate(const pDevDesc dd) {
-    (void)dd;
-}
+static void cb_activate(const pDevDesc dd) { (void)dd; }
+static void cb_deactivate(const pDevDesc dd) { (void)dd; }
 
 static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
 
-    /* If we have a previous page with ops, commit it as a new history entry */
     if (st->page_count > 0 && st->page.op_count > 0 && !st->replaying) {
         flush_frame(st, 0);
     }
 
-    /* Free old page and start new */
     if (st->page_count > 0) {
         page_free(&st->page);
     }
 
-    /* Check for pending resize and apply before creating new page */
     check_incoming(st, dd);
     apply_pending_resize(st, dd);
 
@@ -61,9 +50,8 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
 }
 
 static void cb_close(pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
 
-    /* Flush final page if there are unsent ops */
     if (st->page.op_count > st->last_flushed_ops) {
         flush_frame(st, 0);
     }
@@ -73,10 +61,13 @@ static void cb_close(pDevDesc dd) {
     transport_close(&st->transport);
     free(st);
     dd->deviceSpecific = NULL;
+
+    /* Remove the task callback (best-effort, ignore errors) */
+    /* The R-level callback checks device validity and will no-op if gone */
 }
 
 static void cb_clip(double x0, double x1, double y0, double y1, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *w = page_writer(&st->page);
 
     jw_obj_start(w);
@@ -96,7 +87,7 @@ static void cb_clip(double x0, double x1, double y0, double y1, pDevDesc dd) {
 
 static void cb_line(double x1, double y1, double x2, double y2,
                     const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *w = page_writer(&st->page);
 
     jw_obj_start(w);
@@ -112,7 +103,7 @@ static void cb_line(double x1, double y1, double x2, double y2,
 
 static void cb_polyline(int n, double *x, double *y,
                         const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *w = page_writer(&st->page);
 
     jw_obj_start(w);
@@ -126,7 +117,7 @@ static void cb_polyline(int n, double *x, double *y,
 
 static void cb_polygon(int n, double *x, double *y,
                        const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *w = page_writer(&st->page);
 
     jw_obj_start(w);
@@ -140,7 +131,7 @@ static void cb_polygon(int n, double *x, double *y,
 
 static void cb_rect(double x0, double y0, double x1, double y1,
                     const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *w = page_writer(&st->page);
 
     jw_obj_start(w);
@@ -156,7 +147,7 @@ static void cb_rect(double x0, double y0, double x1, double y1,
 
 static void cb_circle(double x, double y, double r,
                       const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *w = page_writer(&st->page);
 
     jw_obj_start(w);
@@ -172,7 +163,7 @@ static void cb_circle(double x, double y, double r,
 static void cb_text(double x, double y, const char *str,
                     double rot, double hadj,
                     const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *w = page_writer(&st->page);
 
     jw_obj_start(w);
@@ -188,25 +179,23 @@ static void cb_text(double x, double y, const char *str,
 }
 
 static double cb_strWidth(const char *str, const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     return metrics_str_width(str, gc, st->dpi);
 }
 
 static void cb_metricInfo(int c, const pGEcontext gc,
                           double *ascent, double *descent, double *width,
                           pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     metrics_char_info(c, gc, st->dpi, ascent, descent, width);
 }
 
-/* Check for and handle incoming messages from the extension (e.g., resize) */
-static void check_incoming(vscgd_state_t *st, pDevDesc dd) {
+static void check_incoming(jgd_state_t *st, pDevDesc dd) {
     while (transport_has_data(&st->transport)) {
         char buf[1024];
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
         if (n <= 0) break;
 
-        /* Minimal parse for resize: {"type":"resize","width":NNN,"height":NNN} */
         if (strstr(buf, "\"resize\"")) {
             char *wp = strstr(buf, "\"width\"");
             char *hp = strstr(buf, "\"height\"");
@@ -223,7 +212,7 @@ static void check_incoming(vscgd_state_t *st, pDevDesc dd) {
     }
 }
 
-static void apply_pending_resize(vscgd_state_t *st, pDevDesc dd) {
+static void apply_pending_resize(jgd_state_t *st, pDevDesc dd) {
     if (st->pending_w > 0 && st->pending_h > 0) {
         st->width = st->pending_w / st->dpi;
         st->height = st->pending_h / st->dpi;
@@ -237,7 +226,7 @@ static void apply_pending_resize(vscgd_state_t *st, pDevDesc dd) {
 }
 
 static void cb_mode(int mode, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     if (mode == 1) {
         st->drawing = 1;
     } else if (mode == 0) {
@@ -251,7 +240,7 @@ static void cb_mode(int mode, pDevDesc dd) {
 
 static void cb_size(double *left, double *right, double *bottom, double *top,
                     pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     *left = 0.0;
     *right = st->width * st->dpi;
     *bottom = st->height * st->dpi;
@@ -260,7 +249,7 @@ static void cb_size(double *left, double *right, double *bottom, double *top,
 
 static void cb_path(double *x, double *y, int npoly, int *nper,
                     Rboolean winding, const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *w = page_writer(&st->page);
 
     jw_obj_start(w);
@@ -292,10 +281,9 @@ static void cb_raster(unsigned int *raster, int w, int h,
                       double x, double y, double width, double height,
                       double rot, Rboolean interpolate,
                       const pGEcontext gc, pDevDesc dd) {
-    vscgd_state_t *st = get_state(dd);
+    jgd_state_t *st = get_state(dd);
     json_writer_t *jw = page_writer(&st->page);
 
-    /* Convert R's ABGR raster to RGBA for PNG encoding */
     size_t npix = (size_t)w * (size_t)h;
     unsigned char *rgba = (unsigned char *)malloc(npix * 4);
     if (!rgba) return;
@@ -328,10 +316,8 @@ static void cb_raster(unsigned int *raster, int w, int h,
     jw_kv_int(jw, "pw", w);
     jw_kv_int(jw, "ph", h);
 
-    /* Write data URI inline */
     jw_key(jw, "data");
-    /* Build "data:image/png;base64,XXXX" */
-    size_t uri_len = 22 + b64_len; /* "data:image/png;base64," = 22 chars */
+    size_t uri_len = 22 + b64_len;
     char *uri = (char *)malloc(uri_len + 1);
     if (uri) {
         memcpy(uri, "data:image/png;base64,", 22);
@@ -371,8 +357,7 @@ static void cb_glyph(int n, int *glyphs, double *x, double *y,
                      SEXP font, double size, int colour, double rot, pDevDesc dd) { }
 #endif
 
-/* Install all callbacks */
-void vscgd_set_callbacks(pDevDesc dd) {
+void jgd_set_callbacks(pDevDesc dd) {
     dd->activate = cb_activate;
     dd->deactivate = cb_deactivate;
     dd->newPage = cb_newPage;
@@ -384,7 +369,7 @@ void vscgd_set_callbacks(pDevDesc dd) {
     dd->rect = cb_rect;
     dd->circle = cb_circle;
     dd->text = cb_text;
-    dd->textUTF8 = cb_text;  /* same impl, hasTextUTF8=TRUE routes here */
+    dd->textUTF8 = cb_text;
     dd->strWidth = cb_strWidth;
     dd->strWidthUTF8 = cb_strWidth;
     dd->metricInfo = cb_metricInfo;
@@ -393,7 +378,6 @@ void vscgd_set_callbacks(pDevDesc dd) {
     dd->path = cb_path;
     dd->raster = cb_raster;
 
-    /* Null out optional callbacks we don't implement yet */
     dd->locator = NULL;
     dd->onExit = NULL;
     dd->getEvent = NULL;
@@ -402,7 +386,6 @@ void vscgd_set_callbacks(pDevDesc dd) {
     dd->holdflush = NULL;
     dd->cap = NULL;
 
-    /* R >= 4.1 callbacks — no-op stubs */
     dd->setPattern = cb_setPattern;
     dd->releasePattern = cb_releasePattern;
     dd->setClipPath = cb_setClipPath;
