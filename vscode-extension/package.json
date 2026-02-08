@@ -3,7 +3,12 @@
   "displayName": "jgd - R Plot Viewer",
   "description": "Renders R graphics from the jgd device in a VS Code webview",
   "version": "0.0.1",
-  "publisher": "jgd",
+  "publisher": "grantmcdermott",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/grantmcdermott/jgd"
+  },
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
