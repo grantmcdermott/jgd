@@ -40,13 +40,13 @@
 ## Build Commands
 ```bash
 # R package
-cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz
+cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
 
 # VS Code extension
-cd vscode-extension && npm install && npm run compile
+cd vscode-extension && npm install && npm run compile && cd ..
 
 # Dev launch
-cd vscode-extension && code --extensionDevelopmentPath="$(pwd)"
+cd vscode-extension && code --extensionDevelopmentPath="$(pwd)" && cd ..
 ```
 
 ## Test Sequence

@@ -83,7 +83,7 @@ using the browser's Canvas2D API.
 remotes::install_github("grantmcdermott/jgd", subdir = "r-pkg")
 
 # Or from source
-# cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz
+# cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
 ```
 
 ### VS Code extension
@@ -97,6 +97,7 @@ cd vscode-extension
 npm install
 npm run compile
 code --extensionDevelopmentPath="$(pwd)"
+cd ..
 ```
 
 ## Usage
