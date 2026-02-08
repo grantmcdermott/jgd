@@ -34,12 +34,14 @@ void transport_init(jgd_transport_t *t) {
     t->connected = 0;
 }
 
-static int discover_socket_path(char *out, size_t outsize) {
+static int discover_socket_path(char *out, size_t outsize, int skip_env) {
     /* 1. Environment variable */
-    const char *env = getenv("JGD_SOCKET");
-    if (env && env[0]) {
-        snprintf(out, outsize, "%s", env);
-        return 0;
+    if (!skip_env) {
+        const char *env = getenv("JGD_SOCKET");
+        if (env && env[0]) {
+            snprintf(out, outsize, "%s", env);
+            return 0;
+        }
     }
 
     /* 2. R option */
@@ -96,26 +98,14 @@ static int discover_socket_path(char *out, size_t outsize) {
     return -1;
 }
 
-int transport_connect(jgd_transport_t *t) {
-    if (t->connected) return 0;
-
-    if (t->socket_path[0] == '\0') {
-        if (discover_socket_path(t->socket_path, sizeof(t->socket_path)) != 0) {
-            REprintf("jgd: cannot find socket path. Set JGD_SOCKET or start the VS Code extension.\n");
-            return -1;
-        }
-    }
-
+static int try_connect(jgd_transport_t *t) {
 #ifdef _WIN32
     WSADATA wsa;
     WSAStartup(MAKEWORD(2, 2), &wsa);
 #endif
 
     sock_t s = socket(AF_UNIX, SOCK_STREAM, 0);
-    if (s == SOCK_INVALID) {
-        REprintf("jgd: socket() failed: %d\n", SOCK_ERR);
-        return -1;
-    }
+    if (s == SOCK_INVALID) return -1;
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
@@ -123,7 +113,6 @@ int transport_connect(jgd_transport_t *t) {
     snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", t->socket_path);
 
     if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
-        REprintf("jgd: connect(%s) failed: %d\n", t->socket_path, SOCK_ERR);
         SOCK_CLOSE(s);
         return -1;
     }
@@ -131,6 +120,30 @@ int transport_connect(jgd_transport_t *t) {
     t->fd = (int)s;
     t->connected = 1;
     return 0;
+}
+
+int transport_connect(jgd_transport_t *t) {
+    if (t->connected) return 0;
+
+    if (t->socket_path[0] == '\0') {
+        if (discover_socket_path(t->socket_path, sizeof(t->socket_path), 0) != 0) {
+            REprintf("jgd: cannot find socket path. Set JGD_SOCKET or start the VS Code extension.\n");
+            return -1;
+        }
+    }
+
+    if (try_connect(t) == 0) return 0;
+
+    /* Connection failed — retry via discovery file (skip stale env var) */
+    char retry_path[512];
+    if (discover_socket_path(retry_path, sizeof(retry_path), 1) == 0 &&
+        strcmp(retry_path, t->socket_path) != 0) {
+        snprintf(t->socket_path, sizeof(t->socket_path), "%s", retry_path);
+        if (try_connect(t) == 0) return 0;
+    }
+
+    REprintf("jgd: connect(%s) failed: %d\n", t->socket_path, SOCK_ERR);
+    return -1;
 }
 
 int transport_send(jgd_transport_t *t, const char *data, size_t len) {

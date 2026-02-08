@@ -18,6 +18,7 @@
 - **Clip regions**: save/restore stack correct with base y-flip-free transform
 - **Raster positioning**: Correct handling of negative width/height from R's raster callback, synchronous image decode to preserve clip/transform state
 - **Text metrics from webview**: Synchronous round-trip to measure text in the webview's Canvas2D context for accurate label positioning. Cached (512-entry hash map) to avoid repeated round-trips. Falls back to approximation when not connected.
+- **Stale socket fallback**: If `JGD_SOCKET` env var points to a dead socket (e.g. restored terminal), automatically retries via discovery file
 - **R 4.1+ compatibility**: No-op stubs for setPattern, setMask, setClipPath, defineGroup, etc.
 
 ## Rename: vscgd → jgd
@@ -28,8 +29,7 @@
 ## Known Issues / TODO
 
 ### High Priority
-1. **`dev.off()` should close the device cleanly**: Currently `cb_close` runs but the webview doesn't react to the R session disconnecting. Should clear/notify the webview when the device closes.
-2. **Terminal env var race**: `environmentVariableCollection` only applies to newly opened terminals. Restored terminals keep stale socket paths. Users must open a fresh terminal after extension activates.
+1. **Terminal env var race (mitigated)**: `environmentVariableCollection` only applies to newly opened terminals. Restored terminals keep stale socket paths. Now mitigated: if the env var socket fails, the C code retries via discovery file automatically. Users should rarely need to open a fresh terminal.
 
 ### Medium Priority
 3. **Export**: PNG/SVG/PDF export UI exists in toolbar but handlers aren't fully wired.
