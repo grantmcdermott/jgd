@@ -160,14 +160,21 @@ using the browser's Canvas2D API.
   **raster images** (base64-encoded PNG)
 - **Auto-discovery**: `JGD_SOCKET` environment variable injected into VS Code
   terminals
+- **Export**: PNG and SVG from the toolbar dropdown
 
 ## Roadmap
 
 - [ ] **Windows support**: TCP transport as alternative to Unix domain sockets
 - [ ] **Browser frontend**: Standalone renderer served over HTTP/WebSocket for
   use with Neovim, Emacs, or terminal R
-- [ ] **Export**: PNG export from canvas (wired), SVG/PDF export (planned)
 - [ ] **CRAN submission**: Package the R side for CRAN distribution
+
+## Limitations
+
+- **No PDF export**: PNG and SVG export are supported. For PDF, convert the
+  exported SVG using any standard tool (e.g. Inkscape, Chrome print-to-PDF).
+- **No Windows support (yet)**: Currently relies on Unix domain sockets (macOS
+  and Linux only). TCP transport for Windows is planned.
 
 ## Project structure
 
