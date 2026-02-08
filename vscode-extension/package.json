@@ -12,21 +12,51 @@
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Visualization"],
-  "activationEvents": ["onStartupFinished"],
+  "categories": [
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
-      { "command": "jgd.showPlotPane", "title": "jgd: Show Plot Pane" },
-      { "command": "jgd.previousPlot", "title": "jgd: Previous Plot" },
-      { "command": "jgd.nextPlot", "title": "jgd: Next Plot" },
-      { "command": "jgd.clearHistory", "title": "jgd: Clear Plot History" },
-      { "command": "jgd.exportPng", "title": "jgd: Export as PNG" },
-      { "command": "jgd.exportSvg", "title": "jgd: Export as SVG" }
+      {
+        "command": "jgd.showPlotPane",
+        "title": "jgd: Show Plot Pane"
+      },
+      {
+        "command": "jgd.previousPlot",
+        "title": "jgd: Previous Plot"
+      },
+      {
+        "command": "jgd.nextPlot",
+        "title": "jgd: Next Plot"
+      },
+      {
+        "command": "jgd.clearHistory",
+        "title": "jgd: Clear Plot History"
+      },
+      {
+        "command": "jgd.exportPng",
+        "title": "jgd: Export as PNG"
+      },
+      {
+        "command": "jgd.exportSvg",
+        "title": "jgd: Export as SVG"
+      }
     ],
     "keybindings": [
-      { "command": "jgd.previousPlot", "key": "alt+left", "when": "jgd.hasPlots" },
-      { "command": "jgd.nextPlot", "key": "alt+right", "when": "jgd.hasPlots" }
+      {
+        "command": "jgd.previousPlot",
+        "key": "alt+left",
+        "when": "jgd.hasPlots"
+      },
+      {
+        "command": "jgd.nextPlot",
+        "key": "alt+right",
+        "when": "jgd.hasPlots"
+      }
     ],
     "configuration": {
       "title": "jgd",
@@ -47,6 +77,7 @@
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.7.1",
     "typescript": "^5.3.0"
   }
 }
