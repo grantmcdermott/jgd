@@ -6,13 +6,13 @@
 #' @param width Device width in inches (default 8).
 #' @param height Device height in inches (default 6).
 #' @param dpi Resolution in dots per inch (default 96).
-#' @return Invisible NULL. The device is opened as a side effect.
+#' @return Invisible `NULL`. The device is opened as a side effect.
 #' @export
-jgd <- function(width = 8, height = 6, dpi = 96) {
+jgd = function(width = 8, height = 6, dpi = 96) {
   .Call(C_jgd, as.double(width), as.double(height), as.double(dpi))
 
   if (requireNamespace("later", quietly = TRUE)) {
-    poll <- function() {
+    poll = function() {
       tryCatch(.Call(C_jgd_poll_resize), error = function(e) NULL)
       later::later(poll, 0.2)
     }
@@ -24,7 +24,7 @@ jgd <- function(width = 8, height = 6, dpi = 96) {
   invisible()
 }
 
-jgd_resize_callback <- function(...) {
+jgd_resize_callback = function(...) {
   tryCatch(.Call(C_jgd_poll_resize), error = function(e) NULL)
   TRUE
 }
