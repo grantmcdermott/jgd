@@ -1,26 +1,113 @@
 # jgd — JSON Graphics Device for R
 
-**jgd** is a lightweight R graphics device that serializes every R plotting
-operation as JSON and streams it over a Unix domain socket to an external
-renderer. The primary renderer today is a VS Code extension that replays the
-operations onto an HTML Canvas2D surface, but the protocol is
-frontend-agnostic — any client that can read newline-delimited JSON can render
-R plots.
+![Experimental](https://img.shields.io/badge/status-experimental-orange)
+
+**jgd** is a lightweight (zero dependency) R graphics device that serializes
+every R plotting operation as JSON and streams it over a Unix domain socket to
+an external renderer. The primary renderer today is a VS Code extension that
+replays the operations onto an HTML Canvas2D surface. In other words, you can 
+use it to get a nice graphics device from VS Code. But the protocol is
+frontend-agnostic; any client that can read newline-delimited JSON can render R
+plots.
+
+![Seenshot of jdg running in VS Code](jgd-ss.png)
+
+**Caveats:** The package is experimental and may have some rough edges, despite
+my best efforts at thorough local testing. More importantly, it only supports
+unix-based sytems (MacOS/Linux) at present. I hope to provide Windows support
+soon, but will need external help with testing and validation. Finally, I want
+to be transparent that this project has made _heavy_ use of AI-assisted pair
+programming (Claude). It is highly doubtful that I would have been able to put
+this together without AI help.
+
+## Installation
+
+### R package
+
+```r
+## Install from GitHub
+remotes::install_github("grantmcdermott/jgd", subdir = "r-pkg")
+
+## Or build from local source
+# cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
+```
+
+### VS Code extension
+
+```bash
+## Install from .vsix
+code --install-extension jgd-vscode-0.0.1.vsix
+
+## Or build for local development
+# cd vscode-extension && npm install && npm run compile
+# code --extensionDevelopmentPath="$(pwd)" && cd ..
+```
+
+## Usage
+
+In a terminal inside the VS Code development host:
+
+```r
+library(jgd)
+jgd()
+
+# Base graphics
+plot(1:10)
+lines(1:10, col = "red", lwd = 3)
+hist(rnorm(1000), col = "steelblue")
+plot(cars)
+abline(lm(dist ~ speed, data = cars), col = "red", lwd = 2)
+
+# tinyplot
+library(tinyplot)
+plt(bill_dep ~ bill_len | body_mass, facet = ~island,
+    data = penguins, theme = "clean")
+
+# ggplot2
+library(ggplot2)
+ggplot(penguins, aes(bill_len, bill_dep, col = species)) +
+  geom_point() +
+  facet_wrap(~island) +
+  theme_minimal()
+```
+
+Use ◀ ▶ in the plot pane (or `Alt+Left` / `Alt+Right`) to navigate plot
+history.
 
 ## Motivation
 
-The [httpgd](https://github.com/nx10/httpgd) and
-[unigd](https://github.com/nx10/unigd) packages have been repeatedly removed
-from CRAN due to C++ toolchain issues: non-API entry points, compiler
-compatibility failures, and unmaintained upstream dependencies (Boost.Asio,
-cpp-httplib, libfmt, etc.). These packages embedded a full C++ SVG rendering
-stack and HTTP server inside the R process, which made them powerful but
-fragile.
+The primary motivation for this package is supporting a nicer R graphics
+experience in VS Code. At present, the VS Code R extension provides fairly crude
+"native" graphics support, since plots are displayed at PNGs. As a result, users
+have for some time relied on the very nice
+[httpgd](https://github.com/nx10/httpgd) package for a better graphics
+experience; indeed, the official R extension docs even recommend using it.
+However, this alterative has become increasingly tricky to work with due to
+repeated CRAN removals and lack of maintenance bandwith. In brief, this is
+because it embeds a full C++ SVG rendering stack and HTTP server inside the R
+process, which made them powerful but fragile. At the time of writing, both
+[httpgd](https://github.com/nx10/httpgd) and its core
+[unigd](https://github.com/nx10/unigd) depdency are unavailable on CRAN due to a
+variety of C++ toolchain issues: non-API entry points, compiler compatibility
+failures, and unmaintained upstream dependencies (Boost.Asio, cpp-httplib,
+libfmt, etc.).
 
-jgd takes a different approach: **the R package is pure C with zero external
-dependencies**. It doesn't render anything — it records. All rendering happens
-in the client (a VS Code webview, a browser tab, or any future frontend). The
-only system dependency is the POSIX socket API, which R itself already uses.
+**jgd** takes a different approach: _the R package is pure C with zero external
+dependencies_. It doesn't render anything; it records. All rendering happens in
+the client (a VS Code webview, a browser tab, or any future frontend). The only
+system dependency is the POSIX socket API, which R itself already uses. The idea
+(hope) is that we can support the main features of `httpgd`, but with a more
+stable and lightweight footprint.
+
+### What about Positron?
+
+[Positron](https://positron.posit.co/) is a "batteries-included" fork of VS Code
+by Posit PBC. It comes with many great features, including first-class support
+for R (and Python) graphics. In my opinion, Positron is likely the best IDE
+choice for a plurality of R users and I can happily recommend it. However, that
+still leaves a non-trivial share of R users and use-cases, where a good "base"
+VS Code R experience is still needed. **jgd** is aimed at supporting these
+latter cases.
 
 ## Architecture
 
@@ -74,63 +161,8 @@ using the browser's Canvas2D API.
 - **Auto-discovery**: `JGD_SOCKET` environment variable injected into VS Code
   terminals
 
-## Installation
-
-### R package
-
-```r
-# From GitHub
-remotes::install_github("grantmcdermott/jgd", subdir = "r-pkg")
-
-# Or from source
-# cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
-```
-
-### VS Code extension
-
-```bash
-# Install from .vsix
-code --install-extension jgd-vscode-0.0.1.vsix
-
-# Or for development
-cd vscode-extension
-npm install
-npm run compile
-code --extensionDevelopmentPath="$(pwd)"
-cd ..
-```
-
-## Usage
-
-In a terminal inside the VS Code development host:
-
-```r
-library(jgd)
-jgd()
-
-# Base graphics
-plot(1:10)
-lines(1:10, col = "red", lwd = 3)
-hist(rnorm(1000), col = "steelblue")
-plot(cars)
-abline(lm(dist ~ speed, data = cars), col = "red", lwd = 2)
-
-# ggplot2
-library(ggplot2)
-ggplot(mtcars, aes(wt, mpg)) +
-  geom_point(aes(color = factor(cyl))) +
-  theme_minimal()
-```
-
-Use ◀ ▶ in the plot pane (or `Alt+Left` / `Alt+Right`) to navigate plot
-history.
-
 ## Roadmap
 
-- [ ] **Live resize**: Replay R's display list at new dimensions when the panel
-  resizes (currently deferred to next plot)
-- [ ] **Accurate text metrics**: Round-trip measurement via the webview for
-  precise label positioning (currently approximation-based)
 - [ ] **Windows support**: TCP transport as alternative to Unix domain sockets
 - [ ] **Browser frontend**: Standalone renderer served over HTTP/WebSocket for
   use with Neovim, Emacs, or terminal R
