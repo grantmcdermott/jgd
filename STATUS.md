@@ -40,7 +40,7 @@
 ## Build Commands
 ```bash
 # R package
-cd r-package && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz
+cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz
 
 # VS Code extension
 cd vscode-extension && npm install && npm run compile

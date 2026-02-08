@@ -79,7 +79,7 @@ using the browser's Canvas2D API.
 ### R package
 
 ```bash
-cd r-package
+cd r-pkg
 R CMD build .
 R CMD INSTALL jgd_0.0.1.tar.gz
 ```
@@ -133,7 +133,7 @@ history.
 ## Project structure
 
 ```
-r-package/
+r-pkg/
 ├── DESCRIPTION
 ├── NAMESPACE
 ├── R/
