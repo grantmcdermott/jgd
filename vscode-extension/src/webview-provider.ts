@@ -228,7 +228,6 @@ canvas { display: block; }
         <option value="">Export…</option>
         <option value="png">PNG</option>
         <option value="svg">SVG</option>
-        <option value="pdf">PDF</option>
     </select>
 </div>
 <div id="canvas-container">
@@ -548,7 +547,139 @@ function handleExport(format) {
             };
             reader.readAsArrayBuffer(blob);
         }, 'image/png');
+    } else if (format === 'svg') {
+        const svg = plotToSvg(currentPlot);
+        const base64 = btoa(unescape(encodeURIComponent(svg)));
+        vscode.postMessage({ type: 'export_data', format: 'svg', data: base64 });
     }
+}
+
+function svgEsc(s) { return s.replace(/&/g,'&amp;').replace(/[<]/g,'&lt;').replace(/[>]/g,'&gt;').replace(/"/g,'&quot;'); }
+
+function svgTag(name, attrs, selfClose) {
+    return String.fromCharCode(60) + name + (attrs || '') + (selfClose ? '/>' : '>');
+}
+function svgClose(name) { return String.fromCharCode(60) + '/' + name + '>'; }
+
+function svgGcStroke(gc) {
+    if (!gc || gc.col == null) return ' stroke="none"';
+    let s = ' stroke="' + gc.col + '"';
+    s += ' stroke-width="' + (gc.lwd || 1) + '"';
+    s += ' stroke-linecap="' + (gc.lend || 'round') + '"';
+    s += ' stroke-linejoin="' + (gc.ljoin || 'round') + '"';
+    if (gc.lty && gc.lty.length > 0) s += ' stroke-dasharray="' + gc.lty.join(',') + '"';
+    return s;
+}
+
+function svgGcFill(gc) {
+    if (!gc || gc.fill == null) return ' fill="none"';
+    return ' fill="' + gc.fill + '"';
+}
+
+function svgFont(gc) {
+    if (!gc || !gc.font) return { size: 12, family: 'sans-serif', style: '', weight: '' };
+    const size = gc.font.size || 12;
+    const family = mapFontFamily(gc.font.family);
+    const face = gc.font.face || 1;
+    return {
+        size,
+        family,
+        weight: (face === 2 || face === 4) ? 'bold' : 'normal',
+        style: (face === 3 || face === 4) ? 'italic' : 'normal'
+    };
+}
+
+function plotToSvg(plot) {
+    const w = plot.device.width;
+    const h = plot.device.height;
+    let s = svgTag('svg', ' xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"') + '\\n';
+
+    if (plot.device.bg) {
+        s += svgTag('rect', ' width="' + w + '" height="' + h + '" fill="' + plot.device.bg + '"', true) + '\\n';
+    }
+
+    let clipId = 0;
+    let inClip = false;
+
+    for (const op of plot.ops) {
+        switch (op.op) {
+            case 'clip': {
+                if (inClip) s += svgClose('g') + '\\n';
+                clipId++;
+                const cw = op.x1 - op.x0, ch = op.y1 - op.y0;
+                const cx = Math.min(op.x0, op.x1), cy = Math.min(op.y0, op.y1);
+                const aw = Math.abs(cw), ah = Math.abs(ch);
+                s += svgTag('defs') + svgTag('clipPath', ' id="c' + clipId + '"') + svgTag('rect', ' x="' + cx + '" y="' + cy + '" width="' + aw + '" height="' + ah + '"', true) + svgClose('clipPath') + svgClose('defs') + '\\n';
+                s += svgTag('g', ' clip-path="url(#c' + clipId + ')"') + '\\n';
+                inClip = true;
+                break;
+            }
+            case 'line':
+                s += svgTag('line', ' x1="' + op.x1 + '" y1="' + op.y1 + '" x2="' + op.x2 + '" y2="' + op.y2 + '"' + svgGcStroke(op.gc) + ' fill="none"', true) + '\\n';
+                break;
+            case 'rect': {
+                const rx = Math.min(op.x0, op.x1), ry = Math.min(op.y0, op.y1);
+                const rw = Math.abs(op.x1 - op.x0), rh = Math.abs(op.y1 - op.y0);
+                s += svgTag('rect', ' x="' + rx + '" y="' + ry + '" width="' + rw + '" height="' + rh + '"' + svgGcFill(op.gc) + svgGcStroke(op.gc), true) + '\\n';
+                break;
+            }
+            case 'circle':
+                s += svgTag('circle', ' cx="' + op.x + '" cy="' + op.y + '" r="' + op.r + '"' + svgGcFill(op.gc) + svgGcStroke(op.gc), true) + '\\n';
+                break;
+            case 'polyline': {
+                if (op.x.length < 2) break;
+                let pts = '';
+                for (let i = 0; i < op.x.length; i++) pts += op.x[i] + ',' + op.y[i] + ' ';
+                s += svgTag('polyline', ' points="' + pts.trim() + '"' + svgGcStroke(op.gc) + ' fill="none"', true) + '\\n';
+                break;
+            }
+            case 'polygon': {
+                let pts = '';
+                for (let i = 0; i < op.x.length; i++) pts += op.x[i] + ',' + op.y[i] + ' ';
+                s += svgTag('polygon', ' points="' + pts.trim() + '"' + svgGcFill(op.gc) + svgGcStroke(op.gc), true) + '\\n';
+                break;
+            }
+            case 'path': {
+                let d = '';
+                for (const sub of op.subpaths) {
+                    if (sub.length === 0) continue;
+                    d += 'M' + sub[0][0] + ' ' + sub[0][1];
+                    for (let i = 1; i < sub.length; i++) d += 'L' + sub[i][0] + ' ' + sub[i][1];
+                    d += 'Z';
+                }
+                const rule = op.winding === 'evenodd' ? 'evenodd' : 'nonzero';
+                s += svgTag('path', ' d="' + d + '" fill-rule="' + rule + '"' + svgGcFill(op.gc) + svgGcStroke(op.gc), true) + '\\n';
+                break;
+            }
+            case 'text': {
+                const f = svgFont(op.gc);
+                let anchor = 'start';
+                if (op.hadj === 0.5) anchor = 'middle';
+                else if (op.hadj === 1) anchor = 'end';
+                const col = (op.gc && op.gc.col != null) ? op.gc.col : 'black';
+                let transform = 'translate(' + op.x + ',' + op.y + ')';
+                if (op.rot) transform += ' rotate(' + (-op.rot) + ')';
+                s += svgTag('text', ' transform="' + transform + '" font-family="' + f.family + '" font-size="' + f.size + '" font-weight="' + f.weight + '" font-style="' + f.style + '" text-anchor="' + anchor + '" fill="' + col + '"') + svgEsc(op.str) + svgClose('text') + '\\n';
+                break;
+            }
+            case 'raster': {
+                const aw = Math.abs(op.w), ah = Math.abs(op.h);
+                const dx = op.w >= 0 ? op.x : op.x + op.w;
+                const dy = op.y - ah;
+                let transform = '';
+                if (op.rot) {
+                    const cx = dx + aw / 2, cy = dy + ah / 2;
+                    transform = ' transform="rotate(' + (-op.rot) + ',' + cx + ',' + cy + ')"';
+                }
+                s += svgTag('image', ' x="' + dx + '" y="' + dy + '" width="' + aw + '" height="' + ah + '" href="' + op.data + '"' + transform, true) + '\\n';
+                break;
+            }
+        }
+    }
+
+    if (inClip) s += svgClose('g') + '\\n';
+    s += svgClose('svg');
+    return s;
 }
 `;
 }

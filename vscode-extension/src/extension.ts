@@ -51,9 +51,6 @@ export function activate(context: vscode.ExtensionContext) {
         }),
         vscode.commands.registerCommand('jgd.exportSvg', () => {
             webviewProvider.exportPlot('svg');
-        }),
-        vscode.commands.registerCommand('jgd.exportPdf', () => {
-            webviewProvider.exportPlot('pdf');
         })
     );
 

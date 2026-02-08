@@ -17,8 +17,7 @@
       { "command": "jgd.nextPlot", "title": "jgd: Next Plot" },
       { "command": "jgd.clearHistory", "title": "jgd: Clear Plot History" },
       { "command": "jgd.exportPng", "title": "jgd: Export as PNG" },
-      { "command": "jgd.exportSvg", "title": "jgd: Export as SVG" },
-      { "command": "jgd.exportPdf", "title": "jgd: Export as PDF" }
+      { "command": "jgd.exportSvg", "title": "jgd: Export as SVG" }
     ],
     "keybindings": [
       { "command": "jgd.previousPlot", "key": "alt+left", "when": "jgd.hasPlots" },

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="647" height="380" viewBox="0 0 647 380">
+<rect width="647" height="380" fill="rgba(255,255,255,1)"/>
+<defs><clipPath id="c1"><rect x="78.72" y="78.72" width="527.9599999999999" height="203.35999999999999"/></clipPath></defs>
+<g clip-path="url(#c1)">
+<circle cx="98.2741" cy="274.5481" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="152.5909" cy="253.6263" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="206.9078" cy="232.7045" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="261.2247" cy="211.7827" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="315.5416" cy="190.8609" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="369.8584" cy="169.9391" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="424.1753" cy="149.0173" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="478.4922" cy="128.0955" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="532.8091" cy="107.1737" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="587.1259" cy="86.2519" r="3.6" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<defs><clipPath id="c2"><rect x="0" y="0" width="647" height="380"/></clipPath></defs>
+<g clip-path="url(#c2)">
+<line x1="152.5909" y1="282.08" x2="587.1259" y2="282.08" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="152.5909" y1="282.08" x2="152.5909" y2="291.68" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="261.2247" y1="282.08" x2="261.2247" y2="291.68" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="369.8584" y1="282.08" x2="369.8584" y2="291.68" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="478.4922" y1="282.08" x2="478.4922" y2="291.68" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="587.1259" y1="282.08" x2="587.1259" y2="291.68" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text transform="translate(152.5909,316.64)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">2</text>
+<text transform="translate(261.2247,316.64)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">4</text>
+<text transform="translate(369.8584,316.64)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">6</text>
+<text transform="translate(478.4922,316.64)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">8</text>
+<text transform="translate(587.1259,316.64)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">10</text>
+<line x1="78.72" y1="253.6263" x2="78.72" y2="86.2519" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="78.72" y1="253.6263" x2="69.12" y2="253.6263" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="78.72" y1="211.7827" x2="69.12" y2="211.7827" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="78.72" y1="169.9391" x2="69.12" y2="169.9391" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="78.72" y1="128.0955" x2="69.12" y2="128.0955" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<line x1="78.72" y1="86.2519" x2="69.12" y2="86.2519" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+<text transform="translate(55.68,253.6263) rotate(-90)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">2</text>
+<text transform="translate(55.68,211.7827) rotate(-90)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">4</text>
+<text transform="translate(55.68,169.9391) rotate(-90)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">6</text>
+<text transform="translate(55.68,128.0955) rotate(-90)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">8</text>
+<text transform="translate(55.68,86.2519) rotate(-90)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">10</text>
+<polygon points="78.72,282.08 606.68,282.08 606.68,78.72 78.72,78.72" fill="none" stroke="rgba(0,0,0,1)" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<defs><clipPath id="c3"><rect x="0" y="0" width="647" height="380"/></clipPath></defs>
+<g clip-path="url(#c3)">
+<text transform="translate(342.7,355.04)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">Index</text>
+<text transform="translate(17.28,180.4) rotate(-90)" font-family="sans-serif" font-size="12" font-weight="normal" font-style="normal" text-anchor="middle" fill="rgba(0,0,0,1)">1:10</text>
+</g>
+</svg>
