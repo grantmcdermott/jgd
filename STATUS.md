@@ -20,6 +20,7 @@
 - **Text metrics from webview**: Synchronous round-trip to measure text in the webview's Canvas2D context for accurate label positioning. Cached (512-entry hash map) to avoid repeated round-trips. Falls back to approximation when not connected.
 - **Stale socket fallback**: If `JGD_SOCKET` env var points to a dead socket (e.g. restored terminal), automatically retries via discovery file
 - **Export**: PNG (canvas.toBlob) and SVG (ops-to-SVG serializer) export from toolbar dropdown
+- **Discovery file reliability**: Extension writes to `os.tmpdir()`, `/tmp/`, and `/private/tmp/`; C side checks `TMPDIR`, `TMP`, `/tmp`. Combined with stale socket fallback, discovery works across TMPDIR mismatches.
 - **R 4.1+ compatibility**: No-op stubs for setPattern, setMask, setClipPath, defineGroup, etc.
 
 ## Rename: vscgd → jgd
@@ -33,12 +34,8 @@
 1. **Terminal env var race (mitigated)**: `environmentVariableCollection` only applies to newly opened terminals. Restored terminals keep stale socket paths. Now mitigated: if the env var socket fails, the C code retries via discovery file automatically. Users should rarely need to open a fresh terminal.
 
 ### Medium Priority
-3. **Discovery file reliability**: The C-side discovery (`transport.c`) checks TMPDIR → TMP → /tmp. Works when env var is set, but discovery file alone may not work if TMPDIR differs between extension and R.
-
-### Low Priority
-6. **Packaging for distribution**: VSIX for extension marketplace, CRAN-ready R package structure.
-7. **Windows support**: Currently Unix domain sockets only. Need named pipes or TCP for Windows.
-8. **Multiple device support**: Currently one device at a time.
+3. **Windows support**: Currently Unix domain sockets only. Need named pipes or TCP for Windows.
+4. **Multiple device support**: Currently one device at a time.
 
 ## Build Commands
 ```bash
