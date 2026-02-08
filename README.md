@@ -45,7 +45,12 @@ code --install-extension jgd-vscode-0.0.1.vsix
 
 ## Usage
 
-In a terminal inside the VS Code development host:
+Assuming that you already have the [R
+extension](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r),
+simply run the following script from VS Code. (If you don't have the extension,
+open up a terminal inside VS Code, start R, and then copy the code across
+manually.) You should see the same output as shown in the screenshot at the top
+of this README.
 
 ```r
 library(jgd)
@@ -77,9 +82,10 @@ history.
 ## Motivation
 
 The primary motivation for this package is supporting a nicer R graphics
-experience in VS Code. At present, the VS Code R extension provides fairly crude
-"native" graphics support, since plots are displayed at PNGs. As a result, users
-have for some time relied on the very nice
+experience in VS Code. At present, the VS Code [R
+extension](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer) provides
+fairly crude "native" graphics support, since plots are displayed at PNGs. As a
+result, users have for some time relied on the very nice
 [httpgd](https://github.com/nx10/httpgd) package for a better graphics
 experience; indeed, the official R extension docs even recommend using it.
 However, this alternative has become increasingly tricky to work with due to
@@ -87,8 +93,8 @@ repeated CRAN removals and lack of maintenance bandwidth. In brief, this is
 because it embeds a full C++ SVG rendering stack and HTTP server inside the R
 process, which made them powerful but fragile. At the time of writing, both
 [httpgd](https://github.com/nx10/httpgd) and its core
-[unigd](https://github.com/nx10/unigd) dependency are unavailable on CRAN due to a
-variety of C++ toolchain issues: non-API entry points, compiler compatibility
+[unigd](https://github.com/nx10/unigd) dependency are unavailable on CRAN due to
+a variety of C++ toolchain issues: non-API entry points, compiler compatibility
 failures, and unmaintained upstream dependencies (Boost.Asio, cpp-httplib,
 libfmt, etc.).
 
