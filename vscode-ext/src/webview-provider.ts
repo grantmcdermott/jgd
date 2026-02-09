@@ -74,6 +74,16 @@ export class PlotWebviewProvider {
         this.panel.webview.postMessage({ type: 'export', format });
     }
 
+    deleteCurrent() {
+        const plot = this.history.removeCurrent();
+        if (plot) {
+            this.sendPlotToWebview(plot);
+        } else {
+            this.panel?.webview.postMessage({ type: 'clear' });
+        }
+        this.updateToolbar();
+    }
+
     async measureText(request: any): Promise<any> {
         if (!this.panel) {
             return { type: 'metrics_response', id: request.id, width: 0, ascent: 0, descent: 0 };
@@ -149,7 +159,11 @@ export class PlotWebviewProvider {
                     break;
                 }
                 case 'requestExport': {
-                    this.exportPlot(msg.format);
+                    this.handleExportRequest(msg.format);
+                    break;
+                }
+                case 'deleteCurrent': {
+                    this.deleteCurrent();
                     break;
                 }
             }
@@ -158,6 +172,24 @@ export class PlotWebviewProvider {
         this.panel.onDidDispose(() => {
             this.panel = null;
         });
+    }
+
+    private async handleExportRequest(format: 'png' | 'svg') {
+        const input = await vscode.window.showInputBox({
+            prompt: 'Export dimensions (width x height in pixels)',
+            value: `${this.panelWidth} x ${this.panelHeight}`,
+            validateInput: (v) => {
+                const m = v.match(/^\s*(\d+)\s*[x×,]\s*(\d+)\s*$/i);
+                if (!m) return 'Enter as "width x height", e.g. "800 x 600"';
+                const w = parseInt(m[1]), h = parseInt(m[2]);
+                if (w < 10 || h < 10 || w > 10000 || h > 10000) return 'Dimensions must be 10–10000';
+                return null;
+            }
+        });
+        if (!input) return;
+        const m = input.match(/^\s*(\d+)\s*[x×,]\s*(\d+)\s*$/i)!;
+        const width = parseInt(m[1]), height = parseInt(m[2]);
+        this.panel?.webview.postMessage({ type: 'export', format, width, height });
     }
 
     private sendPlotToWebview(plot: PlotFrame) {
@@ -229,6 +261,7 @@ canvas { display: block; }
         <option value="png">PNG</option>
         <option value="svg">SVG</option>
     </select>
+    <button id="btn-delete" title="Delete current plot">🗑️</button>
 </div>
 <div id="canvas-container">
     <canvas id="plot-canvas"></canvas>
@@ -266,6 +299,9 @@ document.getElementById('export-select').addEventListener('change', (e) => {
         e.target.value = '';
     }
 });
+document.getElementById('btn-delete').addEventListener('click', () => {
+    vscode.postMessage({ type: 'deleteCurrent' });
+});
 
 // Resize observer
 const container = document.getElementById('canvas-container');
@@ -296,12 +332,13 @@ window.addEventListener('message', (event) => {
                 msg.total > 0 ? msg.current + ' / ' + msg.total : 'No plots';
             document.getElementById('btn-prev').disabled = msg.current <= 1;
             document.getElementById('btn-next').disabled = msg.current >= msg.total;
+            document.getElementById('btn-delete').disabled = msg.total === 0;
             break;
         case 'metrics_request':
             handleMetricsRequest(msg);
             break;
         case 'export':
-            handleExport(msg.format);
+            handleExport(msg.format, msg.width, msg.height);
             break;
     }
 });
@@ -535,20 +572,35 @@ function handleMetricsRequest(msg) {
     });
 }
 
-function handleExport(format) {
+function handleExport(format, exportW, exportH) {
     if (!currentPlot) return;
     if (format === 'png') {
-        canvas.toBlob((blob) => {
-            if (!blob) return;
-            const reader = new FileReader();
-            reader.onload = () => {
-                const base64 = btoa(String.fromCharCode(...new Uint8Array(reader.result)));
-                vscode.postMessage({ type: 'export_data', format: 'png', data: base64 });
-            };
-            reader.readAsArrayBuffer(blob);
-        }, 'image/png');
+        const offscreen = document.createElement('canvas');
+        const plotW = currentPlot.device.width;
+        const plotH = currentPlot.device.height;
+        const scale = Math.min(exportW / plotW, exportH / plotH);
+        offscreen.width = plotW * scale;
+        offscreen.height = plotH * scale;
+        const offCtx = offscreen.getContext('2d');
+        offCtx.scale(scale, scale);
+        if (currentPlot.device.bg) {
+            offCtx.fillStyle = currentPlot.device.bg;
+            offCtx.fillRect(0, 0, plotW, plotH);
+        }
+        (async () => {
+            for (const op of currentPlot.ops) await renderOp(offCtx, op, plotH);
+            offscreen.toBlob((blob) => {
+                if (!blob) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64 = btoa(String.fromCharCode(...new Uint8Array(reader.result)));
+                    vscode.postMessage({ type: 'export_data', format: 'png', data: base64 });
+                };
+                reader.readAsArrayBuffer(blob);
+            }, 'image/png');
+        })();
     } else if (format === 'svg') {
-        const svg = plotToSvg(currentPlot);
+        const svg = plotToSvg(currentPlot, exportW, exportH);
         const base64 = btoa(unescape(encodeURIComponent(svg)));
         vscode.postMessage({ type: 'export_data', format: 'svg', data: base64 });
     }
@@ -589,10 +641,12 @@ function svgFont(gc) {
     };
 }
 
-function plotToSvg(plot) {
+function plotToSvg(plot, exportW, exportH) {
     const w = plot.device.width;
     const h = plot.device.height;
-    let s = svgTag('svg', ' xmlns="http://www.w3.org/2000/svg" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '"') + '\\n';
+    const outW = exportW || w;
+    const outH = exportH || h;
+    let s = svgTag('svg', ' xmlns="http://www.w3.org/2000/svg" width="' + outW + '" height="' + outH + '" viewBox="0 0 ' + w + ' ' + h + '"') + '\\n';
 
     if (plot.device.bg) {
         s += svgTag('rect', ' width="' + w + '" height="' + h + '" fill="' + plot.device.bg + '"', true) + '\\n';

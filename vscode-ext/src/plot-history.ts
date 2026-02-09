@@ -98,4 +98,20 @@ export class PlotHistory {
         }
         this.emitter.emit('change');
     }
+
+    removeCurrent(): PlotFrame | null {
+        const session = this.sessions.get(this.activeSessionId);
+        if (!session || session.plots.length === 0) return null;
+        session.plots.splice(session.currentIndex, 1);
+        if (session.plots.length === 0) {
+            session.currentIndex = -1;
+            this.emitter.emit('change');
+            return null;
+        }
+        if (session.currentIndex >= session.plots.length) {
+            session.currentIndex = session.plots.length - 1;
+        }
+        this.emitter.emit('change');
+        return session.plots[session.currentIndex];
+    }
 }
