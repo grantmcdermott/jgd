@@ -175,9 +175,10 @@ export class PlotWebviewProvider {
     }
 
     private async handleExportRequest(format: 'png' | 'svg') {
+        const defaultDpi = vscode.workspace.getConfiguration('jgd').get<number>('exportDpi', 150);
         const input = await vscode.window.showInputBox({
             prompt: 'Export dimensions: width x height (inches) @ DPI',
-            value: '7 x 5 @ 150',
+            value: `7 x 7 @ ${defaultDpi}`,
             validateInput: (v) => {
                 const m = v.match(/^\s*([\d.]+)\s*[x×,]\s*([\d.]+)\s*(?:@\s*(\d+))?\s*$/i);
                 if (!m) return 'Enter as "7 x 5 @ 150" (inches @ DPI)';
@@ -189,7 +190,7 @@ export class PlotWebviewProvider {
         });
         if (!input) return;
         const m = input.match(/^\s*([\d.]+)\s*[x×,]\s*([\d.]+)\s*(?:@\s*(\d+))?\s*$/i)!;
-        const dpi = parseInt(m[3] || '150');
+        const dpi = parseInt(m[3] || String(defaultDpi));
         const width = Math.round(parseFloat(m[1]) * dpi);
         const height = Math.round(parseFloat(m[2]) * dpi);
         this.panel?.webview.postMessage({ type: 'export', format, width, height });

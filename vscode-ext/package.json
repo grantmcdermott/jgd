@@ -65,6 +65,11 @@
           "type": "number",
           "default": 50,
           "description": "Maximum number of plots to retain in history per session"
+        },
+        "jgd.exportDpi": {
+          "type": "number",
+          "default": 150,
+          "description": "Default DPI for PNG and SVG export"
         }
       }
     }
