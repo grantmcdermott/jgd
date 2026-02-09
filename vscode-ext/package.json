@@ -70,6 +70,16 @@
           "type": "number",
           "default": 150,
           "description": "Default DPI for PNG and SVG export"
+        },
+        "jgd.exportWidth": {
+          "type": "number",
+          "default": 7,
+          "description": "Default export width in inches"
+        },
+        "jgd.exportHeight": {
+          "type": "number",
+          "default": 7,
+          "description": "Default export height in inches"
         }
       }
     }

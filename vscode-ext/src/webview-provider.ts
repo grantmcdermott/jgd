@@ -175,10 +175,13 @@ export class PlotWebviewProvider {
     }
 
     private async handleExportRequest(format: 'png' | 'svg') {
-        const defaultDpi = vscode.workspace.getConfiguration('jgd').get<number>('exportDpi', 150);
+        const cfg = vscode.workspace.getConfiguration('jgd');
+        const defaultW = cfg.get<number>('exportWidth', 7);
+        const defaultH = cfg.get<number>('exportHeight', 7);
+        const defaultDpi = cfg.get<number>('exportDpi', 150);
         const input = await vscode.window.showInputBox({
             prompt: 'Export dimensions: width x height (inches) @ DPI',
-            value: `7 x 7 @ ${defaultDpi}`,
+            value: `${defaultW} x ${defaultH} @ ${defaultDpi}`,
             validateInput: (v) => {
                 const m = v.match(/^\s*([\d.]+)\s*[x×,]\s*([\d.]+)\s*(?:@\s*(\d+))?\s*$/i);
                 if (!m) return 'Enter as "7 x 5 @ 150" (inches @ DPI)';
