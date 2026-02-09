@@ -181,7 +181,7 @@ export class PlotWebviewProvider {
         const defaultDpi = cfg.get<number>('exportDpi', 150);
         const input = await vscode.window.showInputBox({
             title: 'Export Plot',
-            prompt: 'Width x height (inches) @ DPI. Defaults configurable in Settings (jgd.export*).',
+            prompt: 'Width x height (inches) @ DPI. See `jgd.export*` in Settings for defaults.',
             value: `${defaultW} x ${defaultH} @ ${defaultDpi}`,
             validateInput: (v) => {
                 const m = v.match(/^\s*([\d.]+)\s*[x×,]\s*([\d.]+)\s*(?:@\s*(\d+))?\s*$/i);
