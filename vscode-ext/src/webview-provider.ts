@@ -22,11 +22,11 @@ export class PlotWebviewProvider {
         return { width: this.panelWidth, height: this.panelHeight };
     }
 
-    reveal() {
+    reveal(preserveFocus = false) {
         if (this.panel) {
-            this.panel.reveal();
+            this.panel.reveal(undefined, preserveFocus);
         } else {
-            this.createPanel();
+            this.createPanel(preserveFocus);
         }
         const plot = this.history.currentPlot();
         if (plot) this.sendPlotToWebview(plot);
@@ -43,7 +43,7 @@ export class PlotWebviewProvider {
     }
 
     showPlot(plot: PlotFrame) {
-        if (!this.panel) this.createPanel();
+        if (!this.panel) this.createPanel(true);
         this.sendPlotToWebview(plot);
         this.updateToolbar();
     }
@@ -101,11 +101,11 @@ export class PlotWebviewProvider {
         });
     }
 
-    private createPanel() {
+    private createPanel(preserveFocus = false) {
         this.panel = vscode.window.createWebviewPanel(
             'jgd.plotPane',
             'R Plot',
-            vscode.ViewColumn.Beside,
+            { viewColumn: vscode.ViewColumn.Beside, preserveFocus },
             {
                 enableScripts: true,
                 retainContextWhenHidden: true,
