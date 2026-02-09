@@ -94,7 +94,7 @@ The primary motivation for this package is supporting a nicer R graphics
 experience in VS Code. At present, the VS Code [R
 extension](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer) provides
 fairly crude "native" graphics support, since plots are displayed at PNGs. As a
-result, users have for some time relied on the very nice
+result, users have for some time relied on the nice
 [httpgd](https://github.com/nx10/httpgd) package for a better graphics
 experience; indeed, the official R extension docs even recommend using it.
 However, this alternative has become increasingly tricky to work with due to
@@ -104,8 +104,10 @@ process, which is powerful but fragile. At the time of writing, both
 [httpgd](https://github.com/nx10/httpgd) and its core
 [unigd](https://github.com/nx10/unigd) dependency are unavailable on CRAN due to
 a variety of C++ toolchain issues: non-API entry points, compiler compatibility
-failures, and unmaintained upstream dependencies (Boost.Asio, cpp-httplib,
-libfmt, etc.).
+failures, etc. (See
+[here](https://cran-archive.r-project.org/web/checks/2025/2025-04-23_check_results_httpgd.html)
+and
+[here](https://cran-archive.r-project.org/web/checks/2026/2026-02-06_check_results_unigd.html)).
 
 **jgd** takes a different approach: _the R package is pure C with zero external
 dependencies_. It doesn't render anything; it records. All rendering happens in
