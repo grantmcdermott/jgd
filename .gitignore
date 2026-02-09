@@ -13,9 +13,9 @@ r-pkg/src/symbols.rds
 r-pkg/*.Rcheck
 
 # VS Code extension
-vscode-extension/node_modules/
-vscode-extension/out/
-vscode-extension/*.vsix
+vscode-ext/node_modules/
+vscode-ext/out/
+vscode-ext/*.vsix
 
 # OS
 .DS_Store

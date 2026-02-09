@@ -22,24 +22,33 @@ this together without AI help.
 
 ## Installation
 
+At present, **jgd** comprises two parts: an R package and a VS Code (VSIX)
+extension. To install these two components, first clone this repo to your local
+system.
+
+```bash
+git clone https://github.com/grantmcdermott/jgd.git
+cd jgd
+```
+
 ### R package
 
-```r
-## Install from GitHub
-remotes::install_github("grantmcdermott/jgd", subdir = "r-pkg")
+```bash
+## Build from local source
+cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
 
-## Or build from local source
-# cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
+## Or, install from GitHub (run in your R Console)
+# remotes::install_github("grantmcdermott/jgd", subdir = "r-pkg")
 ```
 
 ### VS Code extension
 
 ```bash
-## Install from .vsix
-code --install-extension jgd-vscode-0.0.1.vsix
+## Install from local .vsix file
+code --install-extension vscode-ext/jgd-vscode-0.0.1.vsix
 
 ## Or build for local development
-# cd vscode-extension && npm install && npm run compile
+# cd vscode-ext && npm install && npm run compile
 # code --extensionDevelopmentPath="$(pwd)" && cd ..
 ```
 
@@ -101,7 +110,7 @@ libfmt, etc.).
 **jgd** takes a different approach: _the R package is pure C with zero external
 dependencies_. It doesn't render anything; it records. All rendering happens in
 the client (a VS Code webview, a browser tab, or any future frontend). The only
-system dependency is the POSIX socket API, which R itself already uses. The idea
+system dependency is the POSIX socket API, which R itself already uses. My idea
 (hope) is that we can support the main features of `httpgd`, but with a more
 stable and lightweight footprint.
 
@@ -204,7 +213,8 @@ r-pkg/
     ├── png_encoder.c      # Minimal uncompressed PNG encoder + base64
     └── init.c             # .Call registration
 
-vscode-extension/
+vscode-ext/
+├── jgd-vscode.vsix
 ├── package.json
 └── src/
     ├── extension.ts       # Activation, commands, env var injection
