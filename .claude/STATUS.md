@@ -31,11 +31,13 @@
 ## Known Issues / TODO
 
 ### High Priority
-1. **Terminal env var race (mitigated)**: `environmentVariableCollection` only applies to newly opened terminals. Restored terminals keep stale socket paths. Now mitigated: if the env var socket fails, the C code retries via discovery file automatically. Users should rarely need to open a fresh terminal.
+1. **Custom export dimensions**: Allow user to specify width/height for PNG/SVG export instead of inheriting the current panel size. Needs input dialog + offscreen canvas re-render.
+2. **Delete individual plots**: Add a 🗑️ button to toolbar to remove the current plot from history. Needs `removeCurrent()` method in `plot-history.ts` + toolbar wiring.
 
 ### Medium Priority
-3. **Windows support**: Currently Unix domain sockets only. Need named pipes or TCP for Windows.
+3. **Windows support**: TCP transport implemented on `windows` branch, needs testing on actual Windows machines.
 4. **Multiple device support**: Currently one device at a time.
+5. **First-plot focus stealing**: First plot steals editor focus due to VS Code `ViewColumn.Beside` behavior + upstream R extension issue (REditorSupport/vscode-R#1658). Subsequent plots preserve focus correctly.
 
 ## Build Commands
 ```bash
