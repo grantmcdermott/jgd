@@ -176,19 +176,22 @@ export class PlotWebviewProvider {
 
     private async handleExportRequest(format: 'png' | 'svg') {
         const input = await vscode.window.showInputBox({
-            prompt: 'Export dimensions (width x height in pixels)',
-            value: `${this.panelWidth} x ${this.panelHeight}`,
+            prompt: 'Export dimensions: width x height (inches) @ DPI',
+            value: '7 x 5 @ 150',
             validateInput: (v) => {
-                const m = v.match(/^\s*(\d+)\s*[x×,]\s*(\d+)\s*$/i);
-                if (!m) return 'Enter as "width x height", e.g. "800 x 600"';
-                const w = parseInt(m[1]), h = parseInt(m[2]);
-                if (w < 10 || h < 10 || w > 10000 || h > 10000) return 'Dimensions must be 10–10000';
+                const m = v.match(/^\s*([\d.]+)\s*[x×,]\s*([\d.]+)\s*(?:@\s*(\d+))?\s*$/i);
+                if (!m) return 'Enter as "7 x 5 @ 150" (inches @ DPI)';
+                const w = parseFloat(m[1]), h = parseFloat(m[2]), dpi = parseInt(m[3] || '150');
+                if (w < 0.5 || h < 0.5 || w > 50 || h > 50) return 'Dimensions must be 0.5–50 inches';
+                if (dpi < 36 || dpi > 600) return 'DPI must be 36–600';
                 return null;
             }
         });
         if (!input) return;
-        const m = input.match(/^\s*(\d+)\s*[x×,]\s*(\d+)\s*$/i)!;
-        const width = parseInt(m[1]), height = parseInt(m[2]);
+        const m = input.match(/^\s*([\d.]+)\s*[x×,]\s*([\d.]+)\s*(?:@\s*(\d+))?\s*$/i)!;
+        const dpi = parseInt(m[3] || '150');
+        const width = Math.round(parseFloat(m[1]) * dpi);
+        const height = Math.round(parseFloat(m[2]) * dpi);
         this.panel?.webview.postMessage({ type: 'export', format, width, height });
     }
 
