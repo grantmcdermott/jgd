@@ -108,12 +108,16 @@ compatibility failures, etc. (See
 and
 [here](https://cran-archive.r-project.org/web/checks/2026/2026-02-06_check_results_unigd.html)).
 
-**jgd** takes a different approach: _the R package is pure C with zero external
-dependencies_. It doesn't render anything; it records. All rendering happens in
-the client (a VS Code webview, a browser tab, or any future frontend). The only
-system dependency is the POSIX socket API, which R itself already uses. My idea
-(hope) is that we can support the main features of `httpgd`, but with a more
-stable and lightweight footprint.
+**jgd** takes a different approach. First, it doesn't render anything; it just
+records. All rendering happens in the client (a VS Code webview, a browser tab,
+or any future frontend). Second, it is very lightweight. The core of the R
+package is written in pure C with zero external dependencies. The only system
+dependency is the POSIX socket API, which R itself already uses.
+
+My idea (hope) is that we can support the main features of `httpgd`, but with a
+more stable and lightweight footprint. Ultimately, if the community agrees, we
+might even be able to integrate this simple package into the main R extension
+logic, so that we get nice graphics support in VS Code out of the box.
 
 ### What about Positron?
 
