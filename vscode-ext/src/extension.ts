@@ -55,7 +55,10 @@ export function activate(context: vscode.ExtensionContext) {
     );
 
     server.onReady(() => {
-        context.environmentVariableCollection.replace('JGD_SOCKET', server.getSocketPath());
+        const vars = server.getEnvVars();
+        for (const [key, value] of Object.entries(vars)) {
+            context.environmentVariableCollection.replace(key, value);
+        }
     });
 
     vscode.commands.executeCommand('setContext', 'jgd.hasPlots', false);

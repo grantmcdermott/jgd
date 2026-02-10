@@ -5,7 +5,7 @@
 
 typedef struct {
     int fd;
-    char socket_path[512];
+    char socket_path[512];  /* Unix path or "tcp:PORT" on Windows */
     int connected;
 } jgd_transport_t;
 

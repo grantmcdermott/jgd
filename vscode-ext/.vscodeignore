@@ -1,0 +1,7 @@
+.git
+.gitignore
+src/
+node_modules/
+tsconfig.json
+*.ts
+!out/**/*.js

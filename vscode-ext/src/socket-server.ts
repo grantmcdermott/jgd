@@ -14,9 +14,12 @@ interface RSession {
     buffer: string;
 }
 
+const isWindows = process.platform === 'win32';
+
 export class SocketServer {
     private server: net.Server | null = null;
     private socketPath: string = '';
+    private tcpPort: number = 0;
     private sessions: Map<string, RSession> = new Map();
     private connectionListeners: ConnectionChangeListener[] = [];
     private sessionCounter = 0;
@@ -27,7 +30,14 @@ export class SocketServer {
     ) {}
 
     getSocketPath(): string {
-        return this.socketPath;
+        return isWindows ? `tcp:${this.tcpPort}` : this.socketPath;
+    }
+
+    getEnvVars(): Record<string, string> {
+        if (isWindows) {
+            return { JGD_PORT: String(this.tcpPort) };
+        }
+        return { JGD_SOCKET: this.socketPath };
     }
 
     private readyListeners: (() => void)[] = [];
@@ -46,44 +56,67 @@ export class SocketServer {
     }
 
     start() {
-        const token = crypto.randomBytes(8).toString('hex');
-        this.socketPath = path.join(os.tmpdir(), `jgd-${token}.sock`);
-
-        try { fs.unlinkSync(this.socketPath); } catch {}
-
         this.webviewProvider.onResize((w, h) => {
             this.broadcast({ type: 'resize', width: w, height: h });
         });
 
         this.server = net.createServer((socket) => this.handleConnection(socket));
-        this.server.listen(this.socketPath, () => {
-            console.log('jgd: socket server listening at', this.socketPath);
-            const discoveryContent = JSON.stringify({
-                socketPath: this.socketPath,
-                pid: process.pid
+
+        if (isWindows) {
+            /* TCP on Windows — let OS pick a free port */
+            this.server.listen(0, '127.0.0.1', () => {
+                const addr = this.server!.address() as net.AddressInfo;
+                this.tcpPort = addr.port;
+                console.log('jgd: TCP server listening on 127.0.0.1:' + this.tcpPort);
+                this.writeDiscovery();
+                this.notifyReady();
             });
-            const locations = [
-                path.join(os.tmpdir(), 'jgd-discovery.json'),
-                '/tmp/jgd-discovery.json',
-                '/private/tmp/jgd-discovery.json'
-            ];
-            for (const loc of locations) {
-                try {
-                    fs.writeFileSync(loc, discoveryContent);
-                    console.log('jgd: wrote discovery file to', loc);
-                } catch (e) {
-                    console.warn('jgd: failed to write discovery to', loc, e);
-                }
-            }
+        } else {
+            /* Unix domain socket */
+            const token = crypto.randomBytes(8).toString('hex');
+            this.socketPath = path.join(os.tmpdir(), `jgd-${token}.sock`);
+            try { fs.unlinkSync(this.socketPath); } catch {}
 
-            process.env['JGD_SOCKET'] = this.socketPath;
-
-            for (const l of this.readyListeners) l();
-        });
+            this.server.listen(this.socketPath, () => {
+                console.log('jgd: socket server listening at', this.socketPath);
+                this.writeDiscovery();
+                this.notifyReady();
+            });
+        }
 
         this.server.on('error', (err) => {
             console.error('jgd socket server error:', err);
         });
+    }
+
+    private writeDiscovery() {
+        const socketPath = this.getSocketPath();
+        const discoveryContent = JSON.stringify({ socketPath, pid: process.pid });
+
+        const locations = [path.join(os.tmpdir(), 'jgd-discovery.json')];
+        if (!isWindows) {
+            locations.push('/tmp/jgd-discovery.json', '/private/tmp/jgd-discovery.json');
+        }
+
+        for (const loc of locations) {
+            try {
+                fs.writeFileSync(loc, discoveryContent);
+                console.log('jgd: wrote discovery file to', loc);
+            } catch (e) {
+                console.warn('jgd: failed to write discovery to', loc, e);
+            }
+        }
+
+        /* Set env vars for child processes */
+        if (isWindows) {
+            process.env['JGD_PORT'] = String(this.tcpPort);
+        } else {
+            process.env['JGD_SOCKET'] = this.socketPath;
+        }
+    }
+
+    private notifyReady() {
+        for (const l of this.readyListeners) l();
     }
 
     stop() {
@@ -92,9 +125,13 @@ export class SocketServer {
         }
         this.sessions.clear();
         this.server?.close();
-        try { fs.unlinkSync(this.socketPath); } catch {}
+        if (!isWindows) {
+            try { fs.unlinkSync(this.socketPath); } catch {}
+        }
         try { fs.unlinkSync(path.join(os.tmpdir(), 'jgd-discovery.json')); } catch {}
-        try { fs.unlinkSync('/tmp/jgd-discovery.json'); } catch {}
+        if (!isWindows) {
+            try { fs.unlinkSync('/tmp/jgd-discovery.json'); } catch {}
+        }
     }
 
     private handleConnection(socket: net.Socket) {

@@ -10,15 +10,25 @@
 
 #ifdef _WIN32
 #include <winsock2.h>
-#include <afunix.h>
+#include <ws2tcpip.h>
 #pragma comment(lib, "ws2_32.lib")
 typedef SOCKET sock_t;
 #define SOCK_INVALID INVALID_SOCKET
 #define SOCK_CLOSE closesocket
 #define SOCK_ERR WSAGetLastError()
+static int wsa_initialized = 0;
+static void ensure_wsa(void) {
+    if (!wsa_initialized) {
+        WSADATA wsa;
+        WSAStartup(MAKEWORD(2, 2), &wsa);
+        wsa_initialized = 1;
+    }
+}
 #else
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -26,7 +36,17 @@ typedef int sock_t;
 #define SOCK_INVALID (-1)
 #define SOCK_CLOSE close
 #define SOCK_ERR errno
+#define ensure_wsa()
 #endif
+
+/* Is this a TCP connection string? Format: "tcp:PORT" */
+static int is_tcp(const char *path) {
+    return strncmp(path, "tcp:", 4) == 0;
+}
+
+static int tcp_port(const char *path) {
+    return atoi(path + 4);
+}
 
 void transport_init(jgd_transport_t *t) {
     t->fd = (int)SOCK_INVALID;
@@ -35,8 +55,13 @@ void transport_init(jgd_transport_t *t) {
 }
 
 static int discover_socket_path(char *out, size_t outsize, int skip_env) {
-    /* 1. Environment variable */
+    /* 1. Environment variable (JGD_SOCKET for Unix path, JGD_PORT for TCP) */
     if (!skip_env) {
+        const char *port_env = getenv("JGD_PORT");
+        if (port_env && port_env[0]) {
+            snprintf(out, outsize, "tcp:%s", port_env);
+            return 0;
+        }
         const char *env = getenv("JGD_SOCKET");
         if (env && env[0]) {
             snprintf(out, outsize, "%s", env);
@@ -58,6 +83,10 @@ static int discover_socket_path(char *out, size_t outsize, int skip_env) {
     const char *tmpdirs[] = {
         getenv("TMPDIR"),
         getenv("TMP"),
+        getenv("TEMP"),
+#ifdef _WIN32
+        getenv("USERPROFILE"),
+#endif
         "/tmp",
         NULL
     };
@@ -99,11 +128,34 @@ static int discover_socket_path(char *out, size_t outsize, int skip_env) {
 }
 
 static int try_connect(jgd_transport_t *t) {
-#ifdef _WIN32
-    WSADATA wsa;
-    WSAStartup(MAKEWORD(2, 2), &wsa);
-#endif
+    ensure_wsa();
 
+    if (is_tcp(t->socket_path)) {
+        /* TCP connection to 127.0.0.1:PORT */
+        int port = tcp_port(t->socket_path);
+        if (port <= 0) return -1;
+
+        sock_t s = socket(AF_INET, SOCK_STREAM, 0);
+        if (s == SOCK_INVALID) return -1;
+
+        struct sockaddr_in addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons((unsigned short)port);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+        if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+            SOCK_CLOSE(s);
+            return -1;
+        }
+
+        t->fd = (int)s;
+        t->connected = 1;
+        return 0;
+    }
+
+#ifndef _WIN32
+    /* Unix domain socket */
     sock_t s = socket(AF_UNIX, SOCK_STREAM, 0);
     if (s == SOCK_INVALID) return -1;
 
@@ -120,6 +172,10 @@ static int try_connect(jgd_transport_t *t) {
     t->fd = (int)s;
     t->connected = 1;
     return 0;
+#else
+    /* Windows without tcp: prefix — shouldn't happen, but fail gracefully */
+    return -1;
+#endif
 }
 
 int transport_connect(jgd_transport_t *t) {
@@ -170,10 +226,18 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
 int transport_has_data(jgd_transport_t *t) {
     if (!t->connected) return 0;
     sock_t s = (sock_t)t->fd;
+#ifndef _WIN32
     struct pollfd pfd;
     pfd.fd = s;
     pfd.events = POLLIN;
     return poll(&pfd, 1, 0) > 0 ? 1 : 0;
+#else
+    fd_set readfds;
+    FD_ZERO(&readfds);
+    FD_SET(s, &readfds);
+    struct timeval tv = {0, 0};
+    return select(0, &readfds, NULL, NULL, &tv) > 0 ? 1 : 0;
+#endif
 }
 
 int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeout_ms) {
