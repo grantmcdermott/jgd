@@ -4,18 +4,7 @@
 \alias{jgd}
 \title{JSON Graphics Device}
 \usage{
-jgd(
-  width = 8,
-  height = 6,
-  dpi = 96,
-  socket = getOption("jgd.socket", default = {
-     s <- Sys.getenv("JGD_SOCKET", unset =
-    "")
-     if (nzchar(s)) 
-         s
-     else NULL
- })
-)
+jgd(width = 8, height = 6, dpi = 96, socket = NULL)
 }
 \arguments{
 \item{width}{Device width in inches (default 8).}
@@ -26,9 +15,9 @@ jgd(
 
 \item{socket}{Socket address for the rendering server. Supports URI formats
 (\verb{tcp://host:port}, \verb{unix:///path/to/socket}) or raw Unix socket paths.
-Defaults to the \code{jgd.socket} R option, falling back to the \code{JGD_SOCKET}
-environment variable. If \code{NULL}, the device discovers the socket via a
-discovery file.}
+If \code{NULL} (default), use the \code{jgd.socket} R option, falling back to the \code{JGD_SOCKET}
+environment variable. If \code{JGD_SOCKET} environment variable is also unset,
+the device discovers the socket via the discovery file.}
 }
 \value{
 Invisible \code{NULL}. The device is opened as a side effect.
