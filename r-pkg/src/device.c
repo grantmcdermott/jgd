@@ -41,6 +41,11 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     if (s_socket != R_NilValue && TYPEOF(s_socket) == STRSXP && LENGTH(s_socket) > 0) {
         const char *sock = CHAR(STRING_ELT(s_socket, 0));
         if (sock && sock[0]) {
+            if (strlen(sock) >= sizeof(st->transport.socket_path)) {
+                free(st);
+                Rf_error("jgd: socket path too long (max %zu characters)",
+                         sizeof(st->transport.socket_path) - 1);
+            }
             snprintf(st->transport.socket_path, sizeof(st->transport.socket_path),
                      "%s", sock);
         }

@@ -22,6 +22,9 @@ jgd = function(
     default = Sys.getenv("JGD_SOCKET", unset = NULL)
   )
 ) {
+  if (!is.null(socket)) {
+    stopifnot(is.character(socket), length(socket) == 1L)
+  }
   .Call(C_jgd, as.double(width), as.double(height), as.double(dpi), socket)
 
   if (requireNamespace("later", quietly = TRUE)) {

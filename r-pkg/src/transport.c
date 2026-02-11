@@ -164,6 +164,7 @@ static int try_connect(jgd_transport_t *t) {
     const char *upath = t->socket_path;
     if (strncmp(upath, "unix://", 7) == 0)
         upath += 7;
+    if (*upath == '\0') return -1;
 
     sock_t s = socket(AF_UNIX, SOCK_STREAM, 0);
     if (s == SOCK_INVALID) return -1;
