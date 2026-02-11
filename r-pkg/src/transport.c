@@ -1,7 +1,6 @@
 #include "transport.h"
 
 #include <R.h>
-#include <Rinternals.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -92,32 +91,8 @@ void transport_init(jgd_transport_t *t) {
     t->connected = 0;
 }
 
-static int discover_socket_path(char *out, size_t outsize, int skip_env) {
-    /* 1. Environment variable (JGD_SOCKET for Unix path, JGD_PORT for TCP) */
-    if (!skip_env) {
-        const char *port_env = getenv("JGD_PORT");
-        if (port_env && port_env[0]) {
-            snprintf(out, outsize, "tcp:%s", port_env);
-            return 0;
-        }
-        const char *env = getenv("JGD_SOCKET");
-        if (env && env[0]) {
-            snprintf(out, outsize, "%s", env);
-            return 0;
-        }
-    }
-
-    /* 2. R option */
-    SEXP opt = Rf_GetOption1(Rf_install("jgd.socket"));
-    if (opt != R_NilValue && TYPEOF(opt) == STRSXP && LENGTH(opt) > 0) {
-        const char *s = CHAR(STRING_ELT(opt, 0));
-        if (s && s[0]) {
-            snprintf(out, outsize, "%s", s);
-            return 0;
-        }
-    }
-
-    /* 3. Discovery file */
+static int discover_socket_path(char *out, size_t outsize) {
+    /* Scan discovery files in temp directories */
     const char *tmpdirs[] = {
         getenv("TMPDIR"),
         getenv("TMP"),
@@ -126,10 +101,10 @@ static int discover_socket_path(char *out, size_t outsize, int skip_env) {
         getenv("USERPROFILE"),
 #endif
         "/tmp",
-        NULL
     };
+    int n_tmpdirs = (int)(sizeof(tmpdirs) / sizeof(tmpdirs[0]));
 
-    for (int t = 0; tmpdirs[t]; t++) {
+    for (int t = 0; t < n_tmpdirs; t++) {
         if (!tmpdirs[t] || !tmpdirs[t][0]) continue;
         char discovery[1024];
         snprintf(discovery, sizeof(discovery), "%s/jgd-discovery.json", tmpdirs[t]);
@@ -216,21 +191,14 @@ int transport_connect(jgd_transport_t *t) {
     if (t->connected) return 0;
 
     if (t->socket_path[0] == '\0') {
-        if (discover_socket_path(t->socket_path, sizeof(t->socket_path), 0) != 0) {
-            REprintf("jgd: cannot find socket path. Set JGD_SOCKET or start the VS Code extension.\n");
+        if (discover_socket_path(t->socket_path, sizeof(t->socket_path)) != 0) {
+            REprintf("jgd: cannot find socket path. "
+                     "Pass socket= to jgd() or start the rendering server.\n");
             return -1;
         }
     }
 
     if (try_connect(t) == 0) return 0;
-
-    /* Connection failed — retry via discovery file (skip stale env var) */
-    char retry_path[512];
-    if (discover_socket_path(retry_path, sizeof(retry_path), 1) == 0 &&
-        strcmp(retry_path, t->socket_path) != 0) {
-        snprintf(t->socket_path, sizeof(t->socket_path), "%s", retry_path);
-        if (try_connect(t) == 0) return 0;
-    }
 
     REprintf("jgd: connect(%s) failed: %d\n", t->socket_path, SOCK_ERR);
     return -1;
