@@ -17,10 +17,10 @@ jgd = function(
   width = 8,
   height = 6,
   dpi = 96,
-  socket = getOption(
-    "jgd.socket",
-    default = Sys.getenv("JGD_SOCKET", unset = NULL)
-  )
+  socket = getOption("jgd.socket", default = {
+    s <- Sys.getenv("JGD_SOCKET", unset = "")
+    if (nzchar(s)) s else NULL
+  })
 ) {
   if (!is.null(socket)) {
     stopifnot(is.character(socket), length(socket) == 1L)
