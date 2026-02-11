@@ -39,13 +39,51 @@ typedef int sock_t;
 #define ensure_wsa()
 #endif
 
-/* Is this a TCP connection string? Format: "tcp:PORT" */
-static int is_tcp(const char *path) {
-    return strncmp(path, "tcp:", 4) == 0;
-}
+/*
+ * Parse a TCP address from socket_path into a sockaddr_in.
+ * Supported formats:
+ *   "tcp://host:port"  — URI format (host may be IP or "localhost")
+ *   "tcp:port"         — legacy format (localhost assumed)
+ * Returns 0 on success, -1 on failure.
+ */
+static int parse_tcp(const char *path, struct sockaddr_in *out) {
+    memset(out, 0, sizeof(*out));
+    out->sin_family = AF_INET;
 
-static int tcp_port(const char *path) {
-    return atoi(path + 4);
+    if (strncmp(path, "tcp://", 6) == 0) {
+        const char *hp = path + 6;
+        const char *colon = strrchr(hp, ':');
+        if (!colon) return -1;
+
+        char host[256];
+        size_t hlen = (size_t)(colon - hp);
+        if (hlen == 0 || hlen >= sizeof(host)) return -1;
+        memcpy(host, hp, hlen);
+        host[hlen] = '\0';
+
+        int port = atoi(colon + 1);
+        if (port <= 0 || port > 65535) return -1;
+        out->sin_port = htons((unsigned short)port);
+
+        if (strcmp(host, "localhost") == 0) {
+            out->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        } else {
+            unsigned long ip = inet_addr(host);
+            if (ip == INADDR_NONE) return -1;
+            out->sin_addr.s_addr = ip;
+        }
+        return 0;
+    }
+
+    if (strncmp(path, "tcp:", 4) == 0) {
+        int port = atoi(path + 4);
+        if (port <= 0 || port > 65535) return -1;
+        out->sin_port = htons((unsigned short)port);
+        out->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        return 0;
+    }
+
+    return -1;
 }
 
 void transport_init(jgd_transport_t *t) {
@@ -130,21 +168,13 @@ static int discover_socket_path(char *out, size_t outsize, int skip_env) {
 static int try_connect(jgd_transport_t *t) {
     ensure_wsa();
 
-    if (is_tcp(t->socket_path)) {
-        /* TCP connection to 127.0.0.1:PORT */
-        int port = tcp_port(t->socket_path);
-        if (port <= 0) return -1;
-
+    /* Try TCP: tcp://host:port or legacy tcp:port */
+    struct sockaddr_in tcp_addr;
+    if (parse_tcp(t->socket_path, &tcp_addr) == 0) {
         sock_t s = socket(AF_INET, SOCK_STREAM, 0);
         if (s == SOCK_INVALID) return -1;
 
-        struct sockaddr_in addr;
-        memset(&addr, 0, sizeof(addr));
-        addr.sin_family = AF_INET;
-        addr.sin_port = htons((unsigned short)port);
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-        if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        if (connect(s, (struct sockaddr *)&tcp_addr, sizeof(tcp_addr)) != 0) {
             SOCK_CLOSE(s);
             return -1;
         }
@@ -155,14 +185,18 @@ static int try_connect(jgd_transport_t *t) {
     }
 
 #ifndef _WIN32
-    /* Unix domain socket */
+    /* Unix domain socket: unix:///path or raw /path */
+    const char *upath = t->socket_path;
+    if (strncmp(upath, "unix://", 7) == 0)
+        upath += 7;
+
     sock_t s = socket(AF_UNIX, SOCK_STREAM, 0);
     if (s == SOCK_INVALID) return -1;
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", t->socket_path);
+    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", upath);
 
     if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         SOCK_CLOSE(s);
@@ -173,7 +207,7 @@ static int try_connect(jgd_transport_t *t) {
     t->connected = 1;
     return 0;
 #else
-    /* Windows without tcp: prefix — shouldn't happen, but fail gracefully */
+    /* Windows: only TCP is supported */
     return -1;
 #endif
 }
