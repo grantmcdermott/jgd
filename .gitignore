@@ -15,6 +15,7 @@ r-pkg/*.Rcheck
 # VS Code extension
 vscode-ext/node_modules/
 vscode-ext/out/
+*.vsix
 
 # OS
 .DS_Store

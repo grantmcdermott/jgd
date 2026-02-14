@@ -1,0 +1,70 @@
+name: Nightly VSCode Extension Release
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - vscode-ext/**
+      - .github/workflows/vsce-nightly-release.yml
+  pull_request:
+    branches:
+      - main
+    paths:
+      - vscode-ext/**
+      - .github/workflows/vsce-nightly-release.yml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: vscode-ext
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          cache: npm
+          cache-dependency-path: vscode-ext/package-lock.json
+
+      - run: npm ci
+
+      - run: npm run compile
+
+      - run: npx @vscode/vsce package -o jgd-vscode-nightly.vsix
+
+      - name: upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: jgd-vscode-nightly
+          path: vscode-ext/jgd-vscode-nightly.vsix
+
+      - name: Update nightly release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          # Delete existing nightly release and tag if present
+          gh release delete nightly --yes --cleanup-tag 2>/dev/null || true
+          # Create new nightly release
+          gh release create nightly \
+            vscode-ext/jgd-vscode-nightly.vsix \
+            --title "Nightly Build" \
+            --notes "Automated nightly build of the jgd VS Code extension.
+
+          Built from commit [\`${GITHUB_SHA::7}\`](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}).
+
+          **Install:** Download the \`.vsix\` file and run:
+          \`\`\`
+          code --install-extension jgd-vscode-nightly.vsix
+          \`\`\`" \
+            --prerelease
