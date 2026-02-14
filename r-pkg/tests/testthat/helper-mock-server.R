@@ -22,6 +22,7 @@ start_mock_server_local = function() {
 
   bg = callr::r_bg(
     function(socket_path) {
+      `%||%` = function(x, y) if (is.null(x)) y else x
       server = processx::conn_create_unix_socket(socket_path)
 
       # Wait for client connection (30s timeout)
@@ -50,7 +51,6 @@ start_mock_server_local = function() {
 
           # Respond to metrics_request so tests run fast
           if (identical(msg$type, "metrics_request")) {
-            `%||%` = function(x, y) if (is.null(x)) y else x
             resp = if (identical(msg$kind, "strWidth")) {
               list(
                 type = "metrics_response",
@@ -131,6 +131,7 @@ start_mock_server_tcp = function() {
 
   bg = callr::r_bg(
     function(port_file) {
+      `%||%` = function(x, y) if (is.null(x)) y else x
       # Find a free port and start listening
       server = NULL
       port = NULL
@@ -173,7 +174,6 @@ start_mock_server_tcp = function() {
 
         # Respond to metrics_request so tests run fast
         if (identical(msg$type, "metrics_request")) {
-          `%||%` = function(x, y) if (is.null(x)) y else x
           resp = if (identical(msg$kind, "strWidth")) {
             list(
               type = "metrics_response",
