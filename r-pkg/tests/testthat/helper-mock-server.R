@@ -12,8 +12,6 @@
 # 4. Collects all received NDJSON messages
 # 5. Returns collected messages when the device sends "close"
 
-`%||%` = function(x, y) if (is.null(x)) y else x
-
 start_mock_server_local = function() {
   skip_if_not_installed("callr")
   skip_if_not_installed("processx")
@@ -52,6 +50,7 @@ start_mock_server_local = function() {
 
           # Respond to metrics_request so tests run fast
           if (identical(msg$type, "metrics_request")) {
+            `%||%` = function(x, y) if (is.null(x)) y else x
             resp = if (identical(msg$kind, "strWidth")) {
               list(
                 type = "metrics_response",
@@ -174,6 +173,7 @@ start_mock_server_local_tcp = function() {
 
         # Respond to metrics_request so tests run fast
         if (identical(msg$type, "metrics_request")) {
+          `%||%` = function(x, y) if (is.null(x)) y else x
           resp = if (identical(msg$kind, "strWidth")) {
             list(
               type = "metrics_response",
