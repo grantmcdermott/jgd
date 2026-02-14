@@ -6,11 +6,13 @@ on:
       - main
     paths:
       - r-pkg/**
+      - .github/workflows/R-CMD-check.yaml
   pull_request:
     branches:
       - main
     paths:
       - r-pkg/**
+      - .github/workflows/R-CMD-check.yaml
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
