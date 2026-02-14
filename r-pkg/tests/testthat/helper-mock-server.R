@@ -123,7 +123,7 @@ start_mock_server_local = function() {
 }
 
 # TCP mock server using base R sockets (works on all platforms including Windows)
-start_mock_server_local_tcp = function() {
+start_mock_server_tcp = function() {
   skip_if_not_installed("callr")
   skip_if_not_installed("jsonlite")
 
@@ -250,7 +250,7 @@ with_mock_jgd = function(
 ) {
   transport = match.arg(transport)
   if (transport == "tcp") {
-    server = start_mock_server_local_tcp()
+    server = start_mock_server_tcp()
     socket_addr = server$socket_url
   } else {
     server = start_mock_server_local()
