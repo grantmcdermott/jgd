@@ -12,8 +12,8 @@
 #include <stdio.h>
 #include <unistd.h>
 
-/* Called from R: .Call(C_jgd, width, height, dpi) */
-SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi) {
+/* Called from R: .Call(C_jgd, width, height, dpi, socket) */
+SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     double width = Rf_asReal(s_width);
     double height = Rf_asReal(s_height);
     double dpi = Rf_asReal(s_dpi);
@@ -36,6 +36,21 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi) {
     snprintf(st->session_id, sizeof(st->session_id), "r-%d", (int)getpid());
 
     transport_init(&st->transport);
+
+    /* If socket path provided from R, use it directly (skips C-side discovery) */
+    if (s_socket != R_NilValue && TYPEOF(s_socket) == STRSXP && LENGTH(s_socket) > 0) {
+        const char *sock = CHAR(STRING_ELT(s_socket, 0));
+        if (sock && sock[0]) {
+            if (strlen(sock) >= sizeof(st->transport.socket_path)) {
+                free(st);
+                Rf_error("jgd: socket path too long (max %zu characters)",
+                         sizeof(st->transport.socket_path) - 1);
+            }
+            snprintf(st->transport.socket_path, sizeof(st->transport.socket_path),
+                     "%s", sock);
+        }
+    }
+
     jw_init(&st->frame_buf);
     page_init(&st->page, width * dpi, height * dpi, dpi, R_RGB(255, 255, 255));
 

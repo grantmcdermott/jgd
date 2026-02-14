@@ -30,14 +30,11 @@ export class SocketServer {
     ) {}
 
     getSocketPath(): string {
-        return isWindows ? `tcp:${this.tcpPort}` : this.socketPath;
+        return isWindows ? `tcp://127.0.0.1:${this.tcpPort}` : this.socketPath;
     }
 
     getEnvVars(): Record<string, string> {
-        if (isWindows) {
-            return { JGD_PORT: String(this.tcpPort) };
-        }
-        return { JGD_SOCKET: this.socketPath };
+        return { JGD_SOCKET: this.getSocketPath() };
     }
 
     private readyListeners: (() => void)[] = [];
@@ -108,11 +105,7 @@ export class SocketServer {
         }
 
         /* Set env vars for child processes */
-        if (isWindows) {
-            process.env['JGD_PORT'] = String(this.tcpPort);
-        } else {
-            process.env['JGD_SOCKET'] = this.socketPath;
-        }
+        process.env['JGD_SOCKET'] = this.getSocketPath();
     }
 
     private notifyReady() {

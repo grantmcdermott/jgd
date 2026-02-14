@@ -1,8 +1,12 @@
 Package: jgd
 Title: JSON Graphics Device
-Version: 0.0.1
-Authors@R: person("Grant", "McDermott", role = c("aut", "cre"),
-    email = "contact@grantmcdermott.com")
+Version: 0.0.1.9000
+Authors@R: c(
+        person("Grant", "McDermott", role = c("aut", "cre"),
+            email = "contact@grantmcdermott.com"),
+        person("Tatsuya", "Shima", role = c("aut"),
+            email = "ts1s1andn@gmail.com")
+    )
 Description: A graphics device that records R plotting operations and streams
     them as JSON over a Unix domain socket to an external renderer. The device
     acts as a pure recorder with no rendering dependencies -- all rendering
