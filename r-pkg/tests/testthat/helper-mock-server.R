@@ -12,6 +12,8 @@
 # 4. Collects all received NDJSON messages
 # 5. Returns collected messages when the device sends "close"
 
+`%||%` = function(x, y) if (is.null(x)) y else x
+
 start_mock_server_local = function() {
   skip_if_not_installed("callr")
   skip_if_not_installed("processx")
