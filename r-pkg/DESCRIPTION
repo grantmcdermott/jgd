@@ -22,7 +22,8 @@ Suggests:
     jsonlite,
     later,
     processx,
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    withr
 SystemRequirements: POSIX sockets (available on macOS, Linux; Windows support
     planned)
 URL: https://github.com/grantmcdermott/jgd
