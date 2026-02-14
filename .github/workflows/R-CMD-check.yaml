@@ -27,7 +27,7 @@ defaults:
 
 jobs:
   R-CMD-check:
-    name: R CMD check (R ${{ matrix.r }})
+    name: R CMD check (${{ matrix.os }} - R ${{ matrix.r }})
     runs-on: ${{ matrix.os }}
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
