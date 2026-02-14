@@ -69,3 +69,4 @@ jobs:
           working-directory: r-pkg
           upload-snapshots: true
           build_args: 'c("--no-manual","--compact-vignettes=gs+qpdf")'
+          error-on: '"warning"'
