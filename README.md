@@ -43,13 +43,19 @@ cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
 
 ### VS Code extension
 
-```bash
-## Install from local .vsix file
-code --install-extension vscode-ext/jgd-vscode-0.0.1.vsix
+Download the `.vsix` from the
+[nightly release](https://github.com/grantmcdermott/jgd/releases/tag/nightly),
+then install it:
 
-## Or build for local development
-# cd vscode-ext && npm install && npm run compile
-# code --extensionDevelopmentPath="$(pwd)" && cd ..
+```bash
+code --install-extension jgd-vscode-nightly.vsix
+```
+
+Alternatively, build from source for local development:
+
+```bash
+cd vscode-ext && npm install && npm run compile
+code --extensionDevelopmentPath="$(pwd)" && cd ..
 ```
 
 ## Usage
@@ -209,19 +215,19 @@ r-pkg/
 ├── R/
 │   ├── device.R          # R wrapper: jgd()
 │   └── zzz.R             # .onLoad
-└── src/
-    ├── device.c           # DevDesc setup and registration
-    ├── callbacks.c        # All graphics callbacks (line, rect, text, ...)
-    ├── display_list.c     # Page state and JSON frame serialization
-    ├── json_writer.c      # Streaming JSON builder (no dependencies)
-    ├── transport.c        # Socket client + discovery (Unix + TCP)
-    ├── metrics.c          # Approximation-based font metrics
-    ├── color.c            # R color → CSS rgba() conversion
-    ├── png_encoder.c      # Minimal uncompressed PNG encoder + base64
-    └── init.c             # .Call registration
+├── src/
+│   ├── device.c           # DevDesc setup and registration
+│   ├── callbacks.c        # All graphics callbacks (line, rect, text, ...)
+│   ├── display_list.c     # Page state and JSON frame serialization
+│   ├── json_writer.c      # Streaming JSON builder (no dependencies)
+│   ├── transport.c        # Socket client + discovery (Unix + TCP)
+│   ├── metrics.c          # Approximation-based font metrics
+│   ├── color.c            # R color → CSS rgba() conversion
+│   ├── png_encoder.c      # Minimal uncompressed PNG encoder + base64
+│   └── init.c             # .Call registration
+└── tests/testthat/        # Unit tests (transport, frame output, etc.)
 
 vscode-ext/
-├── jgd-vscode-0.0.1.vsix
 ├── package.json
 └── src/
     ├── extension.ts       # Activation, commands, env var injection
