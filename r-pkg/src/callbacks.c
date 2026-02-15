@@ -31,7 +31,7 @@ static void cb_deactivate(const pDevDesc dd) { (void)dd; }
 static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
 
-    if (st->page_count > 0 && st->page.op_count > 0 && !st->replaying) {
+    if (st->page_count > 0 && st->page.op_count > st->last_flushed_ops && !st->replaying) {
         flush_frame(st, 0);
     }
 
@@ -400,11 +400,32 @@ static void cb_mode(int mode, pDevDesc dd) {
         st->drawing = 1;
     } else if (mode == 0) {
         st->drawing = 0;
-        if (st->page.op_count > st->last_flushed_ops) {
+        /* Only flush when display is not held.  High-level plot functions
+         * (plot, hist, …) bracket drawing with dev.hold/dev.flush, so
+         * cb_holdflush handles the single flush at the end.  Without hold
+         * (e.g. interactive lines()/points()), we flush immediately. */
+        if (st->hold_level == 0 && st->page.op_count > st->last_flushed_ops) {
             flush_frame(st, 1);
             st->last_flushed_ops = st->page.op_count;
         }
     }
+}
+
+static int cb_holdflush(pDevDesc dd, int level) {
+    jgd_state_t *st = get_state(dd);
+    int old = st->hold_level;
+    /* R passes level as a delta: dev.hold() passes +1, dev.flush() passes -1. */
+    int new_level = old + level;
+    if (new_level < 0) new_level = 0;
+    st->hold_level = new_level;
+    /* When transitioning from held to unheld, send accumulated frame. */
+    if (old > 0 && new_level == 0) {
+        if (st->page.op_count > st->last_flushed_ops) {
+            flush_frame(st, 0);
+            st->last_flushed_ops = st->page.op_count;
+        }
+    }
+    return old;
 }
 
 static void cb_size(double *left, double *right, double *bottom, double *top,
@@ -552,7 +573,7 @@ void jgd_set_callbacks(pDevDesc dd) {
     dd->getEvent = NULL;
     dd->newFrameConfirm = NULL;
     dd->eventHelper = NULL;
-    dd->holdflush = NULL;
+    dd->holdflush = cb_holdflush;
     dd->cap = NULL;
 
     dd->setPattern = cb_setPattern;
