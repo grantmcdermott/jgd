@@ -156,13 +156,17 @@ static int try_connect(jgd_transport_t *t) {
         upath += 7;
     if (*upath == '\0') return -1;
 
+    size_t pathlen = strlen(upath);
+    if (pathlen >= sizeof(((struct sockaddr_un *)0)->sun_path))
+        return -1;
+
     sock_t s = socket(AF_UNIX, SOCK_STREAM, 0);
     if (s == SOCK_INVALID) return -1;
 
     struct sockaddr_un addr;
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", upath);
+    memcpy(addr.sun_path, upath, pathlen + 1);
 
     if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
         SOCK_CLOSE(s);

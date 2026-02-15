@@ -318,7 +318,7 @@ static void cb_metricInfo(int c, const pGEcontext gc,
     }
 
     int cc = c < 0 ? -c : c;
-    char key[8];
+    char key[16];
     snprintf(key, sizeof(key), "c%d", cc);
     unsigned int h = mcache_hash(key, (int)strlen(key), gc);
     mcache_entry_t *cached = mcache_lookup(h);
