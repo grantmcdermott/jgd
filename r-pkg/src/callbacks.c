@@ -18,7 +18,7 @@ static jgd_state_t *get_state(pDevDesc dd) {
     return (jgd_state_t *)dd->deviceSpecific;
 }
 
-static void flush_frame(jgd_state_t *st, int incremental) {
+void jgd_flush_frame(jgd_state_t *st, int incremental) {
     page_serialize_frame(&st->page, st->session_id, &st->frame_buf, incremental);
     transport_send(&st->transport, jw_result(&st->frame_buf), jw_length(&st->frame_buf));
 }
@@ -31,8 +31,8 @@ static void cb_deactivate(const pDevDesc dd) { (void)dd; }
 static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
 
-    if (st->page_count > 0 && st->page.op_count > 0 && !st->replaying) {
-        flush_frame(st, 0);
+    if (st->page_count > 0 && st->page.op_count > st->last_flushed_ops && !st->replaying) {
+        jgd_flush_frame(st, 0);
     }
 
     if (st->page_count > 0) {
@@ -52,8 +52,11 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
 static void cb_close(pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
 
+    /* Remove R input handler before closing the transport fd */
+    jgd_remove_input_handler(st);
+
     if (st->page.op_count > st->last_flushed_ops) {
-        flush_frame(st, 0);
+        jgd_flush_frame(st, 0);
     }
 
     /* Notify renderer that device is closing */
@@ -315,7 +318,7 @@ static void cb_metricInfo(int c, const pGEcontext gc,
     }
 
     int cc = c < 0 ? -c : c;
-    char key[8];
+    char key[16];
     snprintf(key, sizeof(key), "c%d", cc);
     unsigned int h = mcache_hash(key, (int)strlen(key), gc);
     mcache_entry_t *cached = mcache_lookup(h);
@@ -396,15 +399,38 @@ static void apply_pending_resize(jgd_state_t *st, pDevDesc dd) {
 
 static void cb_mode(int mode, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
+    if (st->replaying) return;
     if (mode == 1) {
         st->drawing = 1;
     } else if (mode == 0) {
         st->drawing = 0;
-        if (st->page.op_count > st->last_flushed_ops) {
-            flush_frame(st, 1);
+        /* Only flush when display is not held.  High-level plot functions
+         * (plot, hist, …) bracket drawing with dev.hold/dev.flush, so
+         * cb_holdflush handles the single flush at the end.  Without hold
+         * (e.g. interactive lines()/points()), we flush immediately. */
+        if (st->hold_level == 0 && st->page.op_count > st->last_flushed_ops) {
+            jgd_flush_frame(st, 1);
             st->last_flushed_ops = st->page.op_count;
         }
     }
+}
+
+static int cb_holdflush(pDevDesc dd, int level) {
+    jgd_state_t *st = get_state(dd);
+    if (st->replaying) return st->hold_level;
+    int old = st->hold_level;
+    /* R passes level as a delta: dev.hold() passes +1, dev.flush() passes -1. */
+    int new_level = old + level;
+    if (new_level < 0) new_level = 0;
+    st->hold_level = new_level;
+    /* When transitioning from held to unheld, send accumulated frame. */
+    if (old > 0 && new_level == 0) {
+        if (st->page.op_count > st->last_flushed_ops) {
+            jgd_flush_frame(st, 0);
+            st->last_flushed_ops = st->page.op_count;
+        }
+    }
+    return old;
 }
 
 static void cb_size(double *left, double *right, double *bottom, double *top,
@@ -552,7 +578,7 @@ void jgd_set_callbacks(pDevDesc dd) {
     dd->getEvent = NULL;
     dd->newFrameConfirm = NULL;
     dd->eventHelper = NULL;
-    dd->holdflush = NULL;
+    dd->holdflush = cb_holdflush;
     dd->cap = NULL;
 
     dd->setPattern = cb_setPattern;

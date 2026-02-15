@@ -7,6 +7,13 @@
 #include <R_ext/GraphicsDevice.h>
 #include <R_ext/GraphicsEngine.h>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#else
+#include <R_ext/eventloop.h>
+#endif
+
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -132,21 +139,19 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     pGEDevDesc gdd = GEcreateDevDesc(dd);
     GEaddDevice2(gdd, "jgd");
     GEinitDisplayList(gdd);
+    st->ge_dev = gdd;
+
+    jgd_register_input_handler(st);
 
     return R_NilValue;
 }
 
-/* Called from R task callback: check for pending resize and replay if needed.
-   Returns TRUE if a resize was applied, FALSE otherwise. */
-SEXP C_jgd_poll_resize(void) {
-    pGEDevDesc gdd = GEcurrentDevice();
-    if (!gdd || !gdd->dev) return Rf_ScalarLogical(FALSE);
+/* ---- Resize polling (shared by R callable and input handler) ---- */
 
-    pDevDesc dd = gdd->dev;
-    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
-    if (!st || st->replaying) return Rf_ScalarLogical(FALSE);
-
-    /* Check socket for incoming resize messages */
+/* Drain resize messages from the transport socket into pending_w/pending_h.
+   Returns 1 if a resize was applied and the display list replayed, 0 otherwise. */
+static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
+    /* Read all available resize messages */
     while (transport_has_data(&st->transport)) {
         char buf[1024];
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
@@ -168,7 +173,7 @@ SEXP C_jgd_poll_resize(void) {
     }
 
     if (st->pending_w <= 0 || st->pending_h <= 0)
-        return Rf_ScalarLogical(FALSE);
+        return 0;
 
     /* Apply the resize */
     st->width = st->pending_w / st->dpi;
@@ -180,10 +185,150 @@ SEXP C_jgd_poll_resize(void) {
     st->pending_w = 0;
     st->pending_h = 0;
 
-    /* Replay the display list at new dimensions */
+    /* Replay the display list at new dimensions.
+     * All intermediate flushes (cb_holdflush, cb_mode) are suppressed while
+     * replaying=1 so that we emit exactly one complete frame afterwards.
+     * This prevents the browser from receiving untagged incremental frames
+     * that would be misrouted (appendOps to the wrong history slot). */
     st->replaying = 1;
     GEplayDisplayList(gdd);
     st->replaying = 0;
 
-    return Rf_ScalarLogical(TRUE);
+    /* Send the complete replayed frame as a single flush.  The server will
+     * tag this frame with resize:true so the browser does replaceLatest
+     * instead of addPlot.
+     *
+     * When the display list is empty (no plots drawn yet), GEplayDisplayList
+     * is a no-op: cb_newPage never fires, so the page is NOT re-initialized
+     * and op_count == last_flushed_ops.  We intentionally skip the flush in
+     * that case — sending the stale page would emit incorrect old data.
+     * The server's resizePending flag stays armed and will tag the next real
+     * frame.  This is safe: replaceLatest on an empty browser session falls
+     * through to addPlot, and on a non-empty session the plot that consumed
+     * the flag would have been the first draw after an empty display list,
+     * which correctly replaces the "latest" blank state. */
+    if (st->page.op_count > st->last_flushed_ops) {
+        jgd_flush_frame(st, 0);
+        st->last_flushed_ops = st->page.op_count;
+    }
+
+    return 1;
 }
+
+/* Called from R: .Call(C_jgd_poll_resize) — manual / fallback poll. */
+SEXP C_jgd_poll_resize(void) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) return Rf_ScalarLogical(FALSE);
+
+    pDevDesc dd = gdd->dev;
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st || st->replaying || st->drawing) return Rf_ScalarLogical(FALSE);
+
+    return Rf_ScalarLogical(poll_resize_impl(st, dd, gdd));
+}
+
+/* ---- R input handler (POSIX) ---- */
+
+#ifndef _WIN32
+
+#define JGD_INPUT_HANDLER_ACTIVITY 42
+
+/* Callback invoked by R's event loop when data arrives on the transport fd. */
+static void jgd_input_handler_cb(void *data) {
+    jgd_state_t *st = (jgd_state_t *)data;
+    if (!st || st->replaying || st->drawing) return;
+
+    /* If transport disconnected (server died), just bail out.
+       The handler stays registered but returns immediately until
+       the device is closed and cb_close removes it. */
+    if (!st->transport.connected) return;
+
+    pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
+    if (!gdd || !gdd->dev) return;
+
+    poll_resize_impl(st, gdd->dev, gdd);
+}
+
+void jgd_register_input_handler(jgd_state_t *st) {
+    if (!st->transport.connected || st->transport.fd < 0) return;
+
+    InputHandler *ih = addInputHandler(R_InputHandlers, st->transport.fd,
+                                       jgd_input_handler_cb,
+                                       JGD_INPUT_HANDLER_ACTIVITY);
+    if (ih) {
+        ih->userData = (void *)st;
+        st->input_handler = ih;
+    }
+}
+
+void jgd_remove_input_handler(jgd_state_t *st) {
+    if (!st->input_handler) return;
+
+    removeInputHandler(&R_InputHandlers, (InputHandler *)st->input_handler);
+    st->input_handler = NULL;
+}
+
+#else /* _WIN32 */
+
+#define JGD_TIMER_ID 1
+#define JGD_POLL_INTERVAL_MS 200
+
+static const char *JGD_WND_CLASS = "jgd_resize_poll";
+static int jgd_wnd_class_registered = 0;
+
+static LRESULT CALLBACK jgd_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+    if (msg == WM_TIMER && wp == JGD_TIMER_ID) {
+        jgd_state_t *st = (jgd_state_t *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
+        if (!st || st->replaying || st->drawing || !st->transport.connected) return 0;
+
+        pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
+        if (!gdd || !gdd->dev) return 0;
+
+        poll_resize_impl(st, gdd->dev, gdd);
+        return 0;
+    }
+    return DefWindowProc(hwnd, msg, wp, lp);
+}
+
+void jgd_register_input_handler(jgd_state_t *st) {
+    if (!st->transport.connected) return;
+
+    if (!jgd_wnd_class_registered) {
+        WNDCLASSEXA wc = {0};
+        wc.cbSize = sizeof(WNDCLASSEXA);
+        wc.lpfnWndProc = jgd_wndproc;
+        wc.hInstance = NULL;
+        wc.lpszClassName = JGD_WND_CLASS;
+        if (!RegisterClassExA(&wc)) {
+            /* After devtools::load_all() the class persists from the
+               previous DLL — treat that as success. */
+            if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS) return;
+        }
+        jgd_wnd_class_registered = 1;
+    }
+
+    HWND hwnd = CreateWindowExA(0, JGD_WND_CLASS, "jgd", 0,
+                                0, 0, 0, 0, HWND_MESSAGE, NULL, NULL, NULL);
+    if (!hwnd) return;
+
+    SetWindowLongPtr(hwnd, GWLP_USERDATA, (LONG_PTR)st);
+
+    if (!SetTimer(hwnd, JGD_TIMER_ID, JGD_POLL_INTERVAL_MS, NULL)) {
+        DestroyWindow(hwnd);
+        return;
+    }
+
+    st->hwnd = hwnd;
+    st->timer_active = 1;
+}
+
+void jgd_remove_input_handler(jgd_state_t *st) {
+    if (!st->timer_active || !st->hwnd) return;
+
+    KillTimer((HWND)st->hwnd, JGD_TIMER_ID);
+    DestroyWindow((HWND)st->hwnd);
+    st->hwnd = NULL;
+    st->timer_active = 0;
+}
+
+#endif

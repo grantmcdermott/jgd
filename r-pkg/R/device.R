@@ -29,21 +29,5 @@ jgd = function(
   }
 
   .Call(C_jgd, as.double(width), as.double(height), as.double(dpi), socket)
-
-  if (requireNamespace("later", quietly = TRUE)) {
-    poll = function() {
-      tryCatch(.Call(C_jgd_poll_resize), error = function(e) NULL)
-      later::later(poll, 0.2)
-    }
-    later::later(poll, 0.2)
-  } else {
-    addTaskCallback(jgd_resize_callback, name = "jgd_resize")
-  }
-
   invisible()
-}
-
-jgd_resize_callback = function(...) {
-  tryCatch(.Call(C_jgd_poll_resize), error = function(e) NULL)
-  TRUE
 }

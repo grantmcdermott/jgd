@@ -20,12 +20,10 @@ NeedsCompilation: yes
 Suggests:
     callr,
     jsonlite,
-    later,
     processx,
     testthat (>= 3.0.0),
     withr
-SystemRequirements: POSIX sockets (available on macOS, Linux; Windows support
-    planned)
+SystemRequirements: POSIX sockets (macOS, Linux) or TCP sockets (Windows)
 URL: https://github.com/grantmcdermott/jgd
 BugReports: https://github.com/grantmcdermott/jgd/issues
 Config/testthat/edition: 3
