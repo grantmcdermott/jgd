@@ -236,7 +236,7 @@ SEXP C_jgd_poll_resize(void) {
 /* Callback invoked by R's event loop when data arrives on the transport fd. */
 static void jgd_input_handler_cb(void *data) {
     jgd_state_t *st = (jgd_state_t *)data;
-    if (!st || st->replaying) return;
+    if (!st || st->replaying || st->drawing) return;
 
     /* If transport disconnected (server died), just bail out.
        The handler stays registered but returns immediately until
@@ -279,7 +279,7 @@ static int jgd_wnd_class_registered = 0;
 static LRESULT CALLBACK jgd_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == WM_TIMER && wp == JGD_TIMER_ID) {
         jgd_state_t *st = (jgd_state_t *)GetWindowLongPtr(hwnd, GWLP_USERDATA);
-        if (!st || st->replaying || !st->transport.connected) return 0;
+        if (!st || st->replaying || st->drawing || !st->transport.connected) return 0;
 
         pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
         if (!gdd || !gdd->dev) return 0;
