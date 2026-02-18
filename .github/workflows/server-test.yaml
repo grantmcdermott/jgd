@@ -31,3 +31,5 @@ jobs:
           deno-version: v2.x
       - run: deno task test
         working-directory: server
+      - run: deno task test:e2e
+        working-directory: server
