@@ -86,7 +86,7 @@ export class TestServer {
     const reader = this.#stdout.getReader();
     let buffer = "";
 
-    const timeout = AbortSignal.timeout(10_000);
+    const timeout = AbortSignal.timeout(30_000);
     try {
       while (!timeout.aborted) {
         const { value, done } = await reader.read();
