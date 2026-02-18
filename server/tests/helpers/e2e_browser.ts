@@ -82,8 +82,13 @@ export async function readOfType<T extends ServerMessage>(
   while (Date.now() < deadline) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
-    const msg = await rClient.readMessage<ServerMessage>(remaining);
-    if (msg.type === type && (!predicate || predicate(msg as T))) return msg as T;
+    try {
+      const msg = await rClient.readMessage<ServerMessage>(remaining);
+      if (msg.type === type && (!predicate || predicate(msg as T))) return msg as T;
+    } catch {
+      // readMessage timed out or connection closed — break to throw typed error
+      break;
+    }
   }
   throw new Error(`Timed out waiting for message of type "${type}"`);
 }

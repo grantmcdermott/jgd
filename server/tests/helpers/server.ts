@@ -18,7 +18,7 @@ export class TestServer {
 
   constructor(opts?: { tcp?: boolean }) {
     this.tmpDir = Deno.makeTempDirSync({ prefix: "jgd-test-" });
-    this.useTcp = opts?.tcp ?? false;
+    this.useTcp = opts?.tcp ?? (Deno.build.os === "windows");
     this.socketPath = this.useTcp
       ? ""  // resolved after server starts
       : join(this.tmpDir, `jgd-${crypto.randomUUID().slice(0, 8)}.sock`);
@@ -146,6 +146,9 @@ export class TestServer {
   /**
    * Send SIGTERM and wait for exit. Falls back to SIGKILL after timeout.
    * Returns true if the process exited gracefully (not force-killed).
+   *
+   * On Windows, SIGTERM maps to TerminateProcess (immediate kill) so the
+   * server's cleanup handlers don't run — always returns false.
    */
   async shutdown(): Promise<boolean> {
     if (!this.#process) return true;
@@ -155,6 +158,12 @@ export class TestServer {
     } catch {
       // Process may have already exited
       return true;
+    }
+
+    // On Windows, SIGTERM terminates immediately — no graceful cleanup.
+    if (Deno.build.os === "windows") {
+      await this.#process.status;
+      return false;
     }
 
     let forceKilled = false;
