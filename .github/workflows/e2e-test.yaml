@@ -46,6 +46,7 @@ jobs:
 
       - name: Install jgd R package
         run: R CMD INSTALL r-pkg
+        shell: bash
 
       - name: Run E2E tests
         run: deno task test

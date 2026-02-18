@@ -15,6 +15,7 @@ export class TestServer {
 
   #process: Deno.ChildProcess | null = null;
   #stdout: ReadableStream<string> | null = null;
+  #stderrDone: Promise<void> | null = null;
 
   constructor(opts?: { tcp?: boolean }) {
     this.tmpDir = Deno.makeTempDirSync({ prefix: "jgd-test-" });
@@ -61,13 +62,13 @@ export class TestServer {
       args: serverArgs,
       stdout: "piped",
       stderr: "piped",
-      env: { TMPDIR: this.tmpDir },
+      env: { TMPDIR: this.tmpDir, TEMP: this.tmpDir, TMP: this.tmpDir },
     });
 
     this.#process = cmd.spawn();
 
     // Drain stderr in the background (avoid blocking)
-    this.#process.stderr
+    this.#stderrDone = this.#process.stderr
       .pipeTo(
         new WritableStream({
           write(chunk) {
@@ -157,12 +158,14 @@ export class TestServer {
       this.#process.kill("SIGTERM");
     } catch {
       // Process may have already exited
+      await this.#cleanupStreams();
       return true;
     }
 
     // On Windows, SIGTERM terminates immediately — no graceful cleanup.
     if (Deno.build.os === "windows") {
       await this.#process.status;
+      await this.#cleanupStreams();
       return false;
     }
 
@@ -181,7 +184,16 @@ export class TestServer {
       return !forceKilled;
     } finally {
       clearTimeout(timeoutId);
+      await this.#cleanupStreams();
     }
+  }
+
+  /** Cancel stdout and wait for stderr pipe to finish. */
+  async #cleanupStreams(): Promise<void> {
+    try { await this.#stdout?.cancel(); } catch { /* ignore */ }
+    this.#stdout = null;
+    try { await this.#stderrDone; } catch { /* ignore */ }
+    this.#stderrDone = null;
   }
 
   /** Clean up temp files. */

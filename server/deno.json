@@ -10,7 +10,8 @@
     "start": "deno run --allow-net=127.0.0.1 --allow-read --allow-write --allow-env main.ts",
     "dev": "deno run --allow-net=127.0.0.1 --allow-read --allow-write --allow-env --watch main.ts",
     "test": "deno test --allow-net=127.0.0.1 --allow-read --allow-write --allow-env --allow-run=deno --parallel --ignore=tests/e2e tests/",
-    "test:e2e": "deno test --allow-env --allow-net=127.0.0.1 --allow-read --allow-write --allow-run tests/e2e/",
+    // --allow-net is unrestricted: Astral downloads Chrome from googlechromelabs.github.io on CI
+    "test:e2e": "deno test --allow-env --allow-net --allow-read --allow-write --allow-run tests/e2e/",
     "test:all": "deno task test && deno task test:e2e"
   }
 }
