@@ -1,0 +1,10 @@
+{
+  "imports": {
+    "@std/assert": "jsr:@std/assert@^1",
+    "@std/async": "jsr:@std/async@^1",
+    "@std/path": "jsr:@std/path@^1"
+  },
+  "tasks": {
+    "test": "deno test --allow-net=127.0.0.1 --allow-read --allow-write --allow-env --allow-run=deno,Rscript e2e_test.ts"
+  }
+}
