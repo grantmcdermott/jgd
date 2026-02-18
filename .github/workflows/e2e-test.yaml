@@ -51,3 +51,5 @@ jobs:
       - name: Run E2E tests
         run: deno task test
         working-directory: tests
+        env:
+          ASTRAL_BIN_ARGS: "--no-sandbox --disable-dev-shm-usage"
