@@ -122,7 +122,11 @@ async function main(): Promise<void> {
   const activeConnections = new Set<Promise<void>>();
 
   // Accept R connections (runs until listener is closed)
-  acceptLoop(rListener, hub, activeConnections);
+  acceptLoop(rListener, hub, activeConnections).catch((e) => {
+    if (!(e instanceof Deno.errors.BadResource)) {
+      console.error(`accept loop error: ${e}`);
+    }
+  });
 
   // Write discovery file before announcing readiness so clients can
   // find the socket immediately after parsing the readiness message.

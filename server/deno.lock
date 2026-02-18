@@ -35,7 +35,7 @@
     "dependencies": [
       "jsr:@std/assert@1",
       "jsr:@std/async@1",
-      "jsr:@std/cli@*",
+      "jsr:@std/cli@1",
       "jsr:@std/path@1"
     ]
   }

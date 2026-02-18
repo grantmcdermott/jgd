@@ -2,7 +2,7 @@
   "imports": {
     "@std/assert": "jsr:@std/assert@^1",
     "@std/async": "jsr:@std/async@^1",
-    "@std/cli": "jsr:@std/cli@*",
+    "@std/cli": "jsr:@std/cli@^1",
     "@std/path": "jsr:@std/path@^1"
   },
   "tasks": {

@@ -26,6 +26,12 @@ export class Hub {
 
   unregisterSession(id: string): void {
     this.sessions.delete(id);
+    // Clean up any pending metrics routing entries for this session
+    for (const [reqId, sessId] of this.metricsRouting) {
+      if (sessId === id) {
+        this.metricsRouting.delete(reqId);
+      }
+    }
     console.error(
       `R session unregistered: ${id} (total: ${this.sessions.size})`,
     );
@@ -38,6 +44,12 @@ export class Hub {
   updateSessionId(oldId: string, newId: string, session: RSession): void {
     this.sessions.delete(oldId);
     this.sessions.set(newId, session);
+    // Update any pending metrics routing entries to use the new session ID
+    for (const [reqId, sessId] of this.metricsRouting) {
+      if (sessId === oldId) {
+        this.metricsRouting.set(reqId, newId);
+      }
+    }
   }
 
   /** Broadcast a message string to all connected browser clients. */
@@ -187,30 +199,32 @@ export class Hub {
     // Forward to browsers
     this.broadcastToClients(line);
 
-    // Timeout: if no response in 2s, send zero-value fallback
+    // Timeout: if no response in 2s, send zero-value fallback.
+    // Look up the session ID from metricsRouting at fire time (not capture
+    // time) so that updateSessionId() renames are reflected correctly.
     setTimeout(() => {
-      if (this.metricsRouting.has(id)) {
-        this.metricsRouting.delete(id);
-        const fallback = JSON.stringify({
-          type: "metrics_response",
-          id,
-          width: 0,
-          ascent: 0,
-          descent: 0,
-        });
-        const target = this.sessions.get(session.id);
-        if (target) {
-          target.send(fallback).catch((e) => {
-            console.error(
-              `failed to send metrics fallback to R session ${session.id}: ${e}`,
-            );
-          });
-        }
-        if (this.verbose) {
+      const currentSessionId = this.metricsRouting.get(id);
+      if (currentSessionId === undefined) return; // already responded or session gone
+      this.metricsRouting.delete(id);
+      const fallback = JSON.stringify({
+        type: "metrics_response",
+        id,
+        width: 0,
+        ascent: 0,
+        descent: 0,
+      });
+      const target = this.sessions.get(currentSessionId);
+      if (target) {
+        target.send(fallback).catch((e) => {
           console.error(
-            `metrics timeout for request ${id}, sent fallback to session ${session.id}`,
+            `failed to send metrics fallback to R session ${currentSessionId}: ${e}`,
           );
-        }
+        });
+      }
+      if (this.verbose) {
+        console.error(
+          `metrics timeout for request ${id}, sent fallback to session ${currentSessionId}`,
+        );
       }
     }, 2000);
   }
