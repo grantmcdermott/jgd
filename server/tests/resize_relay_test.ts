@@ -65,6 +65,7 @@ Deno.test("Browser→R resize relay", async (t) => {
       const rClient2 = new RClient();
       await rClient2.connect(server.socketPath);
 
+      // TODO: replace delay with a server-side registration acknowledgement
       // Wait for rClient2 to be registered (send and receive a frame)
       await delay(100);
 

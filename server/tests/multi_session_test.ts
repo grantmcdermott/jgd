@@ -82,7 +82,10 @@ Deno.test("multi-session routing", async (t) => {
         r1b = new RClient();
         await r1b.connect(server.socketPath);
 
-        // Wait for registration
+        // TODO: replace delay with a server-side registration acknowledgement
+        // Wait for r1b to be registered by the server
+        await delay(100);
+
         browser.sendResize(2, 2);
         await r1b.readMessage<ResizeMessage>();
         await r2.readMessage<ResizeMessage>();
