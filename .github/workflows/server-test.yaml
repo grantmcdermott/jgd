@@ -1,0 +1,42 @@
+name: Test server
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/server-test.yaml
+      - server/**
+      - "!**/*.md"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/server-test.yaml
+      - server/**
+      - "!**/*.md"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    strategy:
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno task test
+        working-directory: server
+      - run: deno task test:e2e
+        working-directory: server
+        env:
+          ASTRAL_BIN_ARGS: "--no-sandbox --disable-dev-shm-usage"
