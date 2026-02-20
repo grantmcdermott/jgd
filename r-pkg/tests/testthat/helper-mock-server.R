@@ -22,8 +22,10 @@ start_mock_server_local = function() {
   if (is_windows) {
     # Windows: named pipe via processx
     pipe_name = sprintf("jgd-test-%d-%s", Sys.getpid(),
-                        substring(tempfile("", ""), 2))
-    # processx expects \\?\pipe\NAME format for CreateNamedPipeA
+                        basename(tempfile()))
+    # processx expects \\?\pipe\NAME (extended-length path prefix);
+    # the C client uses \\.\pipe\NAME (device namespace) — both resolve
+    # to the same kernel pipe object
     win_path = paste0("\\\\?\\pipe\\", pipe_name)
     ready_file = tempfile(pattern = "jgd-test-ready-", fileext = ".txt")
   } else {

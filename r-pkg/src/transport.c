@@ -202,7 +202,10 @@ static int try_connect(jgd_transport_t *t) {
                 FILE_ATTRIBUTE_NORMAL, NULL);
             if (h == INVALID_HANDLE_VALUE) return -1;
             DWORD mode = PIPE_READMODE_BYTE;
-            SetNamedPipeHandleState(h, &mode, NULL, NULL);
+            if (!SetNamedPipeHandleState(h, &mode, NULL, NULL)) {
+                CloseHandle(h);
+                return -1;
+            }
             t->pipe_handle = h;
             t->use_pipe = 1;
             t->connected = 1;
