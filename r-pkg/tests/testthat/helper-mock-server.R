@@ -1,8 +1,8 @@
 # Mock NDJSON servers for jgd testthat tests
 #
 # Two transport variants:
-#   start_mock_server_local() — local IPC socket via processx (Unix domain socket;
-#                              Windows named pipe support planned), skips on Windows
+#   start_mock_server_local() — local IPC socket via processx (Unix domain socket
+#                              on Unix, Windows named pipe on Windows)
 #   start_mock_server_tcp()  — TCP socket (base R), works on all platforms
 #
 # Both run a background R process (via callr::r_bg) that:
@@ -16,18 +16,34 @@ start_mock_server_local = function() {
   skip_if_not_installed("callr")
   skip_if_not_installed("processx")
   skip_if_not_installed("jsonlite")
-  skip_on_os("windows") # TODO: remove when Windows named pipe support is implemented
 
-  socket_path = tempfile(pattern = "jgd-test-", fileext = ".sock")
+  is_windows = (.Platform$OS.type == "windows")
+
+  if (is_windows) {
+    # Windows: named pipe via processx
+    pipe_name = sprintf("jgd-test-%d-%s", Sys.getpid(),
+                        substring(tempfile("", ""), 2))
+    # processx expects \\?\pipe\NAME format for CreateNamedPipeA
+    win_path = paste0("\\\\?\\pipe\\", pipe_name)
+    ready_file = tempfile(pattern = "jgd-test-ready-", fileext = ".txt")
+  } else {
+    socket_path = tempfile(pattern = "jgd-test-", fileext = ".sock")
+  }
 
   bg = callr::r_bg(
-    function(socket_path) {
+    function(conn_path, ready_file) {
       `%||%` = function(x, y) if (is.null(x)) y else x
-      server = processx::conn_create_unix_socket(socket_path)
+      server = processx::conn_create_unix_socket(conn_path)
+
+      # Signal readiness: on Windows write a ready file (pipe has no filesystem
+      # presence); on Unix the socket file itself signals readiness
+      if (!is.null(ready_file)) {
+        writeLines("ready", ready_file)
+      }
 
       # Wait for client connection (30s timeout)
       # poll() returns "connect" (not "ready") for new connections on a
-      # listening Unix socket
+      # listening Unix socket / named pipe
       res = processx::poll(list(server), 30000)
       if (!res[[1L]] %in% c("ready", "connect")) {
         stop("No client connected within 30s (poll returned: ", res[[1L]], ")")
@@ -87,25 +103,40 @@ start_mock_server_local = function() {
       close(server)
       messages
     },
-    args = list(socket_path = socket_path),
+    args = list(
+      conn_path = if (is_windows) win_path else socket_path,
+      ready_file = if (is_windows) ready_file else NULL
+    ),
     supervise = TRUE
   )
 
-  # Wait for the socket file to appear
-  for (i in seq_len(30)) {
-    if (file.exists(socket_path)) {
-      break
+  if (is_windows) {
+    # Wait for the ready file to appear (pipe has no filesystem presence)
+    for (i in seq_len(30)) {
+      if (file.exists(ready_file)) break
+      Sys.sleep(0.1)
     }
-    Sys.sleep(0.1)
-  }
-  if (!file.exists(socket_path)) {
-    bg$kill()
-    skip("Mock server socket not created in time")
+    if (!file.exists(ready_file)) {
+      bg$kill()
+      skip("Mock server pipe not ready in time")
+    }
+    client_uri = paste0("npipe:///", pipe_name)
+  } else {
+    # Wait for the socket file to appear
+    for (i in seq_len(30)) {
+      if (file.exists(socket_path)) break
+      Sys.sleep(0.1)
+    }
+    if (!file.exists(socket_path)) {
+      bg$kill()
+      skip("Mock server socket not created in time")
+    }
+    client_uri = socket_path
   }
 
   list(
     bg = bg,
-    socket_path = socket_path,
+    socket_path = client_uri,
     collect = function(timeout = 10000) {
       bg$wait(timeout)
       if (bg$get_exit_status() != 0) {
@@ -117,7 +148,11 @@ start_mock_server_local = function() {
       if (bg$is_alive()) {
         bg$kill()
       }
-      unlink(socket_path)
+      if (!is_windows) {
+        unlink(socket_path)
+      } else {
+        unlink(ready_file)
+      }
     }
   )
 }
