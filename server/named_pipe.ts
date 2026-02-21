@@ -12,25 +12,10 @@ import { createServer, Socket } from "node:net";
 import type { Server } from "node:net";
 
 // ---------------------------------------------------------------------------
-// RConn — the subset of Deno.Conn that RSession actually uses
-// ---------------------------------------------------------------------------
-
-/**
- * Narrow interface covering only the members RSession needs.
- * Both Deno.Conn and PipeConn satisfy this, so accept-loop and
- * test code can pass either without unsafe casts.
- */
-export interface RConn {
-  readonly readable: ReadableStream<Uint8Array>;
-  write(p: Uint8Array): Promise<number>;
-  close(): void;
-}
-
-// ---------------------------------------------------------------------------
 // PipeConn — wraps a node:net Socket as an RConn-compatible object
 // ---------------------------------------------------------------------------
 
-/** Minimal RConn-compatible wrapper around a node:net Socket. */
+/** Wraps a node:net Socket to satisfy the RConn interface (see r_session.ts). */
 export class PipeConn {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;

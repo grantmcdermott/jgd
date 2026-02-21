@@ -1,5 +1,16 @@
 import type { Hub } from "./hub.ts";
-import type { RConn } from "./named_pipe.ts";
+
+/**
+ * Narrow interface covering only the members that RSession and test helpers
+ * need from a connection.  Both Deno.Conn and PipeConn satisfy this, so the
+ * accept loop and test code can pass either without unsafe casts.
+ */
+export interface RConn {
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<Uint8Array>;
+  write(p: Uint8Array): Promise<number>;
+  close(): void;
+}
 
 let sessionCounter = 0;
 

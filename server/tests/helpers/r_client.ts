@@ -5,20 +5,14 @@ import type {
   ServerMessage,
 } from "./types.ts";
 import { PipeConn } from "../../named_pipe.ts";
+import type { RConn } from "../../r_session.ts";
 import { connect as nodeConnect } from "node:net";
-
-/** Members of Deno.Conn / PipeConn that RClient actually uses. */
-interface StreamConn {
-  readonly readable: ReadableStream<Uint8Array>;
-  readonly writable: WritableStream<Uint8Array>;
-  close(): void;
-}
 
 /**
  * Simulates an R session connecting to the server via Unix socket or TCP (NDJSON).
  */
 export class RClient {
-  #conn: StreamConn | null = null;
+  #conn: RConn | null = null;
   #reader: ReadableStreamDefaultReader<string> | null = null;
   #writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   #encoder = new TextEncoder();
