@@ -66,7 +66,7 @@ try {
   if (!rResult.success) {
     console.error(`R process exited with code ${rResult.code}`);
     if (stderr.trim()) console.error(stderr.trim());
-    Deno.exit(1);
+    throw new Error(`R process failed with code ${rResult.code}`);
   }
 
   if (stderr.trim()) {
