@@ -10,6 +10,7 @@
 #ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <windows.h>
 #pragma comment(lib, "ws2_32.lib")
 typedef SOCKET sock_t;
 #define SOCK_INVALID INVALID_SOCKET
@@ -31,6 +32,7 @@ static void ensure_wsa(void) {
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <strings.h>  /* strncasecmp */
 typedef int sock_t;
 #define SOCK_INVALID (-1)
 #define SOCK_CLOSE close
@@ -75,10 +77,39 @@ static int parse_tcp(const char *path, struct sockaddr_in *out) {
     return -1;
 }
 
+#ifdef _WIN32
+/* Parse npipe:///NAME or npipe://localhost/NAME → \\.\pipe\NAME.
+ * Returns 0 on success, -1 if not an npipe URI. */
+static int parse_npipe(const char *path, char *buf, size_t bufsize) {
+    const char *name;
+    if (_strnicmp(path, "npipe://localhost/", 18) == 0) {
+        name = path + 18;
+    } else if (strncmp(path, "npipe:///", 9) == 0) {
+        name = path + 9;
+    } else {
+        return -1;
+    }
+
+    /* "\\\\.\\pipe\\" is 9 characters; plus 1 for the terminating NUL. */
+    if (bufsize <= 10) return -1;
+
+    {
+        size_t name_len = strlen(name);
+        if (name_len == 0 || name_len > bufsize - 10) return -1;
+    }
+
+    snprintf(buf, bufsize, "\\\\.\\pipe\\%s", name);
+    return 0;
+}
+#endif
+
 void transport_init(jgd_transport_t *t) {
     t->fd = (int)SOCK_INVALID;
     t->socket_path[0] = '\0';
     t->connected = 0;
+#ifdef _WIN32
+    t->pipe_handle = INVALID_HANDLE_VALUE;
+#endif
 }
 
 static int discover_socket_path(char *out, size_t outsize) {
@@ -150,10 +181,14 @@ static int try_connect(jgd_transport_t *t) {
     }
 
 #ifndef _WIN32
-    /* Unix domain socket: unix:///path or raw /path */
+    /* Unix domain socket: unix:///path, unix://localhost/path, or raw /path */
     const char *upath = t->socket_path;
-    if (strncmp(upath, "unix://", 7) == 0)
+    if (strncasecmp(upath, "unix://localhost/", 17) == 0)
+        upath += 16;  /* keep leading "/" */
+    else if (strncmp(upath, "unix:///", 8) == 0)
         upath += 7;
+    else if (strncmp(upath, "unix://", 7) == 0)
+        return -1;  /* reject non-empty, non-localhost authority */
     if (*upath == '\0') return -1;
 
     size_t pathlen = strlen(upath);
@@ -177,7 +212,36 @@ static int try_connect(jgd_transport_t *t) {
     t->connected = 1;
     return 0;
 #else
-    /* Windows: only TCP is supported */
+    /* Windows: try named pipe, otherwise fail */
+    {
+        char pipe_buf[512];
+        if (parse_npipe(t->socket_path, pipe_buf, sizeof(pipe_buf)) == 0) {
+            HANDLE h = INVALID_HANDLE_VALUE;
+            const int max_attempts = 5;
+            int attempt;
+            for (attempt = 0; attempt < max_attempts; ++attempt) {
+                h = CreateFileA(
+                    pipe_buf,
+                    GENERIC_READ | GENERIC_WRITE,
+                    0, NULL, OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL, NULL);
+                if (h != INVALID_HANDLE_VALUE) break;
+                if (GetLastError() != ERROR_PIPE_BUSY) return -1;
+                if (!WaitNamedPipeA(pipe_buf, 500)) {
+                    if (GetLastError() != ERROR_SEM_TIMEOUT) return -1;
+                }
+            }
+            if (h == INVALID_HANDLE_VALUE) return -1;
+            DWORD mode = PIPE_READMODE_BYTE;
+            if (!SetNamedPipeHandleState(h, &mode, NULL, NULL)) {
+                CloseHandle(h);
+                return -1;
+            }
+            t->pipe_handle = h;
+            t->connected = 1;
+            return 0;
+        }
+    }
     return -1;
 #endif
 }
@@ -202,6 +266,28 @@ int transport_connect(jgd_transport_t *t) {
 int transport_send(jgd_transport_t *t, const char *data, size_t len) {
     if (!t->connected) return -1;
 
+#ifdef _WIN32
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
+        HANDLE h = (HANDLE)t->pipe_handle;
+        size_t sent = 0;
+        while (sent < len) {
+            DWORD written = 0;
+            if (!WriteFile(h, data + sent, (DWORD)(len - sent), &written, NULL) || written == 0) {
+                t->connected = 0;
+                return -1;
+            }
+            sent += written;
+        }
+        char nl = '\n';
+        DWORD nw = 0;
+        if (!WriteFile(h, &nl, 1, &nw, NULL) || nw == 0) {
+            t->connected = 0;
+            return -1;
+        }
+        return 0;
+    }
+#endif
+
     sock_t s = (sock_t)t->fd;
     size_t sent = 0;
     while (sent < len) {
@@ -222,6 +308,16 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
 
 int transport_has_data(jgd_transport_t *t) {
     if (!t->connected) return 0;
+#ifdef _WIN32
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
+        DWORD avail = 0;
+        if (!PeekNamedPipe((HANDLE)t->pipe_handle, NULL, 0, NULL, &avail, NULL)) {
+            t->connected = 0;
+            return 0;
+        }
+        return avail > 0 ? 1 : 0;
+    }
+#endif
     sock_t s = (sock_t)t->fd;
 #ifndef _WIN32
     struct pollfd pfd;
@@ -239,6 +335,37 @@ int transport_has_data(jgd_transport_t *t) {
 
 int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeout_ms) {
     if (!t->connected) return -1;
+
+#ifdef _WIN32
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
+        HANDLE h = (HANDLE)t->pipe_handle;
+        DWORD avail = 0;
+        int elapsed = 0;
+        for (;;) {
+            if (!PeekNamedPipe(h, NULL, 0, NULL, &avail, NULL)) {
+                t->connected = 0;
+                return -1;
+            }
+            if (avail > 0) break;
+            if (elapsed >= timeout_ms) return -1;
+            Sleep(10);
+            elapsed += 10;
+        }
+        size_t pos = 0;
+        while (pos < bufsize - 1) {
+            char c;
+            DWORD nread = 0;
+            if (!ReadFile(h, &c, 1, &nread, NULL) || nread == 0) {
+                t->connected = 0;
+                return -1;
+            }
+            if (c == '\n') break;
+            buf[pos++] = c;
+        }
+        buf[pos] = '\0';
+        return (int)pos;
+    }
+#endif
 
     sock_t s = (sock_t)t->fd;
 
@@ -272,6 +399,12 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
 }
 
 void transport_close(jgd_transport_t *t) {
+#ifdef _WIN32
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
+        CloseHandle((HANDLE)t->pipe_handle);
+        t->pipe_handle = INVALID_HANDLE_VALUE;
+    }
+#endif
     if (t->fd != (int)SOCK_INVALID) {
         SOCK_CLOSE((sock_t)t->fd);
         t->fd = (int)SOCK_INVALID;

@@ -5,8 +5,11 @@
 
 typedef struct {
     int fd;
-    char socket_path[512];  /* URI (tcp://host:port, unix:///path) or raw path */
+    char socket_path[512];  /* URI (tcp://host:port, unix:///path, npipe:///name; localhost variant accepted) or raw path */
     int connected;
+#ifdef _WIN32
+    void *pipe_handle;  /* HANDLE; INVALID_HANDLE_VALUE when unused */
+#endif
 } jgd_transport_t;
 
 void transport_init(jgd_transport_t *t);

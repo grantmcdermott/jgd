@@ -30,6 +30,22 @@
       Warning in `jgd()`:
       jgd: could not connect to renderer. Plots will be recorded but not displayed until connection is established.
 
+# Unix: unix://localhost/ URI accepted
+
+    Code
+      jgd(socket = "unix://localhost/nonexistent-jgd-localhost-test.sock")
+    Condition
+      Warning in `jgd()`:
+      jgd: could not connect to renderer. Plots will be recorded but not displayed until connection is established.
+
+# Unix: drawing works with unix://localhost/ URI
+
+    Code
+      jgd(socket = "unix://localhost/nonexistent-jgd-localhost-draw.sock")
+    Condition
+      Warning in `jgd()`:
+      jgd: could not connect to renderer. Plots will be recorded but not displayed until connection is established.
+
 # TCP: jgd() opens a device and dev.off() closes it
 
     Code

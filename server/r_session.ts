@@ -1,5 +1,17 @@
 import type { Hub } from "./hub.ts";
 
+/**
+ * Narrow interface covering only the members that RSession and test helpers
+ * need from a connection.  Both Deno.Conn and PipeConn satisfy this, so the
+ * accept loop and test code can pass either without unsafe casts.
+ */
+export interface RConn {
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<Uint8Array>;
+  write(p: Uint8Array): Promise<number>;
+  close(): void;
+}
+
 let sessionCounter = 0;
 
 /**
@@ -12,13 +24,13 @@ export class RSession {
   resizePending = false;
   lastResizeW = 0;
   lastResizeH = 0;
-  private conn: Deno.Conn;
+  private conn: RConn;
   private hub: Hub;
   private encoder = new TextEncoder();
   /** Promise chain that serialises writes so they never interleave. */
   private writeQueue: Promise<void> = Promise.resolve();
 
-  constructor(conn: Deno.Conn, hub: Hub) {
+  constructor(conn: RConn, hub: Hub) {
     sessionCounter++;
     this.id = `conn-${sessionCounter}`;
     this.conn = conn;
@@ -110,7 +122,7 @@ function extractSessionId(line: string): string {
 }
 
 /** Write all bytes to a writer, handling partial writes. */
-async function writeAll(w: Deno.Conn, data: Uint8Array): Promise<void> {
+async function writeAll(w: RConn, data: Uint8Array): Promise<void> {
   let written = 0;
   while (written < data.byteLength) {
     written += await w.write(data.subarray(written));

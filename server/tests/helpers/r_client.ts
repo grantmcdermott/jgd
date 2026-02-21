@@ -4,18 +4,21 @@ import type {
   MetricsRequestMessage,
   ServerMessage,
 } from "./types.ts";
+import { PipeConn } from "../../named_pipe.ts";
+import type { RConn } from "../../r_session.ts";
+import { connect as nodeConnect } from "node:net";
 
 /**
  * Simulates an R session connecting to the server via Unix socket or TCP (NDJSON).
  */
 export class RClient {
-  #conn: Deno.Conn | null = null;
+  #conn: RConn | null = null;
   #reader: ReadableStreamDefaultReader<string> | null = null;
   #writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   #encoder = new TextEncoder();
   #buffer = "";
 
-  /** Connect to the server's socket. Supports Unix path or "tcp:PORT" format. */
+  /** Connect to the server's socket. Supports Unix path, "tcp:PORT", or "npipe:///NAME". */
   async connect(socketPath: string): Promise<void> {
     if (socketPath.startsWith("tcp:")) {
       const port = parseInt(socketPath.slice(4), 10);
@@ -24,6 +27,14 @@ export class RClient {
         hostname: "127.0.0.1",
         port,
       });
+    } else if (socketPath.startsWith("npipe:///")) {
+      const pipeName = socketPath.slice("npipe:///".length);
+      const pipePath = `\\\\.\\pipe\\${pipeName}`;
+      // On Windows, the server may not have a new pipe instance ready
+      // immediately after accepting the previous connection (EBUSY).
+      // Retry with backoff to handle this inherent race.
+      const socket = await connectPipeWithRetry(pipePath);
+      this.#conn = new PipeConn(socket);
     } else {
       this.#conn = await Deno.connect({
         transport: "unix",
@@ -140,4 +151,36 @@ function createCancellableTimeout(ms: number): {
     promise,
     cancel: () => clearTimeout(timer),
   };
+}
+
+/**
+ * Connect to a named pipe with retry.
+ * Windows named pipes may return EBUSY when the server hasn't prepared
+ * a new pipe instance after accepting the previous connection.
+ */
+async function connectPipeWithRetry(
+  pipePath: string,
+  maxRetries = 10,
+  baseDelayMs = 50,
+): Promise<import("node:net").Socket> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await new Promise<import("node:net").Socket>(
+        (resolve, reject) => {
+          const s = nodeConnect(pipePath, () => {
+            s.removeListener("error", reject);
+            resolve(s);
+          });
+          s.once("error", reject);
+        },
+      );
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === "EBUSY" && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
 }

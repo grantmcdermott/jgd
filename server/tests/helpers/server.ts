@@ -19,8 +19,11 @@ export class TestServer {
 
   constructor(opts?: { tcp?: boolean }) {
     this.tmpDir = Deno.makeTempDirSync({ prefix: "jgd-test-" });
-    this.useTcp = opts?.tcp ?? (Deno.build.os === "windows");
-    this.socketPath = this.useTcp
+    this.useTcp = opts?.tcp ?? false;
+    // TCP and named pipe (Windows default) paths are both auto-generated
+    // by the server, so we parse them from server output.
+    const needsOutputParsing = this.useTcp || Deno.build.os === "windows";
+    this.socketPath = needsOutputParsing
       ? ""  // resolved after server starts
       : join(this.tmpDir, `jgd-${crypto.randomUUID().slice(0, 8)}.sock`);
   }
@@ -124,6 +127,11 @@ export class TestServer {
 
     if (this.httpPort === 0) {
       throw new Error("Failed to detect HTTP port from server output");
+    }
+
+    const needsOutputParsing = this.useTcp || Deno.build.os === "windows";
+    if (needsOutputParsing && !this.socketPath) {
+      throw new Error("Failed to detect socket path from server output");
     }
 
     this.pid = this.#process.pid;
