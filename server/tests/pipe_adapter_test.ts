@@ -1,8 +1,8 @@
 /**
  * Unit tests for PipeConn / PipeListener adapters.
  *
- * These use node:net Unix sockets on Linux/macOS, so they run on all
- * platforms without requiring Windows named pipes.
+ * On POSIX these use Unix sockets via node:net; on Windows they use
+ * real named pipes.  Both are supported by node:net transparently.
  */
 
 import { assertEquals } from "@std/assert";
@@ -10,8 +10,18 @@ import { PipeListener, PipeConn } from "../named_pipe.ts";
 import { connect as nodeConnect } from "node:net";
 import { join } from "@std/path";
 
-/** Create a temporary Unix socket path for testing. Returns [socketPath, cleanup]. */
+const isWindows = Deno.build.os === "windows";
+
+/**
+ * Create a pipe/socket path for testing. Returns [path, cleanup].
+ * On Windows: \\.\pipe\jgd-test-<random> (named pipe, no file cleanup needed).
+ * On POSIX:  <tmpdir>/test.sock (Unix socket, directory removed on cleanup).
+ */
 function tmpPipePath(): [string, () => void] {
+  if (isWindows) {
+    const id = crypto.randomUUID().replace(/-/g, "").slice(0, 16);
+    return [`\\\\.\\pipe\\jgd-test-${id}`, () => {}];
+  }
   const dir = Deno.makeTempDirSync({ prefix: "jgd-pipe-test-" });
   const cleanup = () => {
     try { Deno.removeSync(dir, { recursive: true }); } catch { /* best effort */ }

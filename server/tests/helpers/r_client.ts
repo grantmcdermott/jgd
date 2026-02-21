@@ -30,12 +30,10 @@ export class RClient {
     } else if (socketPath.startsWith("npipe:///")) {
       const pipeName = socketPath.slice("npipe:///".length);
       const pipePath = `\\\\.\\pipe\\${pipeName}`;
-      const socket = await new Promise<import("node:net").Socket>(
-        (resolve, reject) => {
-          const s = nodeConnect(pipePath, () => resolve(s));
-          s.once("error", reject);
-        },
-      );
+      // On Windows, the server may not have a new pipe instance ready
+      // immediately after accepting the previous connection (EBUSY).
+      // Retry with backoff to handle this inherent race.
+      const socket = await connectPipeWithRetry(pipePath);
       this.#conn = new PipeConn(socket);
     } else {
       this.#conn = await Deno.connect({
@@ -153,4 +151,33 @@ function createCancellableTimeout(ms: number): {
     promise,
     cancel: () => clearTimeout(timer),
   };
+}
+
+/**
+ * Connect to a named pipe with retry.
+ * Windows named pipes may return EBUSY when the server hasn't prepared
+ * a new pipe instance after accepting the previous connection.
+ */
+async function connectPipeWithRetry(
+  pipePath: string,
+  maxRetries = 10,
+  baseDelayMs = 50,
+): Promise<import("node:net").Socket> {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await new Promise<import("node:net").Socket>(
+        (resolve, reject) => {
+          const s = nodeConnect(pipePath, () => resolve(s));
+          s.once("error", reject);
+        },
+      );
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === "EBUSY" && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, baseDelayMs * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
 }
