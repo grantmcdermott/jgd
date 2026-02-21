@@ -77,19 +77,27 @@ static int parse_tcp(const char *path, struct sockaddr_in *out) {
 }
 
 #ifdef _WIN32
-/* Parse npipe:///NAME → \\.\pipe\NAME. Returns 0 on success, -1 if not npipe URI. */
+/* Parse npipe:///NAME or npipe://localhost/NAME → \\.\pipe\NAME.
+ * Returns 0 on success, -1 if not an npipe URI. */
 static int parse_npipe(const char *path, char *buf, size_t bufsize) {
-    if (strncmp(path, "npipe:///", 9) != 0) return -1;
+    const char *name;
+    if (strncmp(path, "npipe://localhost/", 18) == 0) {
+        name = path + 18;
+    } else if (strncmp(path, "npipe:///", 9) == 0) {
+        name = path + 9;
+    } else {
+        return -1;
+    }
 
     /* "\\\\.\\pipe\\" is 9 characters; plus 1 for the terminating NUL. */
     if (bufsize <= 10) return -1;
 
     {
-        size_t name_len = strlen(path + 9);
+        size_t name_len = strlen(name);
         if (name_len > bufsize - 10) return -1;
     }
 
-    snprintf(buf, bufsize, "\\\\.\\pipe\\%s", path + 9);
+    snprintf(buf, bufsize, "\\\\.\\pipe\\%s", name);
     return 0;
 }
 #endif
@@ -173,9 +181,11 @@ static int try_connect(jgd_transport_t *t) {
     }
 
 #ifndef _WIN32
-    /* Unix domain socket: unix:///path or raw /path */
+    /* Unix domain socket: unix:///path, unix://localhost/path, or raw /path */
     const char *upath = t->socket_path;
-    if (strncmp(upath, "unix://", 7) == 0)
+    if (strncmp(upath, "unix://localhost/", 17) == 0)
+        upath += 16;  /* keep leading "/" */
+    else if (strncmp(upath, "unix://", 7) == 0)
         upath += 7;
     if (*upath == '\0') return -1;
 

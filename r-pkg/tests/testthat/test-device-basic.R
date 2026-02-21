@@ -31,6 +31,23 @@ test_that("Unix: drawing works without server connection", {
   dev.off()
 })
 
+# --- Unix socket with localhost authority (skip on Windows) ---
+
+test_that("Unix: unix://localhost/ URI accepted", {
+  skip_on_os("windows")
+  expect_snapshot(jgd(socket = "unix://localhost/nonexistent-jgd-localhost-test.sock"))
+  expect_identical(names(dev.cur()), "jgd")
+  dev.off()
+})
+
+test_that("Unix: drawing works with unix://localhost/ URI", {
+  skip_on_os("windows")
+  expect_snapshot(jgd(socket = "unix://localhost/nonexistent-jgd-localhost-draw.sock"))
+  plot.new()
+  rect(0, 0, 1, 1)
+  dev.off()
+})
+
 # --- TCP tests (cross-platform) ---
 
 test_that("TCP: jgd() opens a device and dev.off() closes it", {
@@ -57,6 +74,39 @@ test_that("TCP: drawing works without server connection", {
   plot.new()
   rect(0, 0, 1, 1)
   text(0.5, 0.5, "test")
+  dev.off()
+})
+
+# --- Named pipe tests (Windows only) ---
+
+test_that("npipe: npipe:/// URI accepted", {
+  skip_if(.Platform$OS.type != "windows", "Named pipes only available on Windows")
+  expect_warning(
+    jgd(socket = "npipe:///nonexistent-jgd-test"),
+    "could not connect to renderer"
+  )
+  expect_identical(names(dev.cur()), "jgd")
+  dev.off()
+})
+
+test_that("npipe: npipe://localhost/ URI accepted", {
+  skip_if(.Platform$OS.type != "windows", "Named pipes only available on Windows")
+  expect_warning(
+    jgd(socket = "npipe://localhost/nonexistent-jgd-localhost-test"),
+    "could not connect to renderer"
+  )
+  expect_identical(names(dev.cur()), "jgd")
+  dev.off()
+})
+
+test_that("npipe: drawing works with npipe://localhost/ URI", {
+  skip_if(.Platform$OS.type != "windows", "Named pipes only available on Windows")
+  expect_warning(
+    jgd(socket = "npipe://localhost/nonexistent-jgd-localhost-draw"),
+    "could not connect to renderer"
+  )
+  plot.new()
+  rect(0, 0, 1, 1)
   dev.off()
 })
 

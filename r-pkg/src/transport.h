@@ -5,7 +5,7 @@
 
 typedef struct {
     int fd;
-    char socket_path[512];  /* URI (tcp://host:port, unix:///path, npipe:///name) or raw path */
+    char socket_path[512];  /* URI (tcp://host:port, unix:///path, npipe:///name; localhost variant accepted) or raw path */
     int connected;
 #ifdef _WIN32
     int use_pipe;       /* 1 = named pipe, 0 = TCP socket */
