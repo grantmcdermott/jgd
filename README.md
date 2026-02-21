@@ -4,8 +4,10 @@
 
 **jgd** is a lightweight (C-based, zero dependency) R graphics device. It
 works by serializing R plotting operations into JSON and then streaming to
-an external renderer. The main application today is a VS Code extension that
-offers nice R graphics display and UX features, as per this screenshot:
+an external renderer. A Deno-based reference server provides the primary
+rendering environment, serving a browser frontend over HTTP/WebSocket. A
+VS Code extension is also available as a demo client. Here's a screenshot
+of jgd running in VS Code:
 
 ![Screenshot of jgd running in VS Code](jgd-ss.png)
 
@@ -14,36 +16,39 @@ current development focus, in principle any client able to read
 (newline-delimited) JSON could use it to render R plots.
 
 **Caveats:** The package is experimental and may have some rough edges despite
-my best efforts at thorough local testing. For example, I would appreciate some
-help testing a validating on Windows (which I don't have easy access to).
+my best efforts at thorough local testing. The communication protocol between
+R and the renderer is still in development and not yet stable.
 Finally, I want to be transparent that this project has made _heavy_ use of
 AI-assisted pair programming (Claude). It is highly doubtful that I would have
 been able to put this together without AI help.
 
 ## Installation
 
-At present, **jgd** comprises two parts: an R package and a VS Code (VSIX)
-extension. To install these two components, first clone this repo to your local
-system.
-
-```bash
-git clone https://github.com/grantmcdermott/jgd.git
-cd jgd
-```
-
 ### R package
 
-```bash
-## Build from local source
-cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
-
-## Or, install from R (requires devtools + R Tools if on Windows)
-# devtools::install("r-pkg")
+```r
+pak::pak("grantmcdermott/jgd/r-pkg")
 ```
 
-### VS Code extension
+### Reference server (Deno)
 
-Download the `.vsix` from the
+The reference server provides a browser-based renderer over HTTP/WebSocket.
+Run it directly with Deno (no install needed):
+
+```bash
+deno run https://raw.githubusercontent.com/grantmcdermott/jgd/refs/heads/main/server/main.ts
+```
+
+Or clone the repo and run locally:
+
+```bash
+cd server && deno task start
+```
+
+### VS Code extension (optional)
+
+A VS Code extension is available as a demo client. Download the `.vsix` from
+the
 [nightly release](https://github.com/grantmcdermott/jgd/releases/tag/nightly),
 then install it:
 
@@ -61,12 +66,10 @@ code --extensionDevelopmentPath="$(pwd)"
 
 ## Usage
 
-Assuming that you already have the main [R
-extension](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r),
-simply run the following script from VS Code. (If you don't have the extension,
-open up a terminal inside VS Code, start R, and then copy the code across
-manually.) You should see the same output as shown in the screenshot at the top
-of this README.
+Start the reference server, then open `http://127.0.0.1:<port>/` in your
+browser (the URL is printed on startup). In a separate terminal, start R and
+run the following script. If you're using the VS Code extension instead, just
+run the script from the VS Code R terminal.
 
 ```r
 library(jgd)
@@ -149,12 +152,13 @@ latter cases.
 │  │                     → socket client       │──┼──┐
 │  └───────────────────────────────────────────┘  │  │
 └─────────────────────────────────────────────────┘  │
-     Unix domain socket (macOS/Linux) or             │
-     TCP localhost (Windows) — NDJSON                │
+     Unix domain sockets (macOS/Linux),              │
+     named pipes (Windows), or TCP — NDJSON          │
 ┌─────────────────────────────────────────────────┐  │
-│  Renderer (e.g. VS Code extension)              │◄─┘
+│  Server (Deno reference server or VS Code ext.) │◄─┘
 │                                                 │
-│  Socket server → Plot history → Canvas2D webview│
+│  Listener → Plot history → Canvas2D renderer    │
+│                             (browser / webview) │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -170,8 +174,9 @@ using the browser's Canvas2D API.
   on any platform R supports. No Boost, no fmt, no Asio, no system graphics
   libraries.
 - **Frontend-agnostic protocol.** The JSON ops format is a simple, versioned
-  schema. The VS Code extension is the primary client, but the same stream
-  could drive a browser tab, a Neovim plugin, or any other renderer.
+  schema. The Deno reference server and VS Code extension are the current
+  clients, but the same stream could drive a Neovim plugin or any other
+  renderer.
 - **Incremental updates.** Adding a line to an existing plot sends only the new
   operations, not the entire plot. The renderer appends to the current frame.
 - **Client-side scaling.** The renderer can replay the same operations at any
@@ -187,17 +192,20 @@ using the browser's Canvas2D API.
 - **Incremental updates**: `plot()` + `lines()` = one history entry
 - **Text rotation**, **transparent colors**, **clip regions**, **line types**,
   **raster images** (base64-encoded PNG)
-- **Auto-discovery**: `JGD_SOCKET` environment variable injected into VS Code
-  terminals
+- **Auto-discovery**: `JGD_SOCKET` environment variable or `jgd-discovery.json`
+  file for automatic connection
 - **Export**: PNG and SVG from the toolbar dropdown, with custom dimensions
   (inches + DPI)
-- **Cross-platform**: Unix domain sockets on macOS/Linux, TCP on Windows
+- **Cross-platform**: Unix domain sockets on macOS/Linux, named pipes on
+  Windows (default), TCP on all platforms
+- **Reference server**: Deno-based server with browser frontend over
+  HTTP/WebSocket
 
 ## Roadmap
 
-- [x] **Windows support**: TCP transport as alternative to Unix domain sockets
-- [ ] **Browser frontend**: Standalone renderer served over HTTP/WebSocket for
-  use with Neovim, Emacs, or terminal R
+- [x] **Windows support**: Named pipes (default) and TCP transport
+- [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
+- [ ] **Protocol stabilization**: Stabilize and document the NDJSON protocol
 - [ ] **CRAN submission**: Package the R side for CRAN distribution
 - [ ] **R extension integration**: Incorporate the code from this package into
   the main VS Code R extension (if the upstream maintainers agree).
@@ -221,12 +229,16 @@ r-pkg/
 │   ├── callbacks.c        # All graphics callbacks (line, rect, text, ...)
 │   ├── display_list.c     # Page state and JSON frame serialization
 │   ├── json_writer.c      # Streaming JSON builder (no dependencies)
-│   ├── transport.c        # Socket client + discovery (Unix + TCP)
+│   ├── transport.c        # Socket/pipe/TCP client + discovery
 │   ├── metrics.c          # Approximation-based font metrics
 │   ├── color.c            # R color → CSS rgba() conversion
 │   ├── png_encoder.c      # Minimal uncompressed PNG encoder + base64
 │   └── init.c             # .Call registration
 └── tests/testthat/        # Unit tests (transport, frame output, etc.)
+
+server/                    # Deno reference server (HTTP/WebSocket renderer)
+
+tests/                     # End-to-end tests and benchmarks
 
 vscode-ext/
 ├── package.json
