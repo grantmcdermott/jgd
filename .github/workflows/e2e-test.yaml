@@ -53,3 +53,7 @@ jobs:
         working-directory: tests
         env:
           ASTRAL_BIN_ARGS: "--no-sandbox --disable-dev-shm-usage"
+
+      - name: Run benchmarks
+        run: deno task bench
+        working-directory: tests
