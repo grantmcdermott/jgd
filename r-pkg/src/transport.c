@@ -337,8 +337,16 @@ int transport_has_data(jgd_transport_t *t) {
 }
 
 /* Extract one newline-terminated line from the read buffer.
- * Returns line length (>= 0) on success, -1 if no complete line. */
+ * Returns line length (>= 0) on success, -1 if no complete line.
+ *
+ * TODO: When a line exceeds the caller's bufsize, the output is silently
+ * truncated while the full line is consumed from the internal buffer.
+ * The return value (truncated length) is indistinguishable from a normal
+ * short line, so callers cannot detect truncation.  Consider returning
+ * the original linelen or a distinct error code. */
 static int readbuf_extract_line(jgd_transport_t *t, char *buf, size_t bufsize) {
+    if (bufsize == 0) return -1;
+
     char *nl = (char *)memchr(t->readbuf, '\n', t->readbuf_len);
     if (!nl) return -1;
 
