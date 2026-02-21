@@ -87,7 +87,7 @@ Deno.test({
       browser.sendResize(800, 600);
       await delay(200);
 
-      await t.step("dev.off sends close message", async () => {
+      await t.step("dev.off flushes frame and sends close message", async () => {
         const result = await runR(
           'jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()',
           server.socketPath,
