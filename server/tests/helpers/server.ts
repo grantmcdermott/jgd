@@ -129,6 +129,11 @@ export class TestServer {
       throw new Error("Failed to detect HTTP port from server output");
     }
 
+    const needsOutputParsing = this.useTcp || Deno.build.os === "windows";
+    if (needsOutputParsing && !this.socketPath) {
+      throw new Error("Failed to detect socket path from server output");
+    }
+
     this.pid = this.#process.pid;
   }
 

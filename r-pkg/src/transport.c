@@ -80,6 +80,15 @@ static int parse_tcp(const char *path, struct sockaddr_in *out) {
 /* Parse npipe:///NAME → \\.\pipe\NAME. Returns 0 on success, -1 if not npipe URI. */
 static int parse_npipe(const char *path, char *buf, size_t bufsize) {
     if (strncmp(path, "npipe:///", 9) != 0) return -1;
+
+    /* "\\\\.\\pipe\\" is 9 characters; plus 1 for the terminating NUL. */
+    if (bufsize <= 10) return -1;
+
+    {
+        size_t name_len = strlen(path + 9);
+        if (name_len > bufsize - 10) return -1;
+    }
+
     snprintf(buf, bufsize, "\\\\.\\pipe\\%s", path + 9);
     return 0;
 }
