@@ -201,7 +201,7 @@ async function acceptLoop(
   activeConnections: Set<Promise<void>>,
 ): Promise<void> {
   for await (const conn of listener) {
-    const session = new RSession(conn as Deno.Conn, hub);
+    const session = new RSession(conn, hub);
     console.error(`R connection accepted: ${session.id}`);
     const done = session.run().finally(() => {
       activeConnections.delete(done);

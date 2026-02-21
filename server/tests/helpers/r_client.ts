@@ -7,11 +7,18 @@ import type {
 import { PipeConn } from "../../named_pipe.ts";
 import { connect as nodeConnect } from "node:net";
 
+/** Members of Deno.Conn / PipeConn that RClient actually uses. */
+interface StreamConn {
+  readonly readable: ReadableStream<Uint8Array>;
+  readonly writable: WritableStream<Uint8Array>;
+  close(): void;
+}
+
 /**
  * Simulates an R session connecting to the server via Unix socket or TCP (NDJSON).
  */
 export class RClient {
-  #conn: Deno.Conn | null = null;
+  #conn: StreamConn | null = null;
   #reader: ReadableStreamDefaultReader<string> | null = null;
   #writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   #encoder = new TextEncoder();
@@ -35,7 +42,7 @@ export class RClient {
           s.once("error", reject);
         },
       );
-      this.#conn = new PipeConn(socket) as unknown as Deno.Conn;
+      this.#conn = new PipeConn(socket);
     } else {
       this.#conn = await Deno.connect({
         transport: "unix",

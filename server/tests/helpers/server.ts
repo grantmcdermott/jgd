@@ -20,11 +20,9 @@ export class TestServer {
   constructor(opts?: { tcp?: boolean }) {
     this.tmpDir = Deno.makeTempDirSync({ prefix: "jgd-test-" });
     this.useTcp = opts?.tcp ?? false;
-    // On Windows without explicit TCP, the server uses named pipes.
-    // Both TCP and named pipe paths are auto-generated and parsed from
-    // server output, so socketPath starts empty.
-    const needsOutputParsing = this.useTcp ||
-      (Deno.build.os === "windows" && !this.useTcp);
+    // TCP and named pipe (Windows default) paths are both auto-generated
+    // by the server, so we parse them from server output.
+    const needsOutputParsing = this.useTcp || Deno.build.os === "windows";
     this.socketPath = needsOutputParsing
       ? ""  // resolved after server starts
       : join(this.tmpDir, `jgd-${crypto.randomUUID().slice(0, 8)}.sock`);

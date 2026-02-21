@@ -12,10 +12,25 @@ import { createServer, Socket } from "node:net";
 import type { Server } from "node:net";
 
 // ---------------------------------------------------------------------------
-// PipeConn — wraps a node:net Socket as a Deno.Conn-compatible object
+// RConn — the subset of Deno.Conn that RSession actually uses
 // ---------------------------------------------------------------------------
 
-/** Minimal Deno.Conn-compatible wrapper around a node:net Socket. */
+/**
+ * Narrow interface covering only the members RSession needs.
+ * Both Deno.Conn and PipeConn satisfy this, so accept-loop and
+ * test code can pass either without unsafe casts.
+ */
+export interface RConn {
+  readonly readable: ReadableStream<Uint8Array>;
+  write(p: Uint8Array): Promise<number>;
+  close(): void;
+}
+
+// ---------------------------------------------------------------------------
+// PipeConn — wraps a node:net Socket as an RConn-compatible object
+// ---------------------------------------------------------------------------
+
+/** Minimal RConn-compatible wrapper around a node:net Socket. */
 export class PipeConn {
   readonly readable: ReadableStream<Uint8Array>;
   readonly writable: WritableStream<Uint8Array>;
@@ -108,7 +123,9 @@ export class PipeListener {
   #server: Server;
   #closed = false;
 
-  // Queue for accepted connections (unbounded).
+  // Queue for accepted connections.  Unbounded because this is a local
+  // dev-tool server that typically sees one or two R sessions at a time;
+  // no backpressure mechanism is needed.
   #queue: PipeConn[] = [];
   // Waiter: resolve/reject for the next accept() call.
   #waiter: {
