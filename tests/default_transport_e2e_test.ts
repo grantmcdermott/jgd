@@ -89,7 +89,7 @@ Deno.test({
 
       await t.step("dev.off sends close message", async () => {
         const result = await runR(
-          'jgd(width=8, height=6, dpi=96); plot.new(); dev.off()',
+          'jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()',
           server.socketPath,
         );
         if (!result.success) {
