@@ -166,6 +166,6 @@ if (import.meta.main) {
     Deno.exit(0);
   });
 
-  // Keep alive
+  // Keep the process alive until SIGINT (never resolves intentionally)
   await new Promise(() => {});
 }
