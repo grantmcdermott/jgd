@@ -40,7 +40,10 @@ async function connectPipe(pipePath: string): Promise<PipeConn> {
     try {
       const s = await new Promise<import("node:net").Socket>(
         (resolve, reject) => {
-          const sock = nodeConnect(pipePath, () => resolve(sock));
+          const sock = nodeConnect(pipePath, () => {
+            sock.removeListener("error", reject);
+            resolve(sock);
+          });
           sock.once("error", reject);
         },
       );

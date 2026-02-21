@@ -216,11 +216,19 @@ static int try_connect(jgd_transport_t *t) {
     {
         char pipe_buf[512];
         if (parse_npipe(t->socket_path, pipe_buf, sizeof(pipe_buf)) == 0) {
-            HANDLE h = CreateFileA(
-                pipe_buf,
-                GENERIC_READ | GENERIC_WRITE,
-                0, NULL, OPEN_EXISTING,
-                FILE_ATTRIBUTE_NORMAL, NULL);
+            HANDLE h = INVALID_HANDLE_VALUE;
+            const int max_attempts = 5;
+            int attempt;
+            for (attempt = 0; attempt < max_attempts; ++attempt) {
+                h = CreateFileA(
+                    pipe_buf,
+                    GENERIC_READ | GENERIC_WRITE,
+                    0, NULL, OPEN_EXISTING,
+                    FILE_ATTRIBUTE_NORMAL, NULL);
+                if (h != INVALID_HANDLE_VALUE) break;
+                if (GetLastError() != ERROR_PIPE_BUSY) return -1;
+                if (!WaitNamedPipeA(pipe_buf, 50)) return -1;
+            }
             if (h == INVALID_HANDLE_VALUE) return -1;
             DWORD mode = PIPE_READMODE_BYTE;
             if (!SetNamedPipeHandleState(h, &mode, NULL, NULL)) {

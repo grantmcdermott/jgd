@@ -167,7 +167,10 @@ async function connectPipeWithRetry(
     try {
       return await new Promise<import("node:net").Socket>(
         (resolve, reject) => {
-          const s = nodeConnect(pipePath, () => resolve(s));
+          const s = nodeConnect(pipePath, () => {
+            s.removeListener("error", reject);
+            resolve(s);
+          });
           s.once("error", reject);
         },
       );

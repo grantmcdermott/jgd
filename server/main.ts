@@ -192,7 +192,7 @@ async function main(): Promise<void> {
 }
 
 /**
- * Accept loop for R connections (Unix socket or TCP).
+ * Accept loop for R connections (Unix socket / named pipe / TCP).
  * Spawns an RSession for each accepted connection.
  */
 async function acceptLoop(
