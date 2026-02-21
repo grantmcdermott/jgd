@@ -32,6 +32,7 @@ static void ensure_wsa(void) {
 #include <unistd.h>
 #include <fcntl.h>
 #include <poll.h>
+#include <strings.h>  /* strncasecmp */
 typedef int sock_t;
 #define SOCK_INVALID (-1)
 #define SOCK_CLOSE close
@@ -81,7 +82,7 @@ static int parse_tcp(const char *path, struct sockaddr_in *out) {
  * Returns 0 on success, -1 if not an npipe URI. */
 static int parse_npipe(const char *path, char *buf, size_t bufsize) {
     const char *name;
-    if (strncmp(path, "npipe://localhost/", 18) == 0) {
+    if (_strnicmp(path, "npipe://localhost/", 18) == 0) {
         name = path + 18;
     } else if (strncmp(path, "npipe:///", 9) == 0) {
         name = path + 9;
@@ -183,10 +184,12 @@ static int try_connect(jgd_transport_t *t) {
 #ifndef _WIN32
     /* Unix domain socket: unix:///path, unix://localhost/path, or raw /path */
     const char *upath = t->socket_path;
-    if (strncmp(upath, "unix://localhost/", 17) == 0)
+    if (strncasecmp(upath, "unix://localhost/", 17) == 0)
         upath += 16;  /* keep leading "/" */
-    else if (strncmp(upath, "unix://", 7) == 0)
+    else if (strncmp(upath, "unix:///", 8) == 0)
         upath += 7;
+    else if (strncmp(upath, "unix://", 7) == 0)
+        return -1;  /* reject non-empty, non-localhost authority */
     if (*upath == '\0') return -1;
 
     size_t pathlen = strlen(upath);
