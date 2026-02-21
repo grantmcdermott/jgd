@@ -107,6 +107,7 @@ void transport_init(jgd_transport_t *t) {
     t->fd = (int)SOCK_INVALID;
     t->socket_path[0] = '\0';
     t->connected = 0;
+    t->readbuf_len = 0;
 #ifdef _WIN32
     t->pipe_handle = INVALID_HANDLE_VALUE;
 #endif
@@ -308,6 +309,8 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
 
 int transport_has_data(jgd_transport_t *t) {
     if (!t->connected) return 0;
+    /* A complete line already buffered? */
+    if (memchr(t->readbuf, '\n', t->readbuf_len) != NULL) return 1;
 #ifdef _WIN32
     if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         DWORD avail = 0;
@@ -333,12 +336,46 @@ int transport_has_data(jgd_transport_t *t) {
 #endif
 }
 
+/* Extract one newline-terminated line from the read buffer.
+ * Returns line length (>= 0) on success, -1 if no complete line.
+ *
+ * TODO: When a line exceeds the caller's bufsize, the output is silently
+ * truncated while the full line is consumed from the internal buffer.
+ * The return value (truncated length) is indistinguishable from a normal
+ * short line, so callers cannot detect truncation.  Consider returning
+ * the original linelen or a distinct error code. */
+static int readbuf_extract_line(jgd_transport_t *t, char *buf, size_t bufsize) {
+    if (bufsize == 0) return -1;
+
+    char *nl = (char *)memchr(t->readbuf, '\n', t->readbuf_len);
+    if (!nl) return -1;
+
+    size_t linelen = (size_t)(nl - t->readbuf);
+    size_t copylen = linelen < bufsize - 1 ? linelen : bufsize - 1;
+    memcpy(buf, t->readbuf, copylen);
+    buf[copylen] = '\0';
+
+    /* Consume the line + newline from the buffer */
+    size_t consumed = linelen + 1;
+    t->readbuf_len -= consumed;
+    if (t->readbuf_len > 0) {
+        memmove(t->readbuf, t->readbuf + consumed, t->readbuf_len);
+    }
+    return (int)copylen;
+}
+
 int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeout_ms) {
     if (!t->connected) return -1;
+
+    /* Fast path: a complete line is already buffered */
+    int n = readbuf_extract_line(t, buf, bufsize);
+    if (n >= 0) return n;
 
 #ifdef _WIN32
     if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         HANDLE h = (HANDLE)t->pipe_handle;
+
+        /* Wait for initial data with the caller's timeout */
         DWORD avail = 0;
         int elapsed = 0;
         for (;;) {
@@ -351,24 +388,33 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
             Sleep(10);
             elapsed += 10;
         }
-        size_t pos = 0;
-        while (pos < bufsize - 1) {
-            char c;
-            DWORD nread = 0;
-            if (!ReadFile(h, &c, 1, &nread, NULL) || nread == 0) {
+
+        /* Bulk-read until we have a complete line */
+        for (;;) {
+            size_t space = sizeof(t->readbuf) - t->readbuf_len;
+            if (space == 0) {
+                /* Buffer full without newline — protocol violation, disconnect */
+                t->readbuf_len = 0;
                 t->connected = 0;
                 return -1;
             }
-            if (c == '\n') break;
-            buf[pos++] = c;
+
+            DWORD nread = 0;
+            if (!ReadFile(h, t->readbuf + t->readbuf_len, (DWORD)space, &nread, NULL) || nread == 0) {
+                t->connected = 0;
+                return -1;
+            }
+            t->readbuf_len += nread;
+
+            n = readbuf_extract_line(t, buf, bufsize);
+            if (n >= 0) return n;
         }
-        buf[pos] = '\0';
-        return (int)pos;
     }
 #endif
 
     sock_t s = (sock_t)t->fd;
 
+    /* Wait for initial data with the caller's timeout */
 #ifndef _WIN32
     struct pollfd pfd;
     pfd.fd = s;
@@ -386,16 +432,26 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
     if (sr <= 0) return -1;
 #endif
 
-    size_t pos = 0;
-    while (pos < bufsize - 1) {
-        char c;
-        int n = (int)recv(s, &c, 1, 0);
-        if (n <= 0) { t->connected = 0; return -1; }
-        if (c == '\n') break;
-        buf[pos++] = c;
+    /* Bulk-read until we have a complete line */
+    for (;;) {
+        size_t space = sizeof(t->readbuf) - t->readbuf_len;
+        if (space == 0) {
+            /* Buffer full without newline — protocol violation, disconnect */
+            t->readbuf_len = 0;
+            t->connected = 0;
+            return -1;
+        }
+
+        int r = (int)recv(s, t->readbuf + t->readbuf_len, (int)space, 0);
+        if (r <= 0) {
+            t->connected = 0;
+            return -1;
+        }
+        t->readbuf_len += (size_t)r;
+
+        n = readbuf_extract_line(t, buf, bufsize);
+        if (n >= 0) return n;
     }
-    buf[pos] = '\0';
-    return (int)pos;
 }
 
 void transport_close(jgd_transport_t *t) {
@@ -410,6 +466,7 @@ void transport_close(jgd_transport_t *t) {
         t->fd = (int)SOCK_INVALID;
     }
     t->connected = 0;
+    t->readbuf_len = 0;
 }
 
 int transport_reconnect(jgd_transport_t *t) {
