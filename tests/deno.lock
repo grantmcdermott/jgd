@@ -3,6 +3,7 @@
   "specifiers": {
     "jsr:@std/assert@1": "1.0.18",
     "jsr:@std/async@1": "1.1.1",
+    "jsr:@std/cli@1": "1.0.27",
     "jsr:@std/internal@^1.0.12": "1.0.12",
     "jsr:@std/path@1": "1.1.4"
   },
@@ -15,6 +16,9 @@
     },
     "@std/async@1.1.1": {
       "integrity": "8a79beb3378cc229ce65ba2c746cfd03e4855ddd891d1eb6b9e32128e0d5339c"
+    },
+    "@std/cli@1.0.27": {
+      "integrity": "eba97edd0891871a7410e835dd94b3c260c709cca5983df2689c25a71fbe04de"
     },
     "@std/internal@1.0.12": {
       "integrity": "972a634fd5bc34b242024402972cd5143eac68d8dffaca5eaa4dba30ce17b027"
@@ -30,6 +34,7 @@
     "dependencies": [
       "jsr:@std/assert@1",
       "jsr:@std/async@1",
+      "jsr:@std/cli@1",
       "jsr:@std/path@1"
     ]
   }
