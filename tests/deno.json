@@ -5,6 +5,6 @@
     "@std/path": "jsr:@std/path@^1"
   },
   "tasks": {
-    "test": "deno test --allow-net=127.0.0.1 --allow-read --allow-write --allow-env --allow-run=deno,Rscript e2e_test.ts"
+    "test": "deno test --allow-net=127.0.0.1 --allow-read --allow-write --allow-env --allow-run=deno,Rscript e2e_test.ts npipe_e2e_test.ts"
   }
 }
