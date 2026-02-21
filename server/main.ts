@@ -6,6 +6,7 @@ import { writeDiscovery, removeDiscovery } from "./discovery.ts";
 import { handleWebSocket } from "./websocket.ts";
 import { serveStaticFile } from "./static.ts";
 import { assets } from "./web_assets.ts";
+import { PipeListener } from "./named_pipe.ts";
 
 function printUsage(): void {
   console.log(`Usage: jgd-server [options]
@@ -14,8 +15,8 @@ Options:
   -socket <path>    Unix domain socket path for R connections
                     (default: \$TMPDIR/jgd-<random>.sock)
   -http <host:port> HTTP server bind address (default: 127.0.0.1:0)
-  -tcp [port]       Use TCP instead of Unix socket for R connections
-                    (always used on Windows; port 0 = auto-assign)
+  -tcp [port]       Use TCP instead of named pipe / Unix socket for R
+                    connections (port 0 = auto-assign)
   -web <dir>        Serve static files from directory instead of
                     embedded assets (for development)
   -v                Verbose logging
@@ -60,13 +61,14 @@ async function main(): Promise<void> {
   const isWindows = Deno.build.os === "windows";
   const tcpRequested = args.tcp !== "";
   const tcpPort = tcpRequested ? (parseInt(args.tcp, 10) || 0) : 0;
-  const useTcp = isWindows || tcpRequested;
+  const useTcp = tcpRequested;
+  const useNamedPipe = isWindows && !useTcp;
 
   let socketPath: string;
-  let rListener: Deno.Listener;
+  let rListener: Deno.Listener | PipeListener;
 
   if (useTcp) {
-    // TCP listener for Windows or explicit --tcp flag
+    // TCP listener — explicit --tcp flag (any OS)
     const listener = Deno.listen({
       transport: "tcp",
       hostname: "127.0.0.1",
@@ -75,6 +77,18 @@ async function main(): Promise<void> {
     const addr = listener.addr as Deno.NetAddr;
     socketPath = `tcp:${addr.port}`;
     rListener = listener;
+  } else if (useNamedPipe) {
+    // Named pipe (Windows default)
+    const token = new Uint8Array(8);
+    crypto.getRandomValues(token);
+    const hex = Array.from(token)
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+    const pipeName = `jgd-${hex}`;
+    socketPath = `npipe:///${pipeName}`;
+    const pipeListener = new PipeListener();
+    await pipeListener.listen(`\\\\.\\pipe\\${pipeName}`);
+    rListener = pipeListener;
   } else {
     // Unix domain socket (Linux/macOS)
     socketPath = args.socket;
@@ -154,8 +168,9 @@ async function main(): Promise<void> {
   // 2. Close R listener (stop accepting new connections)
   rListener.close();
 
-  // 3. Cleanup socket file (listener already closed)
-  if (!useTcp) {
+  // 3. Cleanup socket file (listener already closed).
+  // Named pipes are kernel objects and don't need file removal.
+  if (!useTcp && !useNamedPipe) {
     try {
       await Deno.remove(socketPath);
     } catch { /* ignore */ }
@@ -181,12 +196,12 @@ async function main(): Promise<void> {
  * Spawns an RSession for each accepted connection.
  */
 async function acceptLoop(
-  listener: Deno.Listener,
+  listener: Deno.Listener | PipeListener,
   hub: Hub,
   activeConnections: Set<Promise<void>>,
 ): Promise<void> {
   for await (const conn of listener) {
-    const session = new RSession(conn, hub);
+    const session = new RSession(conn as Deno.Conn, hub);
     console.error(`R connection accepted: ${session.id}`);
     const done = session.run().finally(() => {
       activeConnections.delete(done);

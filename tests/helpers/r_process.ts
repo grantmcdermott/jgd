@@ -19,7 +19,8 @@ function toRSocketAddress(serverSocketPath: string): string {
   if (tcpMatch) {
     return `tcp://127.0.0.1:${tcpMatch[1]}`;
   }
-  // Unix socket — pass through as-is
+  // npipe:///NAME and Unix socket paths — pass through as-is
+  // (R's transport.c understands both formats directly)
   return serverSocketPath;
 }
 

@@ -4,6 +4,8 @@ import type {
   MetricsRequestMessage,
   ServerMessage,
 } from "./types.ts";
+import { PipeConn } from "../../named_pipe.ts";
+import { connect as nodeConnect } from "node:net";
 
 /**
  * Simulates an R session connecting to the server via Unix socket or TCP (NDJSON).
@@ -15,7 +17,7 @@ export class RClient {
   #encoder = new TextEncoder();
   #buffer = "";
 
-  /** Connect to the server's socket. Supports Unix path or "tcp:PORT" format. */
+  /** Connect to the server's socket. Supports Unix path, "tcp:PORT", or "npipe:///NAME". */
   async connect(socketPath: string): Promise<void> {
     if (socketPath.startsWith("tcp:")) {
       const port = parseInt(socketPath.slice(4), 10);
@@ -24,6 +26,16 @@ export class RClient {
         hostname: "127.0.0.1",
         port,
       });
+    } else if (socketPath.startsWith("npipe:///")) {
+      const pipeName = socketPath.slice("npipe:///".length);
+      const pipePath = `\\\\.\\pipe\\${pipeName}`;
+      const socket = await new Promise<import("node:net").Socket>(
+        (resolve, reject) => {
+          const s = nodeConnect(pipePath, () => resolve(s));
+          s.once("error", reject);
+        },
+      );
+      this.#conn = new PipeConn(socket) as unknown as Deno.Conn;
     } else {
       this.#conn = await Deno.connect({
         transport: "unix",
