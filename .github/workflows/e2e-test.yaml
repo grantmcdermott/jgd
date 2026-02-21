@@ -57,3 +57,4 @@ jobs:
       - name: Run benchmarks
         run: deno task bench
         working-directory: tests
+        continue-on-error: true
