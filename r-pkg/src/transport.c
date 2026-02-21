@@ -95,7 +95,7 @@ static int parse_npipe(const char *path, char *buf, size_t bufsize) {
 
     {
         size_t name_len = strlen(name);
-        if (name_len > bufsize - 10) return -1;
+        if (name_len == 0 || name_len > bufsize - 10) return -1;
     }
 
     snprintf(buf, bufsize, "\\\\.\\pipe\\%s", name);
