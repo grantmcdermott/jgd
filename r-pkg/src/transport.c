@@ -227,7 +227,9 @@ static int try_connect(jgd_transport_t *t) {
                     FILE_ATTRIBUTE_NORMAL, NULL);
                 if (h != INVALID_HANDLE_VALUE) break;
                 if (GetLastError() != ERROR_PIPE_BUSY) return -1;
-                if (!WaitNamedPipeA(pipe_buf, 50)) return -1;
+                if (!WaitNamedPipeA(pipe_buf, 500)) {
+                    if (GetLastError() != ERROR_SEM_TIMEOUT) return -1;
+                }
             }
             if (h == INVALID_HANDLE_VALUE) return -1;
             DWORD mode = PIPE_READMODE_BYTE;
