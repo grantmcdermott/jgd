@@ -29,20 +29,41 @@ function tmpPipePath(): [string, () => void] {
   return [join(dir, "test.sock"), cleanup];
 }
 
+/**
+ * Connect to a pipe path via node:net, with retry for Windows EBUSY.
+ * On Windows, the server may not have a new pipe instance ready immediately
+ * after accepting the previous connection.
+ */
+async function connectPipe(pipePath: string): Promise<PipeConn> {
+  const maxRetries = isWindows ? 10 : 0;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const s = await new Promise<import("node:net").Socket>(
+        (resolve, reject) => {
+          const sock = nodeConnect(pipePath, () => resolve(sock));
+          sock.once("error", reject);
+        },
+      );
+      return new PipeConn(s);
+    } catch (err: unknown) {
+      const code = (err as { code?: string }).code;
+      if (code === "EBUSY" && attempt < maxRetries) {
+        await new Promise((r) => setTimeout(r, 50 * (attempt + 1)));
+        continue;
+      }
+      throw err;
+    }
+  }
+}
+
 Deno.test("PipeListener: accept and round-trip data", async () => {
   const [pipePath, cleanup] = tmpPipePath();
   try {
     const listener = new PipeListener();
     await listener.listen(pipePath);
 
-    // Connect a client via node:net
-    const clientSocket = await new Promise<import("node:net").Socket>(
-      (resolve, reject) => {
-        const s = nodeConnect(pipePath, () => resolve(s));
-        s.once("error", reject);
-      },
-    );
-    const clientConn = new PipeConn(clientSocket);
+    // Connect a client
+    const clientConn = await connectPipe(pipePath);
 
     // Accept the connection on the server side
     const iter = listener[Symbol.asyncIterator]();
@@ -109,14 +130,8 @@ Deno.test("PipeListener: multiple connections", async () => {
     await listener.listen(pipePath);
 
     // Connect two clients
-    const connect = () =>
-      new Promise<PipeConn>((resolve, reject) => {
-        const s = nodeConnect(pipePath, () => resolve(new PipeConn(s)));
-        s.once("error", reject);
-      });
-
-    const client1 = await connect();
-    const client2 = await connect();
+    const client1 = await connectPipe(pipePath);
+    const client2 = await connectPipe(pipePath);
 
     // Accept both
     const iter = listener[Symbol.asyncIterator]();
