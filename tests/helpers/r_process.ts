@@ -14,7 +14,7 @@ export interface RProcessResult {
  * Translate TestServer's socket path to R's socket address format.
  * TestServer reports TCP as "tcp:<port>" but R expects "tcp://127.0.0.1:<port>".
  */
-function toRSocketAddress(serverSocketPath: string): string {
+export function toRSocketAddress(serverSocketPath: string): string {
   const tcpMatch = serverSocketPath.match(/^tcp:(\d+)$/);
   if (tcpMatch) {
     return `tcp://127.0.0.1:${tcpMatch[1]}`;
