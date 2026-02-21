@@ -47,9 +47,9 @@ if (requireNamespace("ragg", quietly = TRUE)) {
 
   run_ragg_bench = function(label, plot_fn) {
     f = tempfile(fileext = ".png")
-    on.exit(unlink(f), add = TRUE)
     agg_png(f, width = 800, height = 600)
     on.exit(dev.off(), add = TRUE)
+    on.exit(unlink(f), add = TRUE)
     bench(paste0("ragg:", label), plot_fn)
   }
 
@@ -65,9 +65,9 @@ if (requireNamespace("ragg", quietly = TRUE)) {
 # --- base png benchmarks ---
 run_png_bench = function(label, plot_fn) {
   f = tempfile(fileext = ".png")
-  on.exit(unlink(f), add = TRUE)
   png(f, width = 800, height = 600)
   on.exit(dev.off(), add = TRUE)
+  on.exit(unlink(f), add = TRUE)
   bench(paste0("png:", label), plot_fn)
 }
 

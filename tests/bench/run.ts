@@ -72,6 +72,14 @@ const rResult = await rCmd.output();
 const stdout = new TextDecoder().decode(rResult.stdout);
 const stderr = new TextDecoder().decode(rResult.stderr);
 
+if (!rResult.success) {
+  console.error(`R process exited with code ${rResult.code}`);
+  if (stderr.trim()) console.error(stderr.trim());
+  await server.shutdown();
+  server.cleanup();
+  Deno.exit(1);
+}
+
 if (stderr.trim()) {
   console.log("\n--- R stderr ---");
   console.log(stderr.trim());
