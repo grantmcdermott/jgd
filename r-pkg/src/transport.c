@@ -108,7 +108,6 @@ void transport_init(jgd_transport_t *t) {
     t->socket_path[0] = '\0';
     t->connected = 0;
 #ifdef _WIN32
-    t->use_pipe = 0;
     t->pipe_handle = INVALID_HANDLE_VALUE;
 #endif
 }
@@ -229,7 +228,6 @@ static int try_connect(jgd_transport_t *t) {
                 return -1;
             }
             t->pipe_handle = h;
-            t->use_pipe = 1;
             t->connected = 1;
             return 0;
         }
@@ -259,7 +257,7 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
     if (!t->connected) return -1;
 
 #ifdef _WIN32
-    if (t->use_pipe) {
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         HANDLE h = (HANDLE)t->pipe_handle;
         size_t sent = 0;
         while (sent < len) {
@@ -301,7 +299,7 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
 int transport_has_data(jgd_transport_t *t) {
     if (!t->connected) return 0;
 #ifdef _WIN32
-    if (t->use_pipe) {
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         DWORD avail = 0;
         if (!PeekNamedPipe((HANDLE)t->pipe_handle, NULL, 0, NULL, &avail, NULL)) {
             t->connected = 0;
@@ -329,7 +327,7 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
     if (!t->connected) return -1;
 
 #ifdef _WIN32
-    if (t->use_pipe) {
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         HANDLE h = (HANDLE)t->pipe_handle;
         DWORD avail = 0;
         int elapsed = 0;
@@ -392,10 +390,9 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
 
 void transport_close(jgd_transport_t *t) {
 #ifdef _WIN32
-    if (t->use_pipe && t->pipe_handle != INVALID_HANDLE_VALUE) {
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         CloseHandle((HANDLE)t->pipe_handle);
         t->pipe_handle = INVALID_HANDLE_VALUE;
-        t->use_pipe = 0;
     }
 #endif
     if (t->fd != (int)SOCK_INVALID) {

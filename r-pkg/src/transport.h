@@ -8,7 +8,6 @@ typedef struct {
     char socket_path[512];  /* URI (tcp://host:port, unix:///path, npipe:///name; localhost variant accepted) or raw path */
     int connected;
 #ifdef _WIN32
-    int use_pipe;       /* 1 = named pipe, 0 = TCP socket */
     void *pipe_handle;  /* HANDLE; INVALID_HANDLE_VALUE when unused */
 #endif
 } jgd_transport_t;
