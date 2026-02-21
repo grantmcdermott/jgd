@@ -5,6 +5,13 @@
 #
 # Usage:
 #   Rscript bench-plot.R                 # uses jgd discovery
+#   JGD_BENCH_SOCKET=... Rscript bench-plot.R  # explicit socket
+
+# Accept socket address via environment variable (set by run.ts)
+.jgd_bench_socket = Sys.getenv("JGD_BENCH_SOCKET", "")
+if (nzchar(.jgd_bench_socket)) {
+  options(jgd.socket = .jgd_bench_socket)
+}
 
 set.seed(42)
 hist_data = rnorm(1000)

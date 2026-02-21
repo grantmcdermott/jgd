@@ -91,7 +91,7 @@ export class MockMetricsClient {
         JSON.stringify({
           type: "metrics_response",
           id: msg.id,
-          width: str.length * size * 0.55,
+          width: str.length * size * 0.53,
           ascent: 0,
           descent: 0,
         }),
@@ -102,9 +102,9 @@ export class MockMetricsClient {
         JSON.stringify({
           type: "metrics_response",
           id: msg.id,
-          width: size * 0.55,
-          ascent: size * 0.75,
-          descent: size * 0.25,
+          width: size * 0.53,
+          ascent: size * 0.8,
+          descent: size * 0.2,
         }),
       );
     }

@@ -39,6 +39,12 @@ jobs:
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: release
+          use-public-rspm: true
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: r-pkg
+          extra-packages: any::ragg
 
       - uses: denoland/setup-deno@v2
         with:

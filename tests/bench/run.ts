@@ -14,6 +14,7 @@ import { dirname, fromFileUrl, join } from "@std/path";
 import { parseArgs } from "@std/cli/parse-args";
 import { TestServer } from "../../server/tests/helpers/server.ts";
 import { MockMetricsClient } from "./mock-metrics-client.ts";
+import { toRSocketAddress } from "../helpers/r_process.ts";
 
 const scriptDir = dirname(fromFileUrl(import.meta.url));
 
@@ -23,18 +24,6 @@ const args = parseArgs(Deno.args, {
 });
 
 const noClient = args["no-client"];
-
-/**
- * Translate TestServer's socket path to R's socket address format.
- * TestServer reports TCP as "tcp:<port>" but R expects "tcp://127.0.0.1:<port>".
- */
-function toRSocketAddress(serverSocketPath: string): string {
-  const tcpMatch = serverSocketPath.match(/^tcp:(\d+)$/);
-  if (tcpMatch) {
-    return `tcp://127.0.0.1:${tcpMatch[1]}`;
-  }
-  return serverSocketPath;
-}
 
 // --- Main ---
 console.log(`\n${"=".repeat(60)}`);
@@ -48,60 +37,60 @@ await server.start();
 console.log(`    Socket: ${server.socketPath}`);
 console.log(`    HTTP:   ${server.httpBaseUrl}`);
 
-// Connect mock client
 let client: MockMetricsClient | null = null;
-if (!noClient) {
-  console.log("==> Connecting mock metrics client...");
-  client = new MockMetricsClient(server.wsUrl);
-  await client.connect();
-  await new Promise((r) => setTimeout(r, 500));
-  console.log("    Connected");
-}
+try {
+  // Connect mock client
+  if (!noClient) {
+    console.log("==> Connecting mock metrics client...");
+    client = new MockMetricsClient(server.wsUrl);
+    await client.connect();
+    await new Promise((r) => setTimeout(r, 500));
+    console.log("    Connected");
+  }
 
-// Run R benchmarks
-console.log("==> Running R benchmarks...");
-const benchScript = join(scriptDir, "bench-plot.R");
-const socketAddr = toRSocketAddress(server.socketPath);
-const rCmd = new Deno.Command("Rscript", {
-  args: ["-e", `options(jgd.socket = "${socketAddr}"); source("${benchScript}")`],
-  stdout: "piped",
-  stderr: "piped",
-});
+  // Run R benchmarks
+  console.log("==> Running R benchmarks...");
+  const benchScript = join(scriptDir, "bench-plot.R");
+  const socketAddr = toRSocketAddress(server.socketPath);
+  const rCmd = new Deno.Command("Rscript", {
+    args: [benchScript],
+    stdout: "piped",
+    stderr: "piped",
+    env: { ...Deno.env.toObject(), JGD_BENCH_SOCKET: socketAddr },
+  });
 
-const rResult = await rCmd.output();
-const stdout = new TextDecoder().decode(rResult.stdout);
-const stderr = new TextDecoder().decode(rResult.stderr);
+  const rResult = await rCmd.output();
+  const stdout = new TextDecoder().decode(rResult.stdout);
+  const stderr = new TextDecoder().decode(rResult.stderr);
 
-if (!rResult.success) {
-  console.error(`R process exited with code ${rResult.code}`);
-  if (stderr.trim()) console.error(stderr.trim());
+  if (!rResult.success) {
+    console.error(`R process exited with code ${rResult.code}`);
+    if (stderr.trim()) console.error(stderr.trim());
+    Deno.exit(1);
+  }
+
+  if (stderr.trim()) {
+    console.log("\n--- R stderr ---");
+    console.log(stderr.trim());
+  }
+
+  console.log("\n--- R output ---");
+  console.log(stdout.trim());
+
+  // Client stats
+  if (client) {
+    const stats = client.stats();
+    console.log("\n=== Mock Client Stats ===");
+    console.log(
+      `  Metrics requests: ${stats.metricsRequests} (strWidth: ${stats.strWidthRequests}, metricInfo: ${stats.metricInfoRequests})`,
+    );
+    console.log(`  Frames received:  ${stats.framesReceived}`);
+    console.log(`  Total ops:        ${stats.totalOps}`);
+  }
+} finally {
+  if (client) client.close();
   await server.shutdown();
   server.cleanup();
-  Deno.exit(1);
 }
-
-if (stderr.trim()) {
-  console.log("\n--- R stderr ---");
-  console.log(stderr.trim());
-}
-
-console.log("\n--- R output ---");
-console.log(stdout.trim());
-
-// Client stats
-if (client) {
-  const stats = client.stats();
-  console.log("\n=== Mock Client Stats ===");
-  console.log(
-    `  Metrics requests: ${stats.metricsRequests} (strWidth: ${stats.strWidthRequests}, metricInfo: ${stats.metricInfoRequests})`,
-  );
-  console.log(`  Frames received:  ${stats.framesReceived}`);
-  console.log(`  Total ops:        ${stats.totalOps}`);
-  client.close();
-}
-
-// Cleanup
-await server.shutdown();
-server.cleanup();
 
 console.log("\n==> Done.");
