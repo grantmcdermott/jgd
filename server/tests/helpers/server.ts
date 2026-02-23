@@ -58,8 +58,9 @@ export class TestServer {
     const serverArgs = [...prefixArgs];
     if (this.useTcp) {
       serverArgs.push("-tcp", "0");
-    } else {
-      // Pass raw filesystem path to -socket
+    } else if (this.socketPath) {
+      // Pass raw filesystem path to -socket (Unix socket mode only;
+      // on Windows socketPath is "" here — server auto-generates a named pipe)
       const addr = parseSocketUri(this.socketPath);
       serverArgs.push("-socket", addr.transport === "unix" ? addr.path : this.socketPath);
     }
