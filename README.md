@@ -16,10 +16,10 @@ current development focus, in principle any client able to read
 (newline-delimited) JSON could use it to render R plots.
 
 **Caveats:** The package is experimental and may have some rough edges despite
-my best efforts at thorough local testing. The communication protocol between
+our best efforts at thorough local testing. The communication protocol between
 R and the renderer is still in development and not yet stable.
-Finally, I want to be transparent that this project has made _heavy_ use of
-AI-assisted pair programming (Claude). It is highly doubtful that I would have
+Finally, we want to be transparent that this project has made _heavy_ use of
+AI-assisted pair programming (Claude). It is highly doubtful that we would have
 been able to put this together without AI help.
 
 ## Installation
@@ -27,7 +27,7 @@ been able to put this together without AI help.
 ### R package
 
 ```r
-pak::pak("grantmcdermott/jgd/r-pkg")
+install.packages('jgd', repos = 'https://grantmcdermott.r-universe.dev')
 ```
 
 ### Reference server (Deno)
@@ -125,7 +125,7 @@ package is written in pure C with zero external dependencies. The only system
 dependencies are the POSIX socket API (macOS/Linux) and Winsock (Windows),
 both of which R itself already uses.
 
-My idea (hope) is that we can support the main features of `httpgd`, but with a
+Our idea (hope) is that we can support the main features of `httpgd`, but with a
 more stable and lightweight footprint. Ultimately, if the community agrees, we
 might even be able to integrate this simple package into the main R extension
 logic, so that we get nice graphics support in VS Code out of the box.
@@ -134,8 +134,8 @@ logic, so that we get nice graphics support in VS Code out of the box.
 
 [Positron](https://positron.posit.co/) is a "batteries-included" fork of VS Code
 by Posit PBC. It comes with many great features, including first-class support
-for R (and Python) graphics. In my opinion, Positron is likely the best IDE
-choice for a plurality of R users and I can happily recommend it. However, that
+for R (and Python) graphics. In our opinion, Positron is likely the best IDE
+choice for a plurality of R users and we can happily recommend it. However, that
 still leaves a non-trivial share of R users and use-cases, where a good "base"
 VS Code R experience is still needed. **jgd** is aimed at supporting these
 latter cases.
