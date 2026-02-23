@@ -46,6 +46,22 @@ Deno.test("parseSocketUri", async (t) => {
     );
   });
 
+  await t.step("unix URI with unencoded # throws", () => {
+    assertThrows(
+      () => parseSocketUri("unix:///tmp/file#1.sock"),
+      Error,
+      "unencoded query or fragment",
+    );
+  });
+
+  await t.step("unix URI with unencoded ? throws", () => {
+    assertThrows(
+      () => parseSocketUri("unix:///tmp/file?v=2.sock"),
+      Error,
+      "unencoded query or fragment",
+    );
+  });
+
   await t.step("npipe:///name", () => {
     const addr = parseSocketUri("npipe:///jgd-abc123");
     assertEquals(addr, {

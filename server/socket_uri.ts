@@ -23,8 +23,10 @@ export const socketUri = {
     if (!path.startsWith("/")) throw new Error(`Unix socket path must be absolute: ${path}`);
     return `unix://${encodeURI(path).replace(/#/g, "%23").replace(/\?/g, "%3F")}`;
   },
-  npipe: (name: string): string =>
-    `npipe:///${name}`,
+  npipe: (name: string): string => {
+    if (!name) throw new Error("Named pipe name must not be empty");
+    return `npipe:///${name}`;
+  },
 };
 
 /** Parse a socket URI string into its transport type and connection details. */
@@ -41,7 +43,14 @@ export function parseSocketUri(uri: string): SocketAddr {
     return { transport: "npipe", name, pipePath: `\\\\.\\pipe\\${name}` };
   }
   if (uri.startsWith("unix:///")) {
-    return { transport: "unix", path: decodeURIComponent(new URL(uri).pathname) };
+    const url = new URL(uri);
+    if (url.search || url.hash) {
+      throw new Error(
+        `Invalid Unix socket URI (unencoded query or fragment): ${uri}. ` +
+          `Use percent-encoding for '?' (%3F) and '#' (%23) in the socket path.`,
+      );
+    }
+    return { transport: "unix", path: decodeURIComponent(url.pathname) };
   }
   throw new Error(
     `Unsupported socket URI: ${uri} (expected tcp://host:port, unix:///path, or npipe:///name)`,
