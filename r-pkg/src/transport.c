@@ -434,8 +434,10 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
                     t->connected = 0;
                     return -1;
                 }
-                /* Wait for data with remaining timeout */
-                ULONGLONG t0 = GetTickCount64();
+                /* Wait for data with remaining timeout.
+                 * GetTickCount wraps every ~49.7 days, but DWORD subtraction
+                 * handles wraparound correctly for intervals < 49.7 days. */
+                DWORD t0 = GetTickCount();
                 DWORD wr = WaitForSingleObject(ov.hEvent, remaining_ms);
                 if (wr == WAIT_TIMEOUT) {
                     CancelIo(h);
@@ -456,7 +458,7 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
                     return -1;
                 }
                 /* Update remaining timeout */
-                ULONGLONG elapsed = GetTickCount64() - t0;
+                DWORD elapsed = GetTickCount() - t0;
                 if (elapsed >= remaining_ms)
                     remaining_ms = 0;
                 else
