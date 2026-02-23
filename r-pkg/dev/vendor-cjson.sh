@@ -33,13 +33,14 @@ if [ -d "$PATCHES_DIR" ]; then
     patch -d "$DEST" -p1 < "$p"
   done
 
-  # Insert modification notice after the license header
-  NOTICE='/* Local modifications (applied automatically by dev/vendor-cjson.sh):\
+  # Insert modification notice after the license header.
+  # Uses a temp file instead of sed -i for macOS/BSD compatibility.
+  CJSON_FILE="${DEST}/cJSON.c"
+  sed '/^\/\* JSON parser in C\. \*\/$/a\
+/* Local modifications (applied automatically by dev/vendor-cjson.sh):\
  * - All sprintf calls replaced with snprintf for R CRAN compliance.\
  *   See dev/patches/ for details.\
- */'
-  sed -i "/^\/\* JSON parser in C\. \*\/$/a\\
-${NOTICE}" "${DEST}/cJSON.c"
+ */' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
 fi
 
 echo "Vendored cJSON ${TAG} into ${DEST}"
