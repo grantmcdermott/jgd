@@ -58,6 +58,9 @@ export class RClient {
       const msg = await this.readMessage<ServerInfoMessage>(2000);
       if (msg && typeof msg === "object" && msg.type === "server_info") {
         this.serverInfo = msg;
+      } else if (msg) {
+        // Not a welcome — push back so subsequent reads can see it
+        this.#buffer = JSON.stringify(msg) + "\n" + this.#buffer;
       }
     } catch {
       // Old server or timeout — proceed without
