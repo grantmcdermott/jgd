@@ -53,18 +53,6 @@ export class RClient {
     this.#reader = stream.getReader();
     this.#writer = this.#conn.writable.getWriter();
 
-    // Read and store welcome message
-    try {
-      const msg = await this.readMessage<ServerInfoMessage>(2000);
-      if (msg && typeof msg === "object" && msg.type === "server_info") {
-        this.serverInfo = msg;
-      } else if (msg) {
-        // Not a welcome — push back so subsequent reads can see it
-        this.#buffer = JSON.stringify(msg) + "\n" + this.#buffer;
-      }
-    } catch {
-      // Old server or timeout — proceed without
-    }
   }
 
   /** Send a JSON message followed by newline (NDJSON). */
@@ -100,8 +88,8 @@ export class RClient {
     await this.send(msg);
   }
 
-  /** Read the next NDJSON line with timeout (ms). */
-  async readMessage<T = ServerMessage>(timeoutMs = 5000): Promise<T> {
+  /** Read the next raw NDJSON line with timeout (ms). */
+  async #readRawLine(timeoutMs: number): Promise<string> {
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
@@ -109,7 +97,7 @@ export class RClient {
       if (newlineIdx >= 0) {
         const line = this.#buffer.slice(0, newlineIdx);
         this.#buffer = this.#buffer.slice(newlineIdx + 1);
-        return JSON.parse(line) as T;
+        return line;
       }
 
       const remaining = deadline - Date.now();
@@ -133,6 +121,51 @@ export class RClient {
     }
 
     throw new Error(`Timed out waiting for message (${timeoutMs}ms)`);
+  }
+
+  /** Read the next NDJSON message, auto-consuming server_info welcomes. */
+  async readMessage<T = ServerMessage>(timeoutMs = 5000): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const line = await this.#readRawLine(remaining);
+      const msg = JSON.parse(line);
+      if (msg.type === "server_info") {
+        this.serverInfo = msg as ServerInfoMessage;
+        continue;
+      }
+      return msg as T;
+    }
+    throw new Error(`Timed out waiting for message (${timeoutMs}ms)`);
+  }
+
+  /**
+   * Send a message to trigger the deferred welcome, then read until
+   * server_info is received.
+   */
+  async waitForWelcome(timeoutMs = 2000): Promise<ServerInfoMessage> {
+    if (this.serverInfo) return this.serverInfo;
+    await this.send({ type: "ping" });
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      try {
+        const line = await this.#readRawLine(remaining);
+        const msg = JSON.parse(line);
+        if (msg.type === "server_info") {
+          this.serverInfo = msg as ServerInfoMessage;
+          return this.serverInfo;
+        }
+        // Non-welcome message — push back
+        this.#buffer = line + "\n" + this.#buffer;
+      } catch {
+        break;
+      }
+    }
+    if (this.serverInfo) return this.serverInfo;
+    throw new Error("Timed out waiting for server_info welcome");
   }
 
   /** Close the connection. */

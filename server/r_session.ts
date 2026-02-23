@@ -63,41 +63,12 @@ export class RSession {
     this.hub.registerSession(this);
 
     try {
-      // Set up reader before sending welcome so the readable stream is
-      // piped before R can finish and close the connection.  On Unix
-      // sockets, reading from a connection whose remote end already
-      // closed may miss buffered data if the stream wasn't set up yet.
       const reader = this.conn.readable
         .pipeThrough(new TextDecoderStream());
 
-      // Send welcome message.  Fire-and-forget so the read loop starts
-      // immediately — any delay between pipeThrough() and the for-await
-      // can cause data loss on Windows named pipes when R writes and
-      // closes before the loop begins pulling from the stream.
-      // The writeQueue serialises this with any later sends (e.g. resize).
-      const welcome: ServerInfoMessage = {
-        type: "server_info",
-        serverName: "jgd-http-server",
-        protocolVersion: 1,
-        serverInfo: {
-          httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
-        },
-      };
-      this.send(JSON.stringify(welcome)).catch((e) => {
-        // Connection-related errors are expected (R may close before
-        // reading the welcome).  Log anything else so bugs in the
-        // send path don't go completely silent.
-        if (
-          !(e instanceof Deno.errors.BrokenPipe) &&
-          !(e instanceof Deno.errors.ConnectionReset) &&
-          !(e instanceof Deno.errors.BadResource)
-        ) {
-          console.error(`welcome send error: ${e}`);
-        }
-      });
-
       let buffer = "";
       let firstMessage = true;
+      let welcomeSent = false;
 
       for await (const chunk of reader) {
         buffer += chunk;
@@ -108,6 +79,32 @@ export class RSession {
           buffer = buffer.slice(newlineIdx + 1);
 
           if (line.length === 0) continue;
+
+          // Send welcome after the first line is received.  On Windows
+          // named pipes, writing to the socket before the first read
+          // completes can cause Deno's node:net layer to drop subsequent
+          // read data.  Deferring the write until we have proof the read
+          // side works avoids this race entirely.
+          if (!welcomeSent) {
+            welcomeSent = true;
+            const welcome: ServerInfoMessage = {
+              type: "server_info",
+              serverName: "jgd-http-server",
+              protocolVersion: 1,
+              serverInfo: {
+                httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
+              },
+            };
+            this.send(JSON.stringify(welcome)).catch((e) => {
+              if (
+                !(e instanceof Deno.errors.BrokenPipe) &&
+                !(e instanceof Deno.errors.ConnectionReset) &&
+                !(e instanceof Deno.errors.BadResource)
+              ) {
+                console.error(`welcome send error: ${e}`);
+              }
+            });
+          }
 
           // Extract session ID from first message's plot.sessionId
           if (firstMessage) {

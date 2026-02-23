@@ -12,7 +12,11 @@ Deno.test("server_info welcome message", async (t) => {
     await server.start();
     await rClient.connect(server.socketPath);
 
-    await t.step("welcome is received on connect", () => {
+    // The welcome is deferred until the server reads the first message
+    // from R, so trigger it by sending a dummy message.
+    await rClient.waitForWelcome();
+
+    await t.step("welcome is received after first message", () => {
       assert(rClient.serverInfo !== null, "serverInfo should be set");
       assertEquals(rClient.serverInfo!.type, "server_info");
     });
@@ -37,6 +41,7 @@ Deno.test("server_info welcome message", async (t) => {
       const rClient2 = new RClient();
       try {
         await rClient2.connect(server.socketPath);
+        await rClient2.waitForWelcome();
         assert(rClient2.serverInfo !== null, "second client should get serverInfo");
         assertEquals(rClient2.serverInfo!.type, "server_info");
         assertEquals(rClient2.serverInfo!.serverName, "jgd-http-server");
