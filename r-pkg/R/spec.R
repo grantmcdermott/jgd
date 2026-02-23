@@ -12,7 +12,7 @@
 #'
 #' - `unix:///path/to/socket` -- Unix domain socket (Linux/macOS default)
 #' - `npipe:///pipe/name` -- Windows named pipe (Windows default)
-#' - `tcp://host:port` -- TCP socket (any platform, requested via `--tcp`)
+#' - `tcp://host:port` -- TCP socket (any platform)
 #'
 #' Raw Unix socket paths (without a URI scheme) are also accepted.
 #'
