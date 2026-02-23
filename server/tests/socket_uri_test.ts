@@ -28,6 +28,23 @@ Deno.test("parseSocketUri", async (t) => {
     );
   });
 
+  await t.step("tcp with empty hostname throws", () => {
+    // new URL("tcp://:1234") throws "Invalid URL" before our check runs,
+    // so just verify it throws an Error.
+    assertThrows(
+      () => parseSocketUri("tcp://:1234"),
+      Error,
+    );
+  });
+
+  await t.step("tcp with fragment throws", () => {
+    assertThrows(
+      () => parseSocketUri("tcp://127.0.0.1:8888#frag"),
+      Error,
+      "unexpected query or fragment",
+    );
+  });
+
   await t.step("unix:///absolute/path", () => {
     const addr = parseSocketUri("unix:///tmp/jgd-abc.sock");
     assertEquals(addr, { transport: "unix", path: "/tmp/jgd-abc.sock" });

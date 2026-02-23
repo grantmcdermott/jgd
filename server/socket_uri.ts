@@ -33,8 +33,12 @@ export const socketUri = {
 export function parseSocketUri(uri: string): SocketAddr {
   if (uri.startsWith("tcp://")) {
     const url = new URL(uri);
+    if (!url.hostname) throw new Error(`Invalid TCP socket URI (empty hostname): ${uri}`);
     const port = parseInt(url.port, 10);
     if (Number.isNaN(port)) throw new Error(`Invalid TCP port in URI: ${uri}`);
+    if (url.search || url.hash) {
+      throw new Error(`Invalid TCP socket URI (unexpected query or fragment): ${uri}`);
+    }
     return { transport: "tcp", hostname: url.hostname, port };
   }
   if (uri.startsWith("npipe:///")) {
