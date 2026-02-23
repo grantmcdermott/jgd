@@ -39,8 +39,15 @@ export class PipeConn {
         socket.on("end", () => {
           try { controller.close(); } catch { /* already closed */ }
         });
-        socket.on("error", (err) => {
-          try { controller.error(err); } catch { /* already closed */ }
+        socket.on("error", (_err) => {
+          // Close gracefully instead of erroring.  Node.js Socket shares
+          // a single "error" event for read and write failures; a write
+          // failure (e.g. welcome send after R closed the pipe) would
+          // discard queued-but-unread data if we called controller.error().
+          // controller.close() preserves it.  This means genuine read
+          // errors also appear as a clean close, which is an acceptable
+          // trade-off for local named-pipe connections.
+          try { controller.close(); } catch { /* already closed */ }
         });
       },
       cancel() {

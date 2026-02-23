@@ -133,6 +133,14 @@ export class SocketServer {
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
 
+        // Send welcome message before anything else
+        const welcome = {
+            type: 'server_info',
+            serverName: 'jgd-vscode',
+            protocolVersion: 1,
+        };
+        socket.write(JSON.stringify(welcome) + '\n');
+
         const dims = this.webviewProvider.getPanelDimensions();
         if (dims) {
             socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');

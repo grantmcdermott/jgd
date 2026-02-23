@@ -1,4 +1,5 @@
 import type { Hub } from "./hub.ts";
+import type { ServerInfoMessage } from "./types.ts";
 
 /**
  * Narrow interface covering only the members that RSession and test helpers
@@ -67,6 +68,7 @@ export class RSession {
 
       let buffer = "";
       let firstMessage = true;
+      let welcomeSent = false;
 
       for await (const chunk of reader) {
         buffer += chunk;
@@ -78,11 +80,39 @@ export class RSession {
 
           if (line.length === 0) continue;
 
-          // Extract session ID from first message's plot.sessionId
+          // Send welcome after the first line is received.  On Windows
+          // named pipes, writing to the socket before the first read
+          // completes can cause Deno's node:net layer to drop subsequent
+          // read data.  Deferring the write until we have proof the read
+          // side works avoids this race entirely.
+          if (!welcomeSent) {
+            welcomeSent = true;
+            const welcome: ServerInfoMessage = {
+              type: "server_info",
+              serverName: "jgd-http-server",
+              protocolVersion: 1,
+              serverInfo: {
+                httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
+              },
+            };
+            this.send(JSON.stringify(welcome)).catch((e) => {
+              if (
+                !(e instanceof Deno.errors.BrokenPipe) &&
+                !(e instanceof Deno.errors.ConnectionReset) &&
+                !(e instanceof Deno.errors.BadResource)
+              ) {
+                console.error(`welcome send error: ${e}`);
+              }
+            });
+          }
+
+          // Extract session ID from first message that contains one.
+          // Messages without a sessionId (e.g. pings) are skipped so
+          // the real first frame still gets its ID extracted.
           if (firstMessage) {
-            firstMessage = false;
             const sid = extractSessionId(line);
             if (sid) {
+              firstMessage = false;
               const oldId = this.id;
               this.id = sid;
               this.hub.updateSessionId(oldId, sid, this);

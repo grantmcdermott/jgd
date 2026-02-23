@@ -15,6 +15,8 @@ export class Hub {
   clients = new Set<BrowserClient>();
   /** Maps metrics request ID → R session ID for routing responses. */
   metricsRouting = new Map<number, string>();
+  /** HTTP server port, set after the HTTP server starts. */
+  httpPort = 0;
   verbose = false;
 
   registerSession(session: RSession): void {

@@ -2,6 +2,7 @@ import type {
   CloseMessage,
   FrameMessage,
   MetricsRequestMessage,
+  ServerInfoMessage,
   ServerMessage,
 } from "./types.ts";
 import { PipeConn } from "../../named_pipe.ts";
@@ -18,6 +19,8 @@ export class RClient {
   #writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   #encoder = new TextEncoder();
   #buffer = "";
+  /** Welcome message received on connect (if any). */
+  serverInfo: ServerInfoMessage | null = null;
 
   /** Connect to the server's socket. Supports "unix:///path", "tcp://host:port", and "npipe:///NAME". */
   async connect(uri: string): Promise<void> {
@@ -49,6 +52,7 @@ export class RClient {
     const stream = this.#conn.readable.pipeThrough(new TextDecoderStream());
     this.#reader = stream.getReader();
     this.#writer = this.#conn.writable.getWriter();
+
   }
 
   /** Send a JSON message followed by newline (NDJSON). */
@@ -84,8 +88,8 @@ export class RClient {
     await this.send(msg);
   }
 
-  /** Read the next NDJSON line with timeout (ms). */
-  async readMessage<T = ServerMessage>(timeoutMs = 5000): Promise<T> {
+  /** Read the next raw NDJSON line with timeout (ms). */
+  async #readRawLine(timeoutMs: number): Promise<string> {
     const deadline = Date.now() + timeoutMs;
 
     while (Date.now() < deadline) {
@@ -93,7 +97,7 @@ export class RClient {
       if (newlineIdx >= 0) {
         const line = this.#buffer.slice(0, newlineIdx);
         this.#buffer = this.#buffer.slice(newlineIdx + 1);
-        return JSON.parse(line) as T;
+        return line;
       }
 
       const remaining = deadline - Date.now();
@@ -117,6 +121,51 @@ export class RClient {
     }
 
     throw new Error(`Timed out waiting for message (${timeoutMs}ms)`);
+  }
+
+  /** Read the next NDJSON message, auto-consuming server_info welcomes. */
+  async readMessage<T = ServerMessage>(timeoutMs = 5000): Promise<T> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      const line = await this.#readRawLine(remaining);
+      const msg = JSON.parse(line);
+      if (msg.type === "server_info") {
+        this.serverInfo = msg as ServerInfoMessage;
+        continue;
+      }
+      return msg as T;
+    }
+    throw new Error(`Timed out waiting for message (${timeoutMs}ms)`);
+  }
+
+  /**
+   * Send a message to trigger the deferred welcome, then read until
+   * server_info is received.
+   */
+  async waitForWelcome(timeoutMs = 2000): Promise<ServerInfoMessage> {
+    if (this.serverInfo) return this.serverInfo;
+    await this.send({ type: "ping" });
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) break;
+      try {
+        const line = await this.#readRawLine(remaining);
+        const msg = JSON.parse(line);
+        if (msg.type === "server_info") {
+          this.serverInfo = msg as ServerInfoMessage;
+          return this.serverInfo;
+        }
+        // Non-welcome message — push back
+        this.#buffer = line + "\n" + this.#buffer;
+      } catch {
+        break;
+      }
+    }
+    if (this.serverInfo) return this.serverInfo;
+    throw new Error("Timed out waiting for server_info welcome");
   }
 
   /** Close the connection. */

@@ -44,6 +44,13 @@ export interface CloseMessage {
   type: "close";
 }
 
+export interface ServerInfoMessage {
+  type: "server_info";
+  serverName: string;
+  protocolVersion: number;
+  serverInfo?: Record<string, string>;
+}
+
 export interface DiscoveryFile {
   socketPath: string;
   httpPort: number;
@@ -55,4 +62,5 @@ export type ServerMessage =
   | ResizeMessage
   | MetricsRequestMessage
   | MetricsResponseMessage
-  | CloseMessage;
+  | CloseMessage
+  | ServerInfoMessage;
