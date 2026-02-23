@@ -8,7 +8,9 @@ set -euo pipefail
 
 REPO="DaveGamble/cJSON"
 TAG="${1:-}"
-DEST="$(cd "$(dirname "$0")/../src" && pwd)/cjson"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DEST="$(cd "${SCRIPT_DIR}/../src" && pwd)/cjson"
+PATCHES_DIR="${SCRIPT_DIR}/patches"
 
 if [ -z "$TAG" ]; then
   TAG=$(gh release view --repo "$REPO" --json tagName -q '.tagName')
@@ -22,5 +24,22 @@ gh api "repos/${REPO}/contents/cJSON.c?ref=${TAG}" -q '.content' | base64 -d > "
 gh api "repos/${REPO}/contents/cJSON.h?ref=${TAG}" -q '.content' | base64 -d > "${DEST}/cJSON.h"
 
 echo "$TAG" > "${DEST}/VERSION"
+
+# Apply local patches required for R CRAN compliance
+if [ -d "$PATCHES_DIR" ]; then
+  for p in "$PATCHES_DIR"/*.patch; do
+    [ -f "$p" ] || continue
+    echo "Applying patch: $(basename "$p")"
+    patch -d "$DEST" -p1 < "$p"
+  done
+
+  # Insert modification notice after the license header
+  NOTICE='/* Local modifications (applied automatically by dev/vendor-cjson.sh):\
+ * - All sprintf calls replaced with snprintf for R CRAN compliance.\
+ *   See dev/patches/ for details.\
+ */'
+  sed -i "/^\/\* JSON parser in C\. \*\/$/a\\
+${NOTICE}" "${DEST}/cJSON.c"
+fi
 
 echo "Vendored cJSON ${TAG} into ${DEST}"
