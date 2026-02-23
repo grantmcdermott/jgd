@@ -70,11 +70,11 @@ export class RSession {
       const reader = this.conn.readable
         .pipeThrough(new TextDecoderStream());
 
-      // Send welcome message.  The readable stream is already piped above,
-      // so the await here won't cause data loss even if R replies quickly.
-      // If R has already closed the connection (fast plot + dev.off()),
-      // the write fails with BrokenPipe — catch it so the read loop below
-      // can still process any buffered data R sent before closing.
+      // Send welcome message.  Fire-and-forget so the read loop starts
+      // immediately — any delay between pipeThrough() and the for-await
+      // can cause data loss on Windows named pipes when R writes and
+      // closes before the loop begins pulling from the stream.
+      // The writeQueue serialises this with any later sends (e.g. resize).
       const welcome: ServerInfoMessage = {
         type: "server_info",
         serverName: "jgd-http-server",
@@ -83,18 +83,18 @@ export class RSession {
           httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
         },
       };
-      try {
-        await this.send(JSON.stringify(welcome));
-      } catch (e) {
+      this.send(JSON.stringify(welcome)).catch((e) => {
+        // Connection-related errors are expected (R may close before
+        // reading the welcome).  Log anything else so bugs in the
+        // send path don't go completely silent.
         if (
           !(e instanceof Deno.errors.BrokenPipe) &&
           !(e instanceof Deno.errors.ConnectionReset) &&
           !(e instanceof Deno.errors.BadResource)
         ) {
-          throw e;
+          console.error(`welcome send error: ${e}`);
         }
-        // Connection closed — continue to drain buffered data
-      }
+      });
 
       let buffer = "";
       let firstMessage = true;
