@@ -142,9 +142,8 @@ export class SocketServer {
                 session.buffer = session.buffer.substring(newlineIdx + 1);
                 if (line.length === 0) continue;
 
-                // Defer welcome until the first message from R to avoid a
-                // race on Windows named pipes where writing before the first
-                // read completes can drop data.
+                // Defer welcome until the first message from R is received,
+                // matching the Deno server handshake protocol.
                 if (!session.welcomeSent) {
                     session.welcomeSent = true;
                     const welcome = {
