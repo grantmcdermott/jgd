@@ -85,8 +85,14 @@ export class RSession {
       };
       try {
         await this.send(JSON.stringify(welcome));
-      } catch {
-        // BrokenPipe / connection closed — continue to drain buffered data
+      } catch (e) {
+        if (
+          !(e instanceof Deno.errors.BrokenPipe) &&
+          !(e instanceof Deno.errors.ConnectionReset)
+        ) {
+          throw e;
+        }
+        // Connection closed — continue to drain buffered data
       }
 
       let buffer = "";
