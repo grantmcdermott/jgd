@@ -20,6 +20,5 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len);
 int transport_has_data(jgd_transport_t *t);
 int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeout_ms);
 void transport_close(jgd_transport_t *t);
-int transport_reconnect(jgd_transport_t *t);
 
 #endif
