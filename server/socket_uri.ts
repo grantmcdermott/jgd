@@ -16,11 +16,9 @@ export type SocketAddr =
 export function parseSocketUri(uri: string): SocketAddr {
   if (uri.startsWith("tcp://")) {
     const url = new URL(uri);
-    return {
-      transport: "tcp",
-      hostname: url.hostname,
-      port: parseInt(url.port, 10),
-    };
+    const port = parseInt(url.port, 10);
+    if (Number.isNaN(port)) throw new Error(`Invalid TCP port in URI: ${uri}`);
+    return { transport: "tcp", hostname: url.hostname, port };
   }
   if (uri.startsWith("npipe:///")) {
     const name = uri.slice("npipe:///".length);
