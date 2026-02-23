@@ -76,10 +76,10 @@ static void cb_clip(double x0, double x1, double y0, double y1, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "clip");
-    cjson_add_dbl(op, "x0", x0);
-    cjson_add_dbl(op, "y0", y0);
-    cjson_add_dbl(op, "x1", x1);
-    cjson_add_dbl(op, "y1", y1);
+    cJSON_AddNumberToObject(op, "x0", x0);
+    cJSON_AddNumberToObject(op, "y0", y0);
+    cJSON_AddNumberToObject(op, "x1", x1);
+    cJSON_AddNumberToObject(op, "y1", y1);
     page_add_op(&st->page, op);
 
     dd->clipLeft = x0;
@@ -93,10 +93,10 @@ static void cb_line(double x1, double y1, double x2, double y2,
     jgd_state_t *st = get_state(dd);
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "line");
-    cjson_add_dbl(op, "x1", x1);
-    cjson_add_dbl(op, "y1", y1);
-    cjson_add_dbl(op, "x2", x2);
-    cjson_add_dbl(op, "y2", y2);
+    cJSON_AddNumberToObject(op, "x1", x1);
+    cJSON_AddNumberToObject(op, "y1", y1);
+    cJSON_AddNumberToObject(op, "x2", x2);
+    cJSON_AddNumberToObject(op, "y2", y2);
     cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
     page_add_op(&st->page, op);
 }
@@ -106,8 +106,8 @@ static void cb_polyline(int n, double *x, double *y,
     jgd_state_t *st = get_state(dd);
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "polyline");
-    cJSON_AddItemToObject(op, "x", cjson_create_dbl_arr(x, n));
-    cJSON_AddItemToObject(op, "y", cjson_create_dbl_arr(y, n));
+    cJSON_AddItemToObject(op, "x", cJSON_CreateDoubleArray(x, n));
+    cJSON_AddItemToObject(op, "y", cJSON_CreateDoubleArray(y, n));
     cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
     page_add_op(&st->page, op);
 }
@@ -117,8 +117,8 @@ static void cb_polygon(int n, double *x, double *y,
     jgd_state_t *st = get_state(dd);
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "polygon");
-    cJSON_AddItemToObject(op, "x", cjson_create_dbl_arr(x, n));
-    cJSON_AddItemToObject(op, "y", cjson_create_dbl_arr(y, n));
+    cJSON_AddItemToObject(op, "x", cJSON_CreateDoubleArray(x, n));
+    cJSON_AddItemToObject(op, "y", cJSON_CreateDoubleArray(y, n));
     cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
     page_add_op(&st->page, op);
 }
@@ -128,10 +128,10 @@ static void cb_rect(double x0, double y0, double x1, double y1,
     jgd_state_t *st = get_state(dd);
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "rect");
-    cjson_add_dbl(op, "x0", x0);
-    cjson_add_dbl(op, "y0", y0);
-    cjson_add_dbl(op, "x1", x1);
-    cjson_add_dbl(op, "y1", y1);
+    cJSON_AddNumberToObject(op, "x0", x0);
+    cJSON_AddNumberToObject(op, "y0", y0);
+    cJSON_AddNumberToObject(op, "x1", x1);
+    cJSON_AddNumberToObject(op, "y1", y1);
     cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
     page_add_op(&st->page, op);
 }
@@ -141,9 +141,9 @@ static void cb_circle(double x, double y, double r,
     jgd_state_t *st = get_state(dd);
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "circle");
-    cjson_add_dbl(op, "x", x);
-    cjson_add_dbl(op, "y", y);
-    cjson_add_dbl(op, "r", r);
+    cJSON_AddNumberToObject(op, "x", x);
+    cJSON_AddNumberToObject(op, "y", y);
+    cJSON_AddNumberToObject(op, "r", r);
     cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
     page_add_op(&st->page, op);
 }
@@ -154,11 +154,11 @@ static void cb_text(double x, double y, const char *str,
     jgd_state_t *st = get_state(dd);
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "text");
-    cjson_add_dbl(op, "x", x);
-    cjson_add_dbl(op, "y", y);
+    cJSON_AddNumberToObject(op, "x", x);
+    cJSON_AddNumberToObject(op, "y", y);
     cJSON_AddStringToObject(op, "str", str);
-    cjson_add_dbl(op, "rot", rot);
-    cjson_add_dbl(op, "hadj", hadj);
+    cJSON_AddNumberToObject(op, "rot", rot);
+    cJSON_AddNumberToObject(op, "hadj", hadj);
     cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
     page_add_op(&st->page, op);
 }
@@ -169,7 +169,7 @@ static cJSON *metrics_gc_cjson(const pGEcontext gc) {
     cJSON *font = cJSON_AddObjectToObject(g, "font");
     cJSON_AddStringToObject(font, "family", gc->fontfamily[0] ? gc->fontfamily : "");
     cJSON_AddNumberToObject(font, "face", gc->fontface);
-    cjson_add_dbl(font, "size", gc->cex * gc->ps);
+    cJSON_AddNumberToObject(font, "size", gc->cex * gc->ps);
     return g;
 }
 
@@ -434,8 +434,8 @@ static void cb_path(double *x, double *y, int npoly, int *nper,
         cJSON *subpath = cJSON_CreateArray();
         for (int j = 0; j < nper[i]; j++) {
             cJSON *pt = cJSON_CreateArray();
-            cJSON_AddItemToArray(pt, cjson_create_dbl(x[offset + j]));
-            cJSON_AddItemToArray(pt, cjson_create_dbl(y[offset + j]));
+            cJSON_AddItemToArray(pt, cJSON_CreateNumber(x[offset + j]));
+            cJSON_AddItemToArray(pt, cJSON_CreateNumber(y[offset + j]));
             cJSON_AddItemToArray(subpath, pt);
         }
         cJSON_AddItemToArray(subpaths, subpath);
@@ -483,11 +483,11 @@ static void cb_raster(unsigned int *raster, int w, int h,
 
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "raster");
-    cjson_add_dbl(op, "x", x);
-    cjson_add_dbl(op, "y", y);
-    cjson_add_dbl(op, "w", width);
-    cjson_add_dbl(op, "h", height);
-    cjson_add_dbl(op, "rot", rot);
+    cJSON_AddNumberToObject(op, "x", x);
+    cJSON_AddNumberToObject(op, "y", y);
+    cJSON_AddNumberToObject(op, "w", width);
+    cJSON_AddNumberToObject(op, "h", height);
+    cJSON_AddNumberToObject(op, "rot", rot);
     cJSON_AddBoolToObject(op, "interpolate", interpolate);
     cJSON_AddNumberToObject(op, "pw", w);
     cJSON_AddNumberToObject(op, "ph", h);

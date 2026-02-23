@@ -2,6 +2,13 @@
 #include "color.h"
 #include <stdlib.h>
 
+/* All floating-point values use cJSON_CreateNumber / cJSON_AddNumberToObject.
+ * cJSON formats these with full double precision (up to 17 significant digits),
+ * which may produce slightly longer JSON than the previous %.4f formatting.
+ * This is intentional: coordinate precision beyond 4 decimal places is
+ * sub-pixel and harmless, while keeping all DOM nodes as proper cJSON_Number
+ * ensures cJSON_IsNumber() and cJSON_GetNumberValue() work correctly. */
+
 void page_init(jgd_page_t *p, double width, double height, double dpi, int bg) {
     p->ops = cJSON_CreateArray();
     p->ops_tail = NULL;
@@ -50,7 +57,7 @@ cJSON *lty_to_cjson(int lty, double lwd) {
         for (int i = 0; i < 8; i++) {
             int nibble = (lty >> (4 * i)) & 0xF;
             if (nibble == 0) break;
-            cJSON_AddItemToArray(arr, cjson_create_dbl(nibble * lwd));
+            cJSON_AddItemToArray(arr, cJSON_CreateNumber(nibble * lwd));
         }
     }
     return arr;
@@ -60,17 +67,17 @@ cJSON *gc_to_cjson(const pGEcontext gc) {
     cJSON *g = cJSON_CreateObject();
     cJSON_AddItemToObject(g, "col", color_to_cjson(gc->col));
     cJSON_AddItemToObject(g, "fill", color_to_cjson(gc->fill));
-    cjson_add_dbl(g, "lwd", gc->lwd);
+    cJSON_AddNumberToObject(g, "lwd", gc->lwd);
     cJSON_AddItemToObject(g, "lty", lty_to_cjson(gc->lty, gc->lwd));
     cJSON_AddStringToObject(g, "lend", lend_str((int)gc->lend));
     cJSON_AddStringToObject(g, "ljoin", ljoin_str((int)gc->ljoin));
-    cjson_add_dbl(g, "lmitre", gc->lmitre);
+    cJSON_AddNumberToObject(g, "lmitre", gc->lmitre);
 
     cJSON *font = cJSON_AddObjectToObject(g, "font");
     cJSON_AddStringToObject(font, "family", gc->fontfamily[0] ? gc->fontfamily : "");
     cJSON_AddNumberToObject(font, "face", gc->fontface);
-    cjson_add_dbl(font, "size", gc->cex * gc->ps);
-    cjson_add_dbl(font, "lineheight", gc->lineheight);
+    cJSON_AddNumberToObject(font, "size", gc->cex * gc->ps);
+    cJSON_AddNumberToObject(font, "lineheight", gc->lineheight);
 
     return g;
 }
@@ -85,9 +92,9 @@ char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incrementa
     cJSON_AddStringToObject(plot, "sessionId", session_id ? session_id : "default");
 
     cJSON *device = cJSON_AddObjectToObject(plot, "device");
-    cjson_add_dbl(device, "width", p->width);
-    cjson_add_dbl(device, "height", p->height);
-    cjson_add_dbl(device, "dpi", p->dpi);
+    cJSON_AddNumberToObject(device, "width", p->width);
+    cJSON_AddNumberToObject(device, "height", p->height);
+    cJSON_AddNumberToObject(device, "dpi", p->dpi);
     cJSON_AddItemToObject(device, "bg", color_to_cjson(p->bg));
 
     /* Build ops array: delta (incremental) or full */
