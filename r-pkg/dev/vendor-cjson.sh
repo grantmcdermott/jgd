@@ -10,7 +10,7 @@ REPO="DaveGamble/cJSON"
 TAG="${1:-}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DEST="$(cd "${SCRIPT_DIR}/../src" && pwd)/cjson"
-PATCHES_DIR="${SCRIPT_DIR}/patches"
+PATCHES_DIR="${DEST}/patches"
 
 if [ -z "$TAG" ]; then
   TAG=$(gh release view --repo "$REPO" --json tagName -q '.tagName')
@@ -39,7 +39,7 @@ if [ -d "$PATCHES_DIR" ]; then
   sed '/^\/\* JSON parser in C\. \*\/$/a\
 /* Local modifications (applied automatically by dev/vendor-cjson.sh):\
  * - All sprintf calls replaced with snprintf for R CRAN compliance.\
- *   See dev/patches/ for details.\
+ *   See src/cjson/patches/ for details.\
  */' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
 fi
 
