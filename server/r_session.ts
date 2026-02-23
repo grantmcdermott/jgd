@@ -62,20 +62,25 @@ export class RSession {
   async run(): Promise<void> {
     this.hub.registerSession(this);
 
-    // Send welcome message immediately
-    const welcome: ServerInfoMessage = {
-      type: "server_info",
-      serverName: "jgd-http-server",
-      protocolVersion: 1,
-      serverInfo: {
-        httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
-      },
-    };
-    await this.send(JSON.stringify(welcome));
-
     try {
+      // Set up reader before sending welcome so the readable stream is
+      // piped before R can finish and close the connection.  On Unix
+      // sockets, reading from a connection whose remote end already
+      // closed may miss buffered data if the stream wasn't set up yet.
       const reader = this.conn.readable
         .pipeThrough(new TextDecoderStream());
+
+      // Send welcome message.  The readable stream is already piped above,
+      // so the await here won't cause data loss even if R replies quickly.
+      const welcome: ServerInfoMessage = {
+        type: "server_info",
+        serverName: "jgd-http-server",
+        protocolVersion: 1,
+        serverInfo: {
+          httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
+        },
+      };
+      await this.send(JSON.stringify(welcome));
 
       let buffer = "";
       let firstMessage = true;
