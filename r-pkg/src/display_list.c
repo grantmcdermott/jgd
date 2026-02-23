@@ -122,7 +122,9 @@ void page_serialize_frame(jgd_page_t *p, const char *session_id, json_writer_t *
         }
 
         if (dlen > 0) {
-            /* Write "[" + delta_ops + "]" directly without allocation */
+            /* Write "[" + delta_ops + "]" directly without allocation.
+             * TODO: needs_comma manipulation couples us to json_writer
+             * internals — clean up when migrating to cJSON. */
             jw_raw(out, "[", 1);
             out->needs_comma = 0;
             jw_raw(out, delta, dlen);
