@@ -58,7 +58,6 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
         }
     }
 
-    jw_init(&st->frame_buf);
     page_init(&st->page, width * dpi, height * dpi, dpi, R_RGB(255, 255, 255));
 
     if (transport_connect(&st->transport) != 0) {
@@ -156,20 +155,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         char buf[1024];
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
         if (n <= 0) break;
-
-        if (strstr(buf, "\"resize\"")) {
-            char *wp = strstr(buf, "\"width\"");
-            char *hp = strstr(buf, "\"height\"");
-            if (wp && hp) {
-                double w = 0, h = 0;
-                wp = strchr(wp, ':'); if (wp) w = strtod(wp + 1, NULL);
-                hp = strchr(hp, ':'); if (hp) h = strtod(hp + 1, NULL);
-                if (w > 0 && h > 0) {
-                    st->pending_w = w;
-                    st->pending_h = h;
-                }
-            }
-        }
+        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h);
     }
 
     if (st->pending_w <= 0 || st->pending_h <= 0)
@@ -332,3 +318,26 @@ void jgd_remove_input_handler(jgd_state_t *st) {
 }
 
 #endif
+
+/* ---- Shared resize message parser ---- */
+
+int jgd_try_parse_resize(const char *buf, double *w, double *h) {
+    cJSON *msg = cJSON_Parse(buf);
+    if (!msg) return 0;
+    cJSON *type = cJSON_GetObjectItem(msg, "type");
+    if (!cJSON_IsString(type) || strcmp(type->valuestring, "resize") != 0) {
+        cJSON_Delete(msg);
+        return 0;
+    }
+    cJSON *wj = cJSON_GetObjectItem(msg, "width");
+    cJSON *hj = cJSON_GetObjectItem(msg, "height");
+    int ok = 0;
+    if (cJSON_IsNumber(wj) && cJSON_IsNumber(hj) &&
+        wj->valuedouble > 0 && hj->valuedouble > 0) {
+        *w = wj->valuedouble;
+        *h = hj->valuedouble;
+        ok = 1;
+    }
+    cJSON_Delete(msg);
+    return ok;
+}

@@ -4,7 +4,7 @@
 #include "color.h"
 #include "metrics.h"
 #include "png_encoder.h"
-#include "json_writer.h"
+#include "cJSON.h"
 
 #include <R.h>
 #include <Rinternals.h>
@@ -19,8 +19,11 @@ static jgd_state_t *get_state(pDevDesc dd) {
 }
 
 void jgd_flush_frame(jgd_state_t *st, int incremental) {
-    page_serialize_frame(&st->page, st->session_id, &st->frame_buf, incremental);
-    transport_send(&st->transport, jw_result(&st->frame_buf), jw_length(&st->frame_buf));
+    char *json = page_serialize_frame(&st->page, st->session_id, incremental);
+    if (json) {
+        transport_send(&st->transport, json, strlen(json));
+        free(json);
+    }
 }
 
 /* --- Device callbacks --- */
@@ -64,7 +67,6 @@ static void cb_close(pDevDesc dd) {
     transport_send(&st->transport, close_msg, strlen(close_msg));
 
     page_free(&st->page);
-    jw_free(&st->frame_buf);
     transport_close(&st->transport);
     free(st);
     dd->deviceSpecific = NULL;
@@ -72,16 +74,13 @@ static void cb_close(pDevDesc dd) {
 
 static void cb_clip(double x0, double x1, double y0, double y1, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *w = page_writer(&st->page);
-
-    jw_obj_start(w);
-    jw_kv_str(w, "op", "clip");
-    jw_kv_dbl(w, "x0", x0);
-    jw_kv_dbl(w, "y0", y0);
-    jw_kv_dbl(w, "x1", x1);
-    jw_kv_dbl(w, "y1", y1);
-    jw_obj_end(w);
-    st->page.op_count++;
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "clip");
+    cJSON_AddNumberToObject(op, "x0", x0);
+    cJSON_AddNumberToObject(op, "y0", y0);
+    cJSON_AddNumberToObject(op, "x1", x1);
+    cJSON_AddNumberToObject(op, "y1", y1);
+    page_add_op(&st->page, op);
 
     dd->clipLeft = x0;
     dd->clipRight = x1;
@@ -92,118 +91,86 @@ static void cb_clip(double x0, double x1, double y0, double y1, pDevDesc dd) {
 static void cb_line(double x1, double y1, double x2, double y2,
                     const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *w = page_writer(&st->page);
-
-    jw_obj_start(w);
-    jw_kv_str(w, "op", "line");
-    jw_kv_dbl(w, "x1", x1);
-    jw_kv_dbl(w, "y1", y1);
-    jw_kv_dbl(w, "x2", x2);
-    jw_kv_dbl(w, "y2", y2);
-    gc_write_json(w, gc);
-    jw_obj_end(w);
-    st->page.op_count++;
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "line");
+    cJSON_AddNumberToObject(op, "x1", x1);
+    cJSON_AddNumberToObject(op, "y1", y1);
+    cJSON_AddNumberToObject(op, "x2", x2);
+    cJSON_AddNumberToObject(op, "y2", y2);
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
+    page_add_op(&st->page, op);
 }
 
 static void cb_polyline(int n, double *x, double *y,
                         const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *w = page_writer(&st->page);
-
-    jw_obj_start(w);
-    jw_kv_str(w, "op", "polyline");
-    jw_kv_dbl_arr(w, "x", x, n);
-    jw_kv_dbl_arr(w, "y", y, n);
-    gc_write_json(w, gc);
-    jw_obj_end(w);
-    st->page.op_count++;
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "polyline");
+    cJSON_AddItemToObject(op, "x", cJSON_CreateDoubleArray(x, n));
+    cJSON_AddItemToObject(op, "y", cJSON_CreateDoubleArray(y, n));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
+    page_add_op(&st->page, op);
 }
 
 static void cb_polygon(int n, double *x, double *y,
                        const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *w = page_writer(&st->page);
-
-    jw_obj_start(w);
-    jw_kv_str(w, "op", "polygon");
-    jw_kv_dbl_arr(w, "x", x, n);
-    jw_kv_dbl_arr(w, "y", y, n);
-    gc_write_json(w, gc);
-    jw_obj_end(w);
-    st->page.op_count++;
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "polygon");
+    cJSON_AddItemToObject(op, "x", cJSON_CreateDoubleArray(x, n));
+    cJSON_AddItemToObject(op, "y", cJSON_CreateDoubleArray(y, n));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
+    page_add_op(&st->page, op);
 }
 
 static void cb_rect(double x0, double y0, double x1, double y1,
                     const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *w = page_writer(&st->page);
-
-    jw_obj_start(w);
-    jw_kv_str(w, "op", "rect");
-    jw_kv_dbl(w, "x0", x0);
-    jw_kv_dbl(w, "y0", y0);
-    jw_kv_dbl(w, "x1", x1);
-    jw_kv_dbl(w, "y1", y1);
-    gc_write_json(w, gc);
-    jw_obj_end(w);
-    st->page.op_count++;
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "rect");
+    cJSON_AddNumberToObject(op, "x0", x0);
+    cJSON_AddNumberToObject(op, "y0", y0);
+    cJSON_AddNumberToObject(op, "x1", x1);
+    cJSON_AddNumberToObject(op, "y1", y1);
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
+    page_add_op(&st->page, op);
 }
 
 static void cb_circle(double x, double y, double r,
                       const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *w = page_writer(&st->page);
-
-    jw_obj_start(w);
-    jw_kv_str(w, "op", "circle");
-    jw_kv_dbl(w, "x", x);
-    jw_kv_dbl(w, "y", y);
-    jw_kv_dbl(w, "r", r);
-    gc_write_json(w, gc);
-    jw_obj_end(w);
-    st->page.op_count++;
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "circle");
+    cJSON_AddNumberToObject(op, "x", x);
+    cJSON_AddNumberToObject(op, "y", y);
+    cJSON_AddNumberToObject(op, "r", r);
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
+    page_add_op(&st->page, op);
 }
 
 static void cb_text(double x, double y, const char *str,
                     double rot, double hadj,
                     const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *w = page_writer(&st->page);
-
-    jw_obj_start(w);
-    jw_kv_str(w, "op", "text");
-    jw_kv_dbl(w, "x", x);
-    jw_kv_dbl(w, "y", y);
-    jw_kv_str(w, "str", str);
-    jw_kv_dbl(w, "rot", rot);
-    jw_kv_dbl(w, "hadj", hadj);
-    gc_write_json(w, gc);
-    jw_obj_end(w);
-    st->page.op_count++;
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "text");
+    cJSON_AddNumberToObject(op, "x", x);
+    cJSON_AddNumberToObject(op, "y", y);
+    cJSON_AddStringToObject(op, "str", str);
+    cJSON_AddNumberToObject(op, "rot", rot);
+    cJSON_AddNumberToObject(op, "hadj", hadj);
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
+    page_add_op(&st->page, op);
 }
 
-/* Helper: write gc font info for metrics request */
-static void metrics_gc_json(json_writer_t *w, const pGEcontext gc) {
-    jw_key(w, "gc");
-    jw_obj_start(w);
-    jw_key(w, "font");
-    jw_obj_start(w);
-    jw_kv_str(w, "family", gc->fontfamily[0] ? gc->fontfamily : "");
-    jw_kv_int(w, "face", gc->fontface);
-    jw_kv_dbl(w, "size", gc->cex * gc->ps);
-    jw_obj_end(w);
-    jw_obj_end(w);
-}
-
-/* Parse a double value after "key": in a JSON string */
-static double parse_json_dbl(const char *json, const char *key) {
-    char needle[64];
-    snprintf(needle, sizeof(needle), "\"%s\"", key);
-    const char *p = strstr(json, needle);
-    if (!p) return 0.0;
-    p = strchr(p, ':');
-    if (!p) return 0.0;
-    return strtod(p + 1, NULL);
+/* Helper: build gc font info for metrics request */
+static cJSON *metrics_gc_cjson(const pGEcontext gc) {
+    cJSON *g = cJSON_CreateObject();
+    cJSON *font = cJSON_AddObjectToObject(g, "font");
+    cJSON_AddStringToObject(font, "family", gc->fontfamily[0] ? gc->fontfamily : "");
+    cJSON_AddNumberToObject(font, "face", gc->fontface);
+    cJSON_AddNumberToObject(font, "size", gc->cex * gc->ps);
+    return g;
 }
 
 static int metrics_id_counter = 0;
@@ -254,21 +221,27 @@ static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
     for (int attempts = 0; attempts < 5; attempts++) {
         int n = transport_recv_line(&st->transport, buf, bufsize, 500);
         if (n <= 0) return -1;
-        if (strstr(buf, "\"metrics_response\"")) return n;
-        /* Got a non-metrics message (e.g. resize) — stash and retry */
-        if (strstr(buf, "\"resize\"")) {
-            char *wp = strstr(buf, "\"width\"");
-            char *hp = strstr(buf, "\"height\"");
-            if (wp && hp) {
-                double w = 0, h = 0;
-                wp = strchr(wp, ':'); if (wp) w = strtod(wp + 1, NULL);
-                hp = strchr(hp, ':'); if (hp) h = strtod(hp + 1, NULL);
-                if (w > 0 && h > 0) {
-                    st->pending_w = w;
-                    st->pending_h = h;
+
+        cJSON *msg = cJSON_Parse(buf);
+        if (!msg) continue;
+
+        cJSON *type = cJSON_GetObjectItem(msg, "type");
+        if (cJSON_IsString(type)) {
+            if (strcmp(type->valuestring, "metrics_response") == 0) {
+                cJSON_Delete(msg);
+                return n;
+            }
+            if (strcmp(type->valuestring, "resize") == 0) {
+                cJSON *w = cJSON_GetObjectItem(msg, "width");
+                cJSON *h = cJSON_GetObjectItem(msg, "height");
+                if (cJSON_IsNumber(w) && cJSON_IsNumber(h) &&
+                    w->valuedouble > 0 && h->valuedouble > 0) {
+                    st->pending_w = w->valuedouble;
+                    st->pending_h = h->valuedouble;
                 }
             }
         }
+        cJSON_Delete(msg);
     }
     return -1;
 }
@@ -282,28 +255,33 @@ static double cb_strWidth(const char *str, const pGEcontext gc, pDevDesc dd) {
     mcache_entry_t *cached = mcache_lookup(h);
     if (cached) return cached->v1;
 
-    json_writer_t w;
-    jw_init(&w);
-    jw_obj_start(&w);
-    jw_kv_str(&w, "type", "metrics_request");
-    jw_kv_int(&w, "id", ++metrics_id_counter);
-    jw_kv_str(&w, "kind", "strWidth");
-    jw_kv_str(&w, "str", str);
-    metrics_gc_json(&w, gc);
-    jw_obj_end(&w);
+    cJSON *req = cJSON_CreateObject();
+    cJSON_AddStringToObject(req, "type", "metrics_request");
+    cJSON_AddNumberToObject(req, "id", ++metrics_id_counter);
+    cJSON_AddStringToObject(req, "kind", "strWidth");
+    cJSON_AddStringToObject(req, "str", str);
+    cJSON_AddItemToObject(req, "gc", metrics_gc_cjson(gc));
 
-    transport_send(&st->transport, jw_result(&w), jw_length(&w));
-    jw_free(&w);
+    char *json = cJSON_PrintUnformatted(req);
+    cJSON_Delete(req);
+    if (!json) return metrics_str_width(str, gc, st->dpi);
+    transport_send(&st->transport, json, strlen(json));
+    free(json);
 
     char buf[1024];
     int n = recv_metrics_response(st, buf, sizeof(buf));
     if (n <= 0)
         return metrics_str_width(str, gc, st->dpi);
 
-    double width = parse_json_dbl(buf, "width");
-    if (width > 0) {
-        mcache_store(h, width, 0, 0);
-        return width;
+    cJSON *resp = cJSON_Parse(buf);
+    if (resp) {
+        cJSON *wj = cJSON_GetObjectItem(resp, "width");
+        double width = cJSON_IsNumber(wj) ? wj->valuedouble : 0.0;
+        cJSON_Delete(resp);
+        if (width > 0) {
+            mcache_store(h, width, 0, 0);
+            return width;
+        }
     }
     return metrics_str_width(str, gc, st->dpi);
 }
@@ -329,18 +307,21 @@ static void cb_metricInfo(int c, const pGEcontext gc,
         return;
     }
 
-    json_writer_t w;
-    jw_init(&w);
-    jw_obj_start(&w);
-    jw_kv_str(&w, "type", "metrics_request");
-    jw_kv_int(&w, "id", ++metrics_id_counter);
-    jw_kv_str(&w, "kind", "metricInfo");
-    jw_kv_int(&w, "c", cc);
-    metrics_gc_json(&w, gc);
-    jw_obj_end(&w);
+    cJSON *req = cJSON_CreateObject();
+    cJSON_AddStringToObject(req, "type", "metrics_request");
+    cJSON_AddNumberToObject(req, "id", ++metrics_id_counter);
+    cJSON_AddStringToObject(req, "kind", "metricInfo");
+    cJSON_AddNumberToObject(req, "c", cc);
+    cJSON_AddItemToObject(req, "gc", metrics_gc_cjson(gc));
 
-    transport_send(&st->transport, jw_result(&w), jw_length(&w));
-    jw_free(&w);
+    char *json = cJSON_PrintUnformatted(req);
+    cJSON_Delete(req);
+    if (!json) {
+        metrics_char_info(c, gc, st->dpi, ascent, descent, width);
+        return;
+    }
+    transport_send(&st->transport, json, strlen(json));
+    free(json);
 
     char buf[1024];
     int n = recv_metrics_response(st, buf, sizeof(buf));
@@ -349,17 +330,24 @@ static void cb_metricInfo(int c, const pGEcontext gc,
         return;
     }
 
-    double a = parse_json_dbl(buf, "ascent");
-    double d = parse_json_dbl(buf, "descent");
-    double ww = parse_json_dbl(buf, "width");
-    if (a > 0 || d > 0 || ww > 0) {
-        *ascent = a;
-        *descent = d;
-        *width = ww;
-        mcache_store(h, a, d, ww);
-    } else {
-        metrics_char_info(c, gc, st->dpi, ascent, descent, width);
+    cJSON *resp = cJSON_Parse(buf);
+    if (resp) {
+        cJSON *aj = cJSON_GetObjectItem(resp, "ascent");
+        cJSON *dj = cJSON_GetObjectItem(resp, "descent");
+        cJSON *wj = cJSON_GetObjectItem(resp, "width");
+        double a = cJSON_IsNumber(aj) ? aj->valuedouble : 0.0;
+        double d = cJSON_IsNumber(dj) ? dj->valuedouble : 0.0;
+        double ww = cJSON_IsNumber(wj) ? wj->valuedouble : 0.0;
+        cJSON_Delete(resp);
+        if (a > 0 || d > 0 || ww > 0) {
+            *ascent = a;
+            *descent = d;
+            *width = ww;
+            mcache_store(h, a, d, ww);
+            return;
+        }
     }
+    metrics_char_info(c, gc, st->dpi, ascent, descent, width);
 }
 
 static void check_incoming(jgd_state_t *st, pDevDesc dd) {
@@ -367,20 +355,7 @@ static void check_incoming(jgd_state_t *st, pDevDesc dd) {
         char buf[1024];
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
         if (n <= 0) break;
-
-        if (strstr(buf, "\"resize\"")) {
-            char *wp = strstr(buf, "\"width\"");
-            char *hp = strstr(buf, "\"height\"");
-            if (wp && hp) {
-                double w = 0, h = 0;
-                wp = strchr(wp, ':'); if (wp) w = strtod(wp + 1, NULL);
-                hp = strchr(hp, ':'); if (hp) h = strtod(hp + 1, NULL);
-                if (w > 0 && h > 0) {
-                    st->pending_w = w;
-                    st->pending_h = h;
-                }
-            }
-        }
+        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h);
     }
 }
 
@@ -449,31 +424,26 @@ static void cb_size(double *left, double *right, double *bottom, double *top,
 static void cb_path(double *x, double *y, int npoly, int *nper,
                     Rboolean winding, const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *w = page_writer(&st->page);
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "path");
+    cJSON_AddStringToObject(op, "winding", winding ? "nonzero" : "evenodd");
 
-    jw_obj_start(w);
-    jw_kv_str(w, "op", "path");
-    jw_kv_str(w, "winding", winding ? "nonzero" : "evenodd");
-
-    jw_key(w, "subpaths");
-    jw_arr_start(w);
+    cJSON *subpaths = cJSON_AddArrayToObject(op, "subpaths");
     int offset = 0;
     for (int i = 0; i < npoly; i++) {
-        jw_arr_start(w);
+        cJSON *subpath = cJSON_CreateArray();
         for (int j = 0; j < nper[i]; j++) {
-            jw_arr_start(w);
-            jw_dbl(w, x[offset + j]);
-            jw_dbl(w, y[offset + j]);
-            jw_arr_end(w);
+            cJSON *pt = cJSON_CreateArray();
+            cJSON_AddItemToArray(pt, cJSON_CreateNumber(x[offset + j]));
+            cJSON_AddItemToArray(pt, cJSON_CreateNumber(y[offset + j]));
+            cJSON_AddItemToArray(subpath, pt);
         }
-        jw_arr_end(w);
+        cJSON_AddItemToArray(subpaths, subpath);
         offset += nper[i];
     }
-    jw_arr_end(w);
 
-    gc_write_json(w, gc);
-    jw_obj_end(w);
-    st->page.op_count++;
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc));
+    page_add_op(&st->page, op);
 }
 
 static void cb_raster(unsigned int *raster, int w, int h,
@@ -481,7 +451,6 @@ static void cb_raster(unsigned int *raster, int w, int h,
                       double rot, Rboolean interpolate,
                       const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
-    json_writer_t *jw = page_writer(&st->page);
 
     size_t npix = (size_t)w * (size_t)h;
     unsigned char *rgba = (unsigned char *)malloc(npix * 4);
@@ -504,33 +473,28 @@ static void cb_raster(unsigned int *raster, int w, int h,
     free(png);
     if (!b64) return;
 
-    jw_obj_start(jw);
-    jw_kv_str(jw, "op", "raster");
-    jw_kv_dbl(jw, "x", x);
-    jw_kv_dbl(jw, "y", y);
-    jw_kv_dbl(jw, "w", width);
-    jw_kv_dbl(jw, "h", height);
-    jw_kv_dbl(jw, "rot", rot);
-    jw_kv_bool(jw, "interpolate", interpolate);
-    jw_kv_int(jw, "pw", w);
-    jw_kv_int(jw, "ph", h);
-
-    jw_key(jw, "data");
     size_t uri_len = 22 + b64_len;
     char *uri = (char *)malloc(uri_len + 1);
-    if (uri) {
-        memcpy(uri, "data:image/png;base64,", 22);
-        memcpy(uri + 22, b64, b64_len);
-        uri[uri_len] = '\0';
-        jw_str(jw, uri);
-        free(uri);
-    } else {
-        jw_null(jw);
-    }
+    if (!uri) { free(b64); return; }
+    memcpy(uri, "data:image/png;base64,", 22);
+    memcpy(uri + 22, b64, b64_len);
+    uri[uri_len] = '\0';
     free(b64);
 
-    jw_obj_end(jw);
-    st->page.op_count++;
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "raster");
+    cJSON_AddNumberToObject(op, "x", x);
+    cJSON_AddNumberToObject(op, "y", y);
+    cJSON_AddNumberToObject(op, "w", width);
+    cJSON_AddNumberToObject(op, "h", height);
+    cJSON_AddNumberToObject(op, "rot", rot);
+    cJSON_AddBoolToObject(op, "interpolate", interpolate);
+    cJSON_AddNumberToObject(op, "pw", w);
+    cJSON_AddNumberToObject(op, "ph", h);
+    cJSON_AddStringToObject(op, "data", uri);
+    free(uri);
+
+    page_add_op(&st->page, op);
 }
 
 /* No-op stubs for R >= 4.1 pattern/mask/clip-path/group callbacks */

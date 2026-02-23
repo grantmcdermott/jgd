@@ -1,4 +1,5 @@
 #include "transport.h"
+#include "cJSON.h"
 
 #include <R.h>
 
@@ -134,29 +135,31 @@ static int discover_socket_path(char *out, size_t outsize) {
         FILE *f = fopen(discovery, "r");
         if (!f) continue;
 
-        char line[2048];
-        char *path_start = NULL;
-        while (fgets(line, sizeof(line), f)) {
-            path_start = strstr(line, "\"socketPath\"");
-            if (path_start) break;
-        }
+        fseek(f, 0, SEEK_END);
+        long fsize = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (fsize <= 0 || fsize > 65536) { fclose(f); continue; }
+
+        char *content = (char *)malloc((size_t)fsize + 1);
+        if (!content) { fclose(f); continue; }
+        size_t nread = fread(content, 1, (size_t)fsize, f);
         fclose(f);
+        content[nread] = '\0';
 
-        if (!path_start) continue;
+        cJSON *json = cJSON_Parse(content);
+        free(content);
+        if (!json) continue;
 
-        char *colon = strchr(path_start, ':');
-        if (!colon) continue;
-        char *quote1 = strchr(colon, '"');
-        if (!quote1) continue;
-        quote1++;
-        char *quote2 = strchr(quote1, '"');
-        if (!quote2) continue;
-
-        size_t plen = (size_t)(quote2 - quote1);
-        if (plen >= outsize) continue;
-        memcpy(out, quote1, plen);
-        out[plen] = '\0';
-        return 0;
+        cJSON *sp = cJSON_GetObjectItem(json, "socketPath");
+        if (cJSON_IsString(sp) && sp->valuestring) {
+            size_t plen = strlen(sp->valuestring);
+            if (plen > 0 && plen < outsize) {
+                memcpy(out, sp->valuestring, plen + 1);
+                cJSON_Delete(json);
+                return 0;
+            }
+        }
+        cJSON_Delete(json);
     }
 
     return -1;
