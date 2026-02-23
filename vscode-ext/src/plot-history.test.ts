@@ -211,6 +211,17 @@ describe('PlotHistory', () => {
             const accepted = history.replaceLatest('s1', makePlot('B2'));
             expect(accepted).toBe(true);
         });
+
+        it('replaceLatest is rejected on empty session after deleting last plot', () => {
+            history.addPlot('s1', makePlot('A'));
+            history.removeCurrent(); // latestDeleted = true, plots = []
+            expect(history.count()).toBe(0);
+
+            // latestDeleted check fires before the empty-session fallback
+            const accepted = history.replaceLatest('s1', makePlot('stale'));
+            expect(accepted).toBe(false);
+            expect(history.count()).toBe(0);
+        });
     });
 
     // ---- Resize-after-delete scenario (PR#13 / PR#18 bug) ----
@@ -309,6 +320,14 @@ describe('PlotHistory', () => {
             let fired = 0;
             history.onDidChange(() => fired++);
             history.replaceLatest('s1', makePlot('A2'));
+            expect(fired).toBe(1);
+        });
+
+        it('emits change on replaceCurrent', () => {
+            history.addPlot('s1', makePlot('A'));
+            let fired = 0;
+            history.onDidChange(() => fired++);
+            history.replaceCurrent('s1', makePlot('A2'));
             expect(fired).toBe(1);
         });
 
