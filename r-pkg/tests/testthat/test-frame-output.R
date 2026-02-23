@@ -171,7 +171,7 @@ test_that("first flush on a page sends complete frame (incremental=false)", {
 
 test_that("subsequent flushes send only delta ops (incremental=true)", {
   msgs = with_mock_jgd({
-    # First: a complete plot
+    # First: a complete plot (plot.new + rect generates clip, rect, etc.)
     plot.new()
     rect(0, 0, 1, 1)
     # Additional drawing on the same page triggers incremental flush
@@ -182,15 +182,17 @@ test_that("subsequent flushes send only delta ops (incremental=true)", {
   # Should have at least 2 frames: one complete, one incremental
   expect_true(length(frames) >= 2)
 
-  # The second frame should be incremental with only the new ops
   incr_frames = Filter(function(f) isTRUE(f$incremental), frames)
   expect_true(length(incr_frames) >= 1)
 
-  # Incremental frame should have fewer ops than the first frame
-  # (delta contains only the new ops, not all accumulated ops)
-  first_ops = length(frames[[1]]$plot$ops)
-  incr_ops = length(incr_frames[[1]]$plot$ops)
-  expect_true(incr_ops < first_ops)
+  # Delta encoding: incremental frame should contain only the new ops
+  # (polyline from lines()), not ops from the first flush (rect, clip, etc.)
+  incr_op_types = vapply(
+    incr_frames[[1]]$plot$ops,
+    function(o) o$op, character(1)
+  )
+  expect_true("polyline" %in% incr_op_types)
+  expect_false("rect" %in% incr_op_types)
 })
 
 test_that("new page resets delta tracking", {

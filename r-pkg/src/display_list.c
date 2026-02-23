@@ -104,8 +104,10 @@ void page_serialize_frame(jgd_page_t *p, const char *session_id, json_writer_t *
     color_write_json(out, p->bg);
     jw_obj_end(out);
 
-    jw_key(out, "ops");
+    /* p->jw buffer must end with ']' from jw_arr_end above */
     assert(p->jw.buf[p->jw.len - 1] == ']');
+
+    jw_key(out, "ops");
     if (incremental && p->last_flush_offset > 1 &&
         p->last_flush_offset < p->jw.len) {
         /* Delta encoding: send only ops added since last flush */
