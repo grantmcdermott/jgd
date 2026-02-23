@@ -1,5 +1,5 @@
 import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import { join } from "jsr:@std/path@1";
+import { join, resolve } from "jsr:@std/path@1";
 import { Hub } from "./hub.ts";
 import { RSession } from "./r_session.ts";
 import { writeDiscovery, removeDiscovery } from "./discovery.ts";
@@ -7,6 +7,7 @@ import { handleWebSocket } from "./websocket.ts";
 import { serveStaticFile } from "./static.ts";
 import { assets } from "./web_assets.ts";
 import { PipeListener } from "./named_pipe.ts";
+import { parseSocketUri, socketUri } from "./socket_uri.ts";
 
 function printUsage(): void {
   console.log(`Usage: jgd-server [options]
@@ -75,7 +76,7 @@ async function main(): Promise<void> {
       port: tcpPort,
     });
     const addr = listener.addr as Deno.NetAddr;
-    socketPath = `tcp:${addr.port}`;
+    socketPath = socketUri.tcp("127.0.0.1", addr.port);
     rListener = listener;
   } else if (useNamedPipe) {
     // Named pipe (Windows default)
@@ -85,24 +86,25 @@ async function main(): Promise<void> {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
     const pipeName = `jgd-${hex}`;
-    socketPath = `npipe:///${pipeName}`;
+    socketPath = socketUri.npipe(pipeName);
     const pipeListener = new PipeListener();
     await pipeListener.listen(`\\\\.\\pipe\\${pipeName}`);
     rListener = pipeListener;
   } else {
     // Unix domain socket (Linux/macOS)
-    socketPath = args.socket;
-    if (!socketPath) {
+    let unixPath = args.socket ? resolve(args.socket) : "";
+    if (!unixPath) {
       const token = new Uint8Array(8);
       crypto.getRandomValues(token);
       const hex = Array.from(token)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
       const tmpdir = Deno.env.get("TMPDIR") || "/tmp";
-      socketPath = join(tmpdir, `jgd-${hex}.sock`);
+      unixPath = join(tmpdir, `jgd-${hex}.sock`);
     }
-    await cleanStaleSocket(socketPath);
-    rListener = Deno.listen({ transport: "unix", path: socketPath });
+    socketPath = socketUri.unix(unixPath);
+    await cleanStaleSocket(unixPath);
+    rListener = Deno.listen({ transport: "unix", path: unixPath });
   }
   console.error(`R listener: ${socketPath}`);
 
@@ -172,7 +174,8 @@ async function main(): Promise<void> {
   // Named pipes are kernel objects and don't need file removal.
   if (!useTcp && !useNamedPipe) {
     try {
-      await Deno.remove(socketPath);
+      const addr = parseSocketUri(socketPath);
+      if (addr.transport === "unix") await Deno.remove(addr.path);
     } catch { /* ignore */ }
   }
 

@@ -13,19 +13,20 @@ Deno.test("TCP mode", async (t) => {
   try {
     await server.start();
 
-    await t.step("server reports tcp:PORT socket path", () => {
+    await t.step("server reports tcp://host:port socket path", () => {
       assert(
-        server.socketPath.startsWith("tcp:"),
-        `Expected tcp:PORT, got ${server.socketPath}`,
+        server.socketPath.startsWith("tcp://127.0.0.1:"),
+        `Expected tcp://127.0.0.1:PORT, got ${server.socketPath}`,
       );
-      const port = parseInt(server.socketPath.slice(4), 10);
+      const url = new URL(server.socketPath);
+      const port = parseInt(url.port, 10);
       assert(port > 0, `Expected valid port, got ${port}`);
     });
 
-    await t.step("discovery file contains tcp:PORT", async () => {
+    await t.step("discovery file contains tcp://host:port", async () => {
       const disc = await server.readDiscovery();
       assertEquals(disc.socketPath, server.socketPath);
-      assert(disc.socketPath.startsWith("tcp:"));
+      assert(disc.socketPath.startsWith("tcp://127.0.0.1:"));
     });
 
     await t.step("R client connects via TCP", async () => {

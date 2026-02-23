@@ -1,5 +1,6 @@
 import { dirname, fromFileUrl, join } from "@std/path";
 import type { DiscoveryFile } from "./types.ts";
+import { parseSocketUri, socketUri } from "../../socket_uri.ts";
 
 /**
  * Manages a jgd server process for testing.
@@ -23,9 +24,10 @@ export class TestServer {
     // TCP and named pipe (Windows default) paths are both auto-generated
     // by the server, so we parse them from server output.
     const needsOutputParsing = this.useTcp || Deno.build.os === "windows";
+    const rawPath = join(this.tmpDir, `jgd-${crypto.randomUUID().slice(0, 8)}.sock`);
     this.socketPath = needsOutputParsing
       ? ""  // resolved after server starts
-      : join(this.tmpDir, `jgd-${crypto.randomUUID().slice(0, 8)}.sock`);
+      : socketUri.unix(rawPath);
   }
 
   /** Start the server and wait for it to be ready. */
@@ -56,8 +58,12 @@ export class TestServer {
     const serverArgs = [...prefixArgs];
     if (this.useTcp) {
       serverArgs.push("-tcp", "0");
-    } else {
-      serverArgs.push("-socket", this.socketPath);
+    } else if (this.socketPath) {
+      // Unix socket mode only; on Windows socketPath is "" here
+      // because the server auto-generates a named pipe.
+      const addr = parseSocketUri(this.socketPath);
+      if (addr.transport !== "unix") throw new Error(`Expected unix:///path URI, got: ${this.socketPath}`);
+      serverArgs.push("-socket", addr.path);
     }
     serverArgs.push("-http", "127.0.0.1:0", "-v");
 
