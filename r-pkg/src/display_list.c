@@ -1,27 +1,29 @@
 #include "display_list.h"
 #include "color.h"
-#include <assert.h>
-#include <string.h>
-#include <stdio.h>
+#include <stdlib.h>
 
 void page_init(jgd_page_t *p, double width, double height, double dpi, int bg) {
-    jw_init(&p->jw);
-    jw_arr_start(&p->jw);
+    p->ops = cJSON_CreateArray();
+    p->ops_tail = NULL;
+    p->last_flush_tail = NULL;
     p->op_count = 0;
     p->width = width;
     p->height = height;
     p->dpi = dpi;
     p->bg = bg;
-    p->finalized = 0;
-    p->last_flush_offset = p->jw.len;  /* right after '[' */
 }
 
 void page_free(jgd_page_t *p) {
-    jw_free(&p->jw);
+    cJSON_Delete(p->ops);
+    p->ops = NULL;
+    p->ops_tail = NULL;
+    p->last_flush_tail = NULL;
 }
 
-json_writer_t *page_writer(jgd_page_t *p) {
-    return &p->jw;
+void page_add_op(jgd_page_t *p, cJSON *op) {
+    cJSON_AddItemToArray(p->ops, op);
+    p->ops_tail = op;
+    p->op_count++;
 }
 
 static const char *lend_str(int lend) {
@@ -42,110 +44,70 @@ static const char *ljoin_str(int ljoin) {
     }
 }
 
-void lty_write_json(json_writer_t *w, int lty, double lwd) {
-    jw_key(w, "lty");
-    jw_arr_start(w);
+cJSON *lty_to_cjson(int lty, double lwd) {
+    cJSON *arr = cJSON_CreateArray();
     if (lty != LTY_SOLID && lty != LTY_BLANK) {
         for (int i = 0; i < 8; i++) {
             int nibble = (lty >> (4 * i)) & 0xF;
             if (nibble == 0) break;
-            jw_dbl(w, nibble * lwd);
+            cJSON_AddItemToArray(arr, cjson_create_dbl(nibble * lwd));
         }
     }
-    jw_arr_end(w);
+    return arr;
 }
 
-void gc_write_json(json_writer_t *w, const pGEcontext gc) {
-    jw_key(w, "gc");
-    jw_obj_start(w);
+cJSON *gc_to_cjson(const pGEcontext gc) {
+    cJSON *g = cJSON_CreateObject();
+    cJSON_AddItemToObject(g, "col", color_to_cjson(gc->col));
+    cJSON_AddItemToObject(g, "fill", color_to_cjson(gc->fill));
+    cjson_add_dbl(g, "lwd", gc->lwd);
+    cJSON_AddItemToObject(g, "lty", lty_to_cjson(gc->lty, gc->lwd));
+    cJSON_AddStringToObject(g, "lend", lend_str((int)gc->lend));
+    cJSON_AddStringToObject(g, "ljoin", ljoin_str((int)gc->ljoin));
+    cjson_add_dbl(g, "lmitre", gc->lmitre);
 
-    color_write_json_kv(w, "col", gc->col);
-    color_write_json_kv(w, "fill", gc->fill);
-    jw_kv_dbl(w, "lwd", gc->lwd);
-    lty_write_json(w, gc->lty, gc->lwd);
-    jw_kv_str(w, "lend", lend_str((int)gc->lend));
-    jw_kv_str(w, "ljoin", ljoin_str((int)gc->ljoin));
-    jw_kv_dbl(w, "lmitre", gc->lmitre);
+    cJSON *font = cJSON_AddObjectToObject(g, "font");
+    cJSON_AddStringToObject(font, "family", gc->fontfamily[0] ? gc->fontfamily : "");
+    cJSON_AddNumberToObject(font, "face", gc->fontface);
+    cjson_add_dbl(font, "size", gc->cex * gc->ps);
+    cjson_add_dbl(font, "lineheight", gc->lineheight);
 
-    jw_key(w, "font");
-    jw_obj_start(w);
-    jw_kv_str(w, "family", gc->fontfamily[0] ? gc->fontfamily : "");
-    jw_kv_int(w, "face", gc->fontface);
-    jw_kv_dbl(w, "size", gc->cex * gc->ps);
-    jw_kv_dbl(w, "lineheight", gc->lineheight);
-    jw_obj_end(w);
-
-    jw_obj_end(w);
+    return g;
 }
 
-void page_serialize_frame(jgd_page_t *p, const char *session_id, json_writer_t *out, int incremental) {
-    int was_comma = p->jw.needs_comma;
+char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incremental) {
+    cJSON *frame = cJSON_CreateObject();
+    cJSON_AddStringToObject(frame, "type", "frame");
+    cJSON_AddBoolToObject(frame, "incremental", incremental);
 
-    jw_arr_end(&p->jw);
+    cJSON *plot = cJSON_AddObjectToObject(frame, "plot");
+    cJSON_AddNumberToObject(plot, "version", 1);
+    cJSON_AddStringToObject(plot, "sessionId", session_id ? session_id : "default");
 
-    jw_reset(out);
-    jw_obj_start(out);
+    cJSON *device = cJSON_AddObjectToObject(plot, "device");
+    cjson_add_dbl(device, "width", p->width);
+    cjson_add_dbl(device, "height", p->height);
+    cjson_add_dbl(device, "dpi", p->dpi);
+    cJSON_AddItemToObject(device, "bg", color_to_cjson(p->bg));
 
-    jw_kv_str(out, "type", "frame");
-    jw_kv_bool(out, "incremental", incremental);
-
-    jw_key(out, "plot");
-    jw_obj_start(out);
-
-    jw_kv_int(out, "version", 1);
-    jw_kv_str(out, "sessionId", session_id ? session_id : "default");
-
-    jw_key(out, "device");
-    jw_obj_start(out);
-    jw_kv_dbl(out, "width", p->width);
-    jw_kv_dbl(out, "height", p->height);
-    jw_kv_dbl(out, "dpi", p->dpi);
-    jw_key(out, "bg");
-    color_write_json(out, p->bg);
-    jw_obj_end(out);
-
-    /* p->jw buffer must end with ']' from jw_arr_end above */
-    assert(p->jw.len > 0 && p->jw.buf[p->jw.len - 1] == ']');
-
-    jw_key(out, "ops");
-    if (incremental && p->last_flush_offset > 1 &&
-        p->last_flush_offset < p->jw.len) {
-        /* Delta encoding: send only ops added since last flush */
-        size_t arr_end = p->jw.len - 1;  /* exclude trailing ']' */
-        const char *delta = p->jw.buf + p->last_flush_offset;
-        size_t dlen = arr_end - p->last_flush_offset;
-
-        /* Skip leading comma between ops */
-        if (dlen > 0 && delta[0] == ',') {
-            delta++;
-            dlen--;
-        }
-
-        if (dlen > 0) {
-            /* Write "[" + delta_ops + "]" directly without allocation.
-             * TODO: needs_comma manipulation couples us to json_writer
-             * internals — clean up when migrating to cJSON. */
-            jw_raw(out, "[", 1);
-            out->needs_comma = 0;
-            jw_raw(out, delta, dlen);
-            out->needs_comma = 0;
-            jw_raw(out, "]", 1);
-        } else {
-            jw_raw(out, "[]", 2);
-        }
+    /* Build ops array: delta (incremental) or full */
+    cJSON *ops_arr = cJSON_CreateArray();
+    cJSON *start;
+    if (incremental && p->last_flush_tail) {
+        start = p->last_flush_tail->next;
     } else {
-        /* Full frame: send all ops */
-        jw_raw(out, jw_result(&p->jw), jw_length(&p->jw));
+        start = p->ops->child;
     }
+    for (cJSON *cur = start; cur; cur = cur->next) {
+        cJSON_AddItemReferenceToArray(ops_arr, cur);
+    }
+    cJSON_AddItemToObject(plot, "ops", ops_arr);
 
-    jw_obj_end(out);
-    jw_obj_end(out);
-
-    /* Reopen: remove trailing ']' so more ops can be appended */
-    p->jw.len--;
-    p->jw.buf[p->jw.len] = '\0';
-    p->jw.needs_comma = was_comma;
+    char *json = cJSON_PrintUnformatted(frame);
+    cJSON_Delete(frame); /* safe: ops are references, originals stay in p->ops */
 
     /* Track flush position for next delta */
-    p->last_flush_offset = p->jw.len;
+    p->last_flush_tail = p->ops_tail;
+
+    return json;
 }

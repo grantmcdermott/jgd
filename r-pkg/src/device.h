@@ -3,12 +3,10 @@
 
 #include "display_list.h"
 #include "transport.h"
-#include "json_writer.h"
 
 typedef struct {
     jgd_transport_t transport;
     jgd_page_t page;
-    json_writer_t frame_buf;  /* reusable buffer for frame serialization */
     char session_id[64];
     double width;             /* device width in inches */
     double height;            /* device height in inches */
@@ -36,5 +34,8 @@ void jgd_flush_frame(jgd_state_t *st, int incremental);
    for incoming resize messages.  Called from C_jgd (open) and cb_close. */
 void jgd_register_input_handler(jgd_state_t *st);
 void jgd_remove_input_handler(jgd_state_t *st);
+
+/* Parse a JSON message; if it's a resize, store dimensions in *w/*h and return 1. */
+int jgd_try_parse_resize(const char *buf, double *w, double *h);
 
 #endif
