@@ -88,7 +88,8 @@ export class RSession {
       } catch (e) {
         if (
           !(e instanceof Deno.errors.BrokenPipe) &&
-          !(e instanceof Deno.errors.ConnectionReset)
+          !(e instanceof Deno.errors.ConnectionReset) &&
+          !(e instanceof Deno.errors.BadResource)
         ) {
           throw e;
         }
