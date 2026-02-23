@@ -57,9 +57,10 @@ export const assets: Record<string, { body: string; type: string }> = {
     PlotHistory.prototype.addPlot = function(sessionId, plot) {
         var session = this._sessions.get(sessionId);
         if (!session) {
-            session = { plots: [], currentIndex: -1 };
+            session = { plots: [], currentIndex: -1, latestDeleted: false };
             this._sessions.set(sessionId, session);
         }
+        session.latestDeleted = false;
         session.plots.push(plot);
         while (session.plots.length > this._maxPlots) {
             session.plots.shift();
@@ -79,6 +80,7 @@ export const assets: Record<string, { body: string; type: string }> = {
 
     PlotHistory.prototype.appendOps = function(sessionId, plot) {
         var session = this._sessions.get(sessionId);
+        if (session && session.latestDeleted) return;
         if (!session || session.plots.length === 0) {
             return this.addPlot(sessionId, plot);
         }
@@ -117,7 +119,9 @@ export const assets: Record<string, { body: string; type: string }> = {
     PlotHistory.prototype.removeCurrent = function() {
         var session = this._sessions.get(this._activeSessionId);
         if (!session || session.plots.length === 0) return null;
+        var wasLatest = (session.currentIndex === session.plots.length - 1);
         session.plots.splice(session.currentIndex, 1);
+        if (wasLatest) session.latestDeleted = true;
         if (session.plots.length === 0) {
             session.currentIndex = -1;
             return null;
@@ -130,6 +134,7 @@ export const assets: Record<string, { body: string; type: string }> = {
 
     PlotHistory.prototype.replaceLatest = function(sessionId, plot) {
         var session = this._sessions.get(sessionId);
+        if (session && session.latestDeleted) return;
         if (!session || session.plots.length === 0) {
             return this.addPlot(sessionId, plot);
         }

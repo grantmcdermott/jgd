@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { TestServer } from "../helpers/server.ts";
 import { RClient } from "../helpers/r_client.ts";
 import { BrowserClient } from "../helpers/browser_client.ts";
-import { E2EBrowser, readOfType } from "../helpers/e2e_browser.ts";
+import { E2EBrowser, readOfType, sampleCanvasColors } from "../helpers/e2e_browser.ts";
 import { delay } from "@std/async";
 import type { ResizeMessage } from "../helpers/types.ts";
 
@@ -250,28 +250,3 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
     server.cleanup();
   }
 });
-
-/** Sample pixel colors from the canvas and detect presence of R/G/B/Y fills. */
-async function sampleCanvasColors(
-  page: import("@astral/astral").Page,
-): Promise<{ hasRed: boolean; hasGreen: boolean; hasBlue: boolean; hasYellow: boolean }> {
-  return await page.evaluate(`(function() {
-    var c = document.getElementById('plot-canvas');
-    if (!c || c.width === 0 || c.height === 0) {
-      return { hasRed: false, hasGreen: false, hasBlue: false, hasYellow: false };
-    }
-    var ctx = c.getContext('2d');
-    var data = ctx.getImageData(0, 0, c.width, c.height).data;
-    var hasRed = false, hasGreen = false, hasBlue = false, hasYellow = false;
-    // Sample every 100th pixel for speed
-    for (var i = 0; i < data.length; i += 400) {
-      var r = data[i], g = data[i+1], b = data[i+2], a = data[i+3];
-      if (a < 128) continue;
-      if (r > 200 && g < 50 && b < 50) hasRed = true;
-      if (g > 200 && r < 50 && b < 50) hasGreen = true;
-      if (b > 200 && r < 50 && g < 50) hasBlue = true;
-      if (r > 200 && g > 200 && b < 50) hasYellow = true;
-    }
-    return { hasRed: hasRed, hasGreen: hasGreen, hasBlue: hasBlue, hasYellow: hasYellow };
-  })()`) as { hasRed: boolean; hasGreen: boolean; hasBlue: boolean; hasYellow: boolean };
-}
