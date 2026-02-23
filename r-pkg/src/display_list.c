@@ -105,7 +105,7 @@ void page_serialize_frame(jgd_page_t *p, const char *session_id, json_writer_t *
     jw_obj_end(out);
 
     /* p->jw buffer must end with ']' from jw_arr_end above */
-    assert(p->jw.buf[p->jw.len - 1] == ']');
+    assert(p->jw.len > 0 && p->jw.buf[p->jw.len - 1] == ']');
 
     jw_key(out, "ops");
     if (incremental && p->last_flush_offset > 1 &&
