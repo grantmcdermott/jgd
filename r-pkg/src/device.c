@@ -23,7 +23,7 @@
    The server defers the welcome until it receives R's first message,
    so we send a ping to trigger it, then read back with a short timeout. */
 static void jgd_read_welcome(jgd_state_t *st) {
-    const char *ping = "{\"type\":\"ping\"}\n";
+    const char *ping = "{\"type\":\"ping\"}";
     if (transport_send(&st->transport, ping, strlen(ping)) != 0)
         return;
 

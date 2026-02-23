@@ -18,7 +18,7 @@ export class Hub {
   /** HTTP server port, set after the HTTP server starts. */
   httpPort = 0;
   /** R transport type: "tcp", "unix", or "npipe". */
-  transport = "";
+  transport: "tcp" | "unix" | "npipe" = "tcp";
   verbose = false;
 
   registerSession(session: RSession): void {
