@@ -7,7 +7,12 @@
  * which may produce slightly longer JSON than the previous %.4f formatting.
  * This is intentional: coordinate precision beyond 4 decimal places is
  * sub-pixel and harmless, while keeping all DOM nodes as proper cJSON_Number
- * ensures cJSON_IsNumber() and cJSON_GetNumberValue() work correctly. */
+ * ensures cJSON_IsNumber() and cJSON_GetNumberValue() work correctly.
+ *
+ * Non-finite values (NaN, Inf): cJSON_CreateNumber stores them as cJSON_Number
+ * and cJSON's print_number() serializes them as "null" (cJSON.c L607-609).
+ * R's graphics engine should never pass non-finite coordinates to device
+ * callbacks, but cJSON handles the edge case safely regardless. */
 
 void page_init(jgd_page_t *p, double width, double height, double dpi, int bg) {
     p->ops = cJSON_CreateArray();
