@@ -35,7 +35,8 @@ Deno.test("parseSocketUri", async (t) => {
 
   await t.step("unix URI preserves percent-encoded characters", () => {
     const addr = parseSocketUri("unix:///tmp/path%20with%20spaces.sock");
-    // new URL().pathname does not decode percent-encoding
+    // WHATWG URL spec: non-special schemes (unix://) treat paths as opaque,
+    // so .pathname preserves percent-encoding unlike http/https.
     assertEquals(addr, { transport: "unix", path: "/tmp/path%20with%20spaces.sock" });
   });
 
@@ -51,5 +52,18 @@ Deno.test("parseSocketUri", async (t) => {
   await t.step("raw absolute path treated as unix", () => {
     const addr = parseSocketUri("/tmp/jgd-test.sock");
     assertEquals(addr, { transport: "unix", path: "/tmp/jgd-test.sock" });
+  });
+
+  await t.step("unrecognized URI scheme throws", () => {
+    assertThrows(
+      () => parseSocketUri("http://example.com"),
+      Error,
+      "Unsupported socket URI scheme",
+    );
+    assertThrows(
+      () => parseSocketUri("foo://bar"),
+      Error,
+      "Unsupported socket URI scheme",
+    );
   });
 });

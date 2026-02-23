@@ -27,6 +27,10 @@ export function parseSocketUri(uri: string): SocketAddr {
   if (uri.startsWith("unix://")) {
     return { transport: "unix", path: new URL(uri).pathname };
   }
+  // Reject unrecognized URI schemes (e.g. http://, foo://)
+  if (/^[a-zA-Z][a-zA-Z0-9+\-.]*:\/\//.test(uri)) {
+    throw new Error(`Unsupported socket URI scheme: ${uri}`);
+  }
   // Raw filesystem path (backwards-compatible)
   return { transport: "unix", path: uri };
 }
