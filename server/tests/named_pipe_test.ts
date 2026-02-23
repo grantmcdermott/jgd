@@ -31,8 +31,8 @@ Deno.test("Default transport mode", async (t) => {
         );
       } else {
         assert(
-          server.socketPath.endsWith(".sock"),
-          `Expected *.sock, got ${server.socketPath}`,
+          server.socketPath.startsWith("unix:///"),
+          `Expected unix:///..., got ${server.socketPath}`,
         );
       }
     });

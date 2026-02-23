@@ -18,10 +18,11 @@ export class RClient {
   #encoder = new TextEncoder();
   #buffer = "";
 
-  /** Connect to the server's socket. Supports Unix path, "tcp:PORT", or "npipe:///NAME". */
+  /** Connect to the server's socket. Supports "unix:///path", "tcp://host:port", "npipe:///NAME", or raw Unix path. */
   async connect(socketPath: string): Promise<void> {
-    if (socketPath.startsWith("tcp:")) {
-      const port = parseInt(socketPath.slice(4), 10);
+    if (socketPath.startsWith("tcp://")) {
+      const url = new URL(socketPath);
+      const port = parseInt(url.port, 10);
       this.#conn = await Deno.connect({
         transport: "tcp",
         hostname: "127.0.0.1",
@@ -35,6 +36,11 @@ export class RClient {
       // Retry with backoff to handle this inherent race.
       const socket = await connectPipeWithRetry(pipePath);
       this.#conn = new PipeConn(socket);
+    } else if (socketPath.startsWith("unix://")) {
+      this.#conn = await Deno.connect({
+        transport: "unix",
+        path: new URL(socketPath).pathname,
+      });
     } else {
       this.#conn = await Deno.connect({
         transport: "unix",

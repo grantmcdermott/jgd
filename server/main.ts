@@ -75,7 +75,7 @@ async function main(): Promise<void> {
       port: tcpPort,
     });
     const addr = listener.addr as Deno.NetAddr;
-    socketPath = `tcp:${addr.port}`;
+    socketPath = `tcp://127.0.0.1:${addr.port}`;
     rListener = listener;
   } else if (useNamedPipe) {
     // Named pipe (Windows default)
@@ -91,18 +91,19 @@ async function main(): Promise<void> {
     rListener = pipeListener;
   } else {
     // Unix domain socket (Linux/macOS)
-    socketPath = args.socket;
-    if (!socketPath) {
+    let unixPath = args.socket;
+    if (!unixPath) {
       const token = new Uint8Array(8);
       crypto.getRandomValues(token);
       const hex = Array.from(token)
         .map((b) => b.toString(16).padStart(2, "0"))
         .join("");
       const tmpdir = Deno.env.get("TMPDIR") || "/tmp";
-      socketPath = join(tmpdir, `jgd-${hex}.sock`);
+      unixPath = join(tmpdir, `jgd-${hex}.sock`);
     }
-    await cleanStaleSocket(socketPath);
-    rListener = Deno.listen({ transport: "unix", path: socketPath });
+    socketPath = `unix://${unixPath}`;
+    await cleanStaleSocket(unixPath);
+    rListener = Deno.listen({ transport: "unix", path: unixPath });
   }
   console.error(`R listener: ${socketPath}`);
 
@@ -172,7 +173,8 @@ async function main(): Promise<void> {
   // Named pipes are kernel objects and don't need file removal.
   if (!useTcp && !useNamedPipe) {
     try {
-      await Deno.remove(socketPath);
+      // socketPath is a URI (unix:///path); extract the raw path for removal.
+      await Deno.remove(new URL(socketPath).pathname);
     } catch { /* ignore */ }
   }
 

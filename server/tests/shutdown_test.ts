@@ -16,7 +16,10 @@ Deno.test("graceful shutdown", async (t) => {
       // If the server was force-killed (SIGKILL), cleanup won't run.
       if (graceful) {
         try {
-          await Deno.stat(server.socketPath);
+          const sockFile = server.socketPath.startsWith("unix://")
+            ? new URL(server.socketPath).pathname
+            : server.socketPath;
+          await Deno.stat(sockFile);
           assert(false, "Socket file should be removed after shutdown");
         } catch (e) {
           assert(e instanceof Deno.errors.NotFound, "Socket should not exist");

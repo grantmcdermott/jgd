@@ -23,9 +23,10 @@ export class TestServer {
     // TCP and named pipe (Windows default) paths are both auto-generated
     // by the server, so we parse them from server output.
     const needsOutputParsing = this.useTcp || Deno.build.os === "windows";
+    const rawPath = join(this.tmpDir, `jgd-${crypto.randomUUID().slice(0, 8)}.sock`);
     this.socketPath = needsOutputParsing
       ? ""  // resolved after server starts
-      : join(this.tmpDir, `jgd-${crypto.randomUUID().slice(0, 8)}.sock`);
+      : `unix://${rawPath}`;
   }
 
   /** Start the server and wait for it to be ready. */
@@ -57,7 +58,11 @@ export class TestServer {
     if (this.useTcp) {
       serverArgs.push("-tcp", "0");
     } else {
-      serverArgs.push("-socket", this.socketPath);
+      // Pass raw filesystem path to -socket (strip unix:// URI prefix)
+      const rawPath = this.socketPath.startsWith("unix://")
+        ? new URL(this.socketPath).pathname
+        : this.socketPath;
+      serverArgs.push("-socket", rawPath);
     }
     serverArgs.push("-http", "127.0.0.1:0", "-v");
 
