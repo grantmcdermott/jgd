@@ -1,5 +1,6 @@
 #include "display_list.h"
 #include "color.h"
+#include <assert.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -12,6 +13,7 @@ void page_init(jgd_page_t *p, double width, double height, double dpi, int bg) {
     p->dpi = dpi;
     p->bg = bg;
     p->finalized = 0;
+    p->last_flush_offset = p->jw.len;  /* right after '[' */
 }
 
 void page_free(jgd_page_t *p) {
@@ -102,10 +104,39 @@ void page_serialize_frame(jgd_page_t *p, const char *session_id, json_writer_t *
     color_write_json(out, p->bg);
     jw_obj_end(out);
 
+    /* p->jw buffer must end with ']' from jw_arr_end above */
+    assert(p->jw.len > 0 && p->jw.buf[p->jw.len - 1] == ']');
+
     jw_key(out, "ops");
-    const char *ops_json = jw_result(&p->jw);
-    size_t ops_len = jw_length(&p->jw);
-    jw_raw(out, ops_json, ops_len);
+    if (incremental && p->last_flush_offset > 1 &&
+        p->last_flush_offset < p->jw.len) {
+        /* Delta encoding: send only ops added since last flush */
+        size_t arr_end = p->jw.len - 1;  /* exclude trailing ']' */
+        const char *delta = p->jw.buf + p->last_flush_offset;
+        size_t dlen = arr_end - p->last_flush_offset;
+
+        /* Skip leading comma between ops */
+        if (dlen > 0 && delta[0] == ',') {
+            delta++;
+            dlen--;
+        }
+
+        if (dlen > 0) {
+            /* Write "[" + delta_ops + "]" directly without allocation.
+             * TODO: needs_comma manipulation couples us to json_writer
+             * internals — clean up when migrating to cJSON. */
+            jw_raw(out, "[", 1);
+            out->needs_comma = 0;
+            jw_raw(out, delta, dlen);
+            out->needs_comma = 0;
+            jw_raw(out, "]", 1);
+        } else {
+            jw_raw(out, "[]", 2);
+        }
+    } else {
+        /* Full frame: send all ops */
+        jw_raw(out, jw_result(&p->jw), jw_length(&p->jw));
+    }
 
     jw_obj_end(out);
     jw_obj_end(out);
@@ -114,4 +145,7 @@ void page_serialize_frame(jgd_page_t *p, const char *session_id, json_writer_t *
     p->jw.len--;
     p->jw.buf[p->jw.len] = '\0';
     p->jw.needs_comma = was_comma;
+
+    /* Track flush position for next delta */
+    p->last_flush_offset = p->jw.len;
 }

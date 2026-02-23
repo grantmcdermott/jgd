@@ -154,6 +154,63 @@ test_that("metrics_request messages are sent for text", {
   expect_true(length(metrics_msgs) >= 1)
 })
 
+# --- Delta encoding tests ---
+
+test_that("first flush on a page sends complete frame (incremental=false)", {
+  msgs = with_mock_jgd({
+    # plot.new triggers cb_newPage; drawing without hold triggers cb_mode flush
+    plot.new()
+    rect(0, 0, 1, 1)
+  })
+
+  frames = extract_frames(msgs)
+  expect_true(length(frames) >= 1)
+  # The first frame must be a complete (non-incremental) frame
+  expect_false(frames[[1]]$incremental)
+})
+
+test_that("subsequent flushes send only delta ops (incremental=true)", {
+  msgs = with_mock_jgd({
+    # First: a complete plot (plot.new + rect generates clip, rect, etc.)
+    plot.new()
+    rect(0, 0, 1, 1)
+    # Additional drawing on the same page triggers incremental flush
+    lines(c(0.2, 0.5, 0.8), c(0.2, 0.5, 0.8))
+  })
+
+  frames = extract_frames(msgs)
+  # Should have at least 2 frames: one complete, one incremental
+  expect_true(length(frames) >= 2)
+
+  incr_frames = Filter(function(f) isTRUE(f$incremental), frames)
+  expect_true(length(incr_frames) >= 1)
+
+  # Delta encoding: incremental frame should contain only the new ops
+  # (polyline from lines()), not ops from the first flush (rect, clip, etc.)
+  incr_op_types = vapply(
+    incr_frames[[1]]$plot$ops,
+    function(o) o$op, character(1)
+  )
+  expect_true("polyline" %in% incr_op_types)
+  expect_false("rect" %in% incr_op_types)
+})
+
+test_that("new page resets delta tracking", {
+  msgs = with_mock_jgd({
+    plot.new()
+    rect(0, 0, 1, 1)
+    lines(c(0.2, 0.5, 0.8), c(0.2, 0.5, 0.8))
+    # Second page should reset delta tracking
+    plot.new()
+    rect(0, 0, 0.5, 0.5)
+  })
+
+  frames = extract_frames(msgs)
+  # Find full (non-incremental) frames — should be at least 2 (one per page)
+  full_frames = Filter(function(f) !isTRUE(f$incremental), frames)
+  expect_true(length(full_frames) >= 2)
+})
+
 # --- Snapshot tests for JSON structure ---
 
 test_that("close message JSON matches snapshot", {
