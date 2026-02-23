@@ -175,7 +175,7 @@ test_that("subsequent flushes send only delta ops (incremental=true)", {
     plot.new()
     rect(0, 0, 1, 1)
     # Additional drawing on the same page triggers incremental flush
-    lines(c(0.2, 0.8), c(0.2, 0.8))
+    lines(c(0.2, 0.5, 0.8), c(0.2, 0.5, 0.8))
   })
 
   frames = extract_frames(msgs)
@@ -199,7 +199,7 @@ test_that("new page resets delta tracking", {
   msgs = with_mock_jgd({
     plot.new()
     rect(0, 0, 1, 1)
-    lines(c(0.2, 0.8), c(0.2, 0.8))
+    lines(c(0.2, 0.5, 0.8), c(0.2, 0.5, 0.8))
     # Second page should reset delta tracking
     plot.new()
     rect(0, 0, 0.5, 0.5)
