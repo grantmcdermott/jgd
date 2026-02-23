@@ -27,47 +27,50 @@ static void jgd_read_welcome(jgd_state_t *st) {
     if (transport_send(&st->transport, ping, strlen(ping)) != 0)
         return;
 
+    /* Read up to a few lines: the server sends server_info after receiving
+       the ping, but message ordering may vary across implementations. */
     char buf[2048];
-    int n = transport_recv_line(&st->transport, buf, sizeof(buf), 200);
-    if (n <= 0) return;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        int n = transport_recv_line(&st->transport, buf, sizeof(buf), 200);
+        if (n <= 0) return;
 
-    cJSON *msg = cJSON_Parse(buf);
-    if (!msg) return;
+        cJSON *msg = cJSON_Parse(buf);
+        if (!msg) continue;
 
-    cJSON *type = cJSON_GetObjectItem(msg, "type");
-    if (!cJSON_IsString(type) || strcmp(type->valuestring, "server_info") != 0) {
-        /* Not a welcome — might be a resize or something else.
-           Store it back? No, just discard; backward compat with old servers. */
+        cJSON *type = cJSON_GetObjectItem(msg, "type");
+        if (!cJSON_IsString(type) || strcmp(type->valuestring, "server_info") != 0) {
+            cJSON_Delete(msg);
+            continue;
+        }
+
+        cJSON *name = cJSON_GetObjectItem(msg, "serverName");
+        if (cJSON_IsString(name)) {
+            snprintf(st->server_name, sizeof(st->server_name), "%s", name->valuestring);
+        }
+
+        cJSON *ver = cJSON_GetObjectItem(msg, "protocolVersion");
+        if (cJSON_IsNumber(ver)) {
+            st->protocol_version = (int)ver->valuedouble;
+        }
+
+        cJSON *info = cJSON_GetObjectItem(msg, "serverInfo");
+        if (cJSON_IsObject(info)) {
+            cJSON *child = info->child;
+            while (child && st->n_info_pairs < JGD_MAX_INFO_PAIRS) {
+                if (cJSON_IsString(child) && child->string) {
+                    jgd_info_pair_t *p = &st->server_info_pairs[st->n_info_pairs];
+                    snprintf(p->key, sizeof(p->key), "%s", child->string);
+                    snprintf(p->val, sizeof(p->val), "%s", child->valuestring);
+                    st->n_info_pairs++;
+                }
+                child = child->next;
+            }
+        }
+
+        st->server_info_received = 1;
         cJSON_Delete(msg);
         return;
     }
-
-    cJSON *name = cJSON_GetObjectItem(msg, "serverName");
-    if (cJSON_IsString(name)) {
-        snprintf(st->server_name, sizeof(st->server_name), "%s", name->valuestring);
-    }
-
-    cJSON *ver = cJSON_GetObjectItem(msg, "protocolVersion");
-    if (cJSON_IsNumber(ver)) {
-        st->protocol_version = (int)ver->valuedouble;
-    }
-
-    cJSON *info = cJSON_GetObjectItem(msg, "serverInfo");
-    if (cJSON_IsObject(info)) {
-        cJSON *child = info->child;
-        while (child && st->n_info_pairs < JGD_MAX_INFO_PAIRS) {
-            if (cJSON_IsString(child) && child->string) {
-                jgd_info_pair_t *p = &st->server_info_pairs[st->n_info_pairs];
-                snprintf(p->key, sizeof(p->key), "%s", child->string);
-                snprintf(p->val, sizeof(p->val), "%s", child->valuestring);
-                st->n_info_pairs++;
-            }
-            child = child->next;
-        }
-    }
-
-    st->server_info_received = 1;
-    cJSON_Delete(msg);
 }
 
 /* Called from R: .Call(C_jgd, width, height, dpi, socket) */
@@ -274,6 +277,8 @@ SEXP C_jgd_server_info(void) {
     if (!gdd || !gdd->dev) return R_NilValue;
 
     pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) return R_NilValue;
+
     jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
     if (!st || !st->server_info_received) return R_NilValue;
 

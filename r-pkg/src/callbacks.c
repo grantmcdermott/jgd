@@ -570,3 +570,7 @@ void jgd_set_callbacks(pDevDesc dd) {
     dd->glyph = cb_glyph;
 #endif
 }
+
+int jgd_is_jgd_device(pDevDesc dd) {
+    return dd && dd->close == cb_close;
+}

@@ -48,6 +48,13 @@ test_that("jgd_server_info() returns NULL when server sends no welcome", {
   server$collect()
 })
 
+test_that("jgd_server_info() returns NULL for non-jgd device", {
+  pdf(tempfile(fileext = ".pdf"))
+  withr::defer(dev.off())
+
+  expect_null(jgd_server_info())
+})
+
 test_that("jgd_server_info() returns NULL when not connected", {
   skip_on_os("windows")
   expect_warning(
