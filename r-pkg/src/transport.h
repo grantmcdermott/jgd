@@ -11,6 +11,7 @@ typedef struct {
     size_t readbuf_len;     /* valid bytes in readbuf */
 #ifdef _WIN32
     void *pipe_handle;  /* HANDLE; INVALID_HANDLE_VALUE when unused */
+    void *overlap_event;  /* HANDLE for overlapped I/O event; NULL when unused */
 #endif
 } jgd_transport_t;
 

@@ -111,6 +111,7 @@ void transport_init(jgd_transport_t *t) {
     t->readbuf_len = 0;
 #ifdef _WIN32
     t->pipe_handle = INVALID_HANDLE_VALUE;
+    t->overlap_event = NULL;
 #endif
 }
 
@@ -228,7 +229,7 @@ static int try_connect(jgd_transport_t *t) {
                     pipe_buf,
                     GENERIC_READ | GENERIC_WRITE,
                     0, NULL, OPEN_EXISTING,
-                    FILE_ATTRIBUTE_NORMAL, NULL);
+                    FILE_FLAG_OVERLAPPED, NULL);
                 if (h != INVALID_HANDLE_VALUE) break;
                 if (GetLastError() != ERROR_PIPE_BUSY) return -1;
                 if (!WaitNamedPipeA(pipe_buf, 500)) {
@@ -240,6 +241,11 @@ static int try_connect(jgd_transport_t *t) {
             if (!SetNamedPipeHandleState(h, &mode, NULL, NULL)) {
                 CloseHandle(h);
                 return -1;
+            }
+            {
+                HANDLE evt = CreateEvent(NULL, TRUE, FALSE, NULL);
+                if (!evt) { CloseHandle(h); return -1; }
+                t->overlap_event = evt;
             }
             t->pipe_handle = h;
             t->connected = 1;
@@ -273,20 +279,48 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
 #ifdef _WIN32
     if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         HANDLE h = (HANDLE)t->pipe_handle;
+        OVERLAPPED ov = {0};
+        ov.hEvent = (HANDLE)t->overlap_event;
         size_t sent = 0;
         while (sent < len) {
             DWORD written = 0;
-            if (!WriteFile(h, data + sent, (DWORD)(len - sent), &written, NULL) || written == 0) {
+            ResetEvent(ov.hEvent);
+            if (!WriteFile(h, data + sent, (DWORD)(len - sent), &written, &ov)) {
+                if (GetLastError() != ERROR_IO_PENDING) {
+                    t->connected = 0;
+                    return -1;
+                }
+                WaitForSingleObject(ov.hEvent, INFINITE);
+                if (!GetOverlappedResult(h, &ov, &written, FALSE)) {
+                    t->connected = 0;
+                    return -1;
+                }
+            }
+            if (written == 0) {
                 t->connected = 0;
                 return -1;
             }
             sent += written;
         }
-        char nl = '\n';
-        DWORD nw = 0;
-        if (!WriteFile(h, &nl, 1, &nw, NULL) || nw == 0) {
-            t->connected = 0;
-            return -1;
+        {
+            char nl = '\n';
+            DWORD nw = 0;
+            ResetEvent(ov.hEvent);
+            if (!WriteFile(h, &nl, 1, &nw, &ov)) {
+                if (GetLastError() != ERROR_IO_PENDING) {
+                    t->connected = 0;
+                    return -1;
+                }
+                WaitForSingleObject(ov.hEvent, INFINITE);
+                if (!GetOverlappedResult(h, &ov, &nw, FALSE)) {
+                    t->connected = 0;
+                    return -1;
+                }
+            }
+            if (nw == 0) {
+                t->connected = 0;
+                return -1;
+            }
         }
         return 0;
     }
@@ -377,22 +411,10 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
 #ifdef _WIN32
     if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         HANDLE h = (HANDLE)t->pipe_handle;
+        OVERLAPPED ov = {0};
+        ov.hEvent = (HANDLE)t->overlap_event;
+        DWORD remaining_ms = (DWORD)timeout_ms;
 
-        /* Wait for initial data with the caller's timeout */
-        DWORD avail = 0;
-        int elapsed = 0;
-        for (;;) {
-            if (!PeekNamedPipe(h, NULL, 0, NULL, &avail, NULL)) {
-                t->connected = 0;
-                return -1;
-            }
-            if (avail > 0) break;
-            if (elapsed >= timeout_ms) return -1;
-            Sleep(10);
-            elapsed += 10;
-        }
-
-        /* Bulk-read until we have a complete line */
         for (;;) {
             size_t space = sizeof(t->readbuf) - t->readbuf_len;
             if (space == 0) {
@@ -403,7 +425,41 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
             }
 
             DWORD nread = 0;
-            if (!ReadFile(h, t->readbuf + t->readbuf_len, (DWORD)space, &nread, NULL) || nread == 0) {
+            ResetEvent(ov.hEvent);
+            if (!ReadFile(h, t->readbuf + t->readbuf_len, (DWORD)space, &nread, &ov)) {
+                if (GetLastError() != ERROR_IO_PENDING) {
+                    t->connected = 0;
+                    return -1;
+                }
+                /* Wait for data with remaining timeout */
+                DWORD t0 = GetTickCount();
+                DWORD wr = WaitForSingleObject(ov.hEvent, remaining_ms);
+                if (wr == WAIT_TIMEOUT) {
+                    CancelIo(h);
+                    /* Retrieve any partial bytes already read */
+                    if (GetOverlappedResult(h, &ov, &nread, TRUE) && nread > 0) {
+                        t->readbuf_len += nread;
+                    }
+                    return -1;
+                }
+                if (wr != WAIT_OBJECT_0) {
+                    CancelIo(h);
+                    t->connected = 0;
+                    return -1;
+                }
+                if (!GetOverlappedResult(h, &ov, &nread, FALSE)) {
+                    t->connected = 0;
+                    return -1;
+                }
+                /* Update remaining timeout */
+                DWORD elapsed = GetTickCount() - t0;
+                if (elapsed >= remaining_ms)
+                    remaining_ms = 0;
+                else
+                    remaining_ms -= elapsed;
+            }
+
+            if (nread == 0) {
                 t->connected = 0;
                 return -1;
             }
@@ -411,6 +467,9 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
 
             n = readbuf_extract_line(t, buf, bufsize);
             if (n >= 0) return n;
+
+            /* No complete line yet; if no timeout left, return */
+            if (remaining_ms == 0) return -1;
         }
     }
 #endif
@@ -459,6 +518,10 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
 
 void transport_close(jgd_transport_t *t) {
 #ifdef _WIN32
+    if (t->overlap_event) {
+        CloseHandle((HANDLE)t->overlap_event);
+        t->overlap_event = NULL;
+    }
     if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         CloseHandle((HANDLE)t->pipe_handle);
         t->pipe_handle = INVALID_HANDLE_VALUE;
