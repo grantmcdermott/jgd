@@ -10,6 +10,7 @@ class MockWebviewProvider {
     dims = { width: 800, height: 600 };
     shownPlots: PlotFrame[] = [];
     measuredRequests: any[] = [];
+    closedSessions: string[] = [];
 
     onResize(listener: (w: number, h: number) => void) {
         this.resizeListener = listener;
@@ -34,7 +35,9 @@ class MockWebviewProvider {
         });
     }
 
-    onDeviceClosed(_sessionId: string) {}
+    onDeviceClosed(sessionId: string) {
+        this.closedSessions.push(sessionId);
+    }
 
     // Simulate a webview resize event
     triggerResize(w: number, h: number) {
@@ -55,14 +58,16 @@ function makePlotMsg(label: string, width = 400, height = 300, extra: Record<str
     };
 }
 
-/** Connect a TCP client to the server and return helpers. */
-function connectClient(socketPath: string): Promise<{
+interface ClientHelper {
     socket: net.Socket;
     send: (msg: object) => void;
     readLine: () => Promise<string>;
     close: () => void;
-}> {
-    return new Promise((resolve) => {
+}
+
+/** Connect a TCP client to the server and return helpers. */
+function connectClient(socketPath: string): Promise<ClientHelper> {
+    return new Promise((resolve, reject) => {
         const socket = new net.Socket();
         let buffer = '';
         const lineQueue: string[] = [];
@@ -82,6 +87,15 @@ function connectClient(socketPath: string): Promise<{
                     lineQueue.push(line);
                 }
             }
+        });
+
+        socket.on('error', (err) => {
+            if (lineResolve) {
+                const r = lineResolve;
+                lineResolve = null;
+                r(''); // unblock pending readLine
+            }
+            reject(err);
         });
 
         socket.connect(socketPath, () => {
@@ -106,25 +120,34 @@ describe('SocketServer', () => {
     let history: PlotHistory;
     let provider: MockWebviewProvider;
     let server: SocketServer;
+    let clients: ClientHelper[];
 
     beforeEach(async () => {
         history = new PlotHistory(50);
         provider = new MockWebviewProvider();
         server = new SocketServer(history, provider as any);
+        clients = [];
         server.start();
         // Wait for the server to be listening
         await new Promise<void>((resolve) => server.onReady(resolve));
     });
 
     afterEach(() => {
+        for (const c of clients) c.close();
         server.stop();
     });
+
+    async function connect(): Promise<ClientHelper> {
+        const client = await connectClient(server.getSocketPath());
+        clients.push(client);
+        return client;
+    }
 
     // ---- Frame routing ----
 
     describe('frame routing', () => {
         it('routes normal frame to addPlot', async () => {
-            const client = await connectClient(server.getSocketPath());
+            const client = await connect();
             await client.readLine(); // consume initial resize
 
             client.send(makePlotMsg('A'));
@@ -133,11 +156,10 @@ describe('SocketServer', () => {
             expect(history.count()).toBe(1);
             expect(history.currentPlot()?.device.bg).toBe('A');
             expect(provider.shownPlots).toHaveLength(1);
-            client.close();
         });
 
         it('routes incremental frame to replaceCurrent', async () => {
-            const client = await connectClient(server.getSocketPath());
+            const client = await connect();
             await client.readLine();
 
             client.send(makePlotMsg('A'));
@@ -148,11 +170,10 @@ describe('SocketServer', () => {
             expect(history.count()).toBe(1);
             expect(history.currentPlot()?.device.bg).toBe('A-updated');
             expect(provider.shownPlots).toHaveLength(2);
-            client.close();
         });
 
         it('routes resize-response frame to replaceLatest', async () => {
-            const client = await connectClient(server.getSocketPath());
+            const client = await connect();
             await client.readLine(); // initial resize (800x600)
 
             // Add a plot first
@@ -172,7 +193,6 @@ describe('SocketServer', () => {
             // Should replace, not add
             expect(history.count()).toBe(1);
             expect(history.currentPlot()?.device.bg).toBe('A-resized');
-            client.close();
         });
     });
 
@@ -180,7 +200,7 @@ describe('SocketServer', () => {
 
     describe('resize after delete (jgd#11)', () => {
         it('discards stale resize frame after latest plot was deleted', async () => {
-            const client = await connectClient(server.getSocketPath());
+            const client = await connect();
             await client.readLine();
 
             // Two plots: RED then BLUE
@@ -209,7 +229,6 @@ describe('SocketServer', () => {
             expect(history.currentPlot()?.device.bg).toBe('RED');
             // showPlot should NOT have been called for the rejected frame
             expect(provider.shownPlots.length).toBe(plotsBefore);
-            client.close();
         });
     });
 
@@ -217,7 +236,7 @@ describe('SocketServer', () => {
 
     describe('broadcastResize', () => {
         it('deduplicates resize with same dimensions', async () => {
-            const client = await connectClient(server.getSocketPath());
+            const client = await connect();
             const initialResize = JSON.parse(await client.readLine());
             // Initial dims are 800x600
             expect(initialResize.width).toBe(800);
@@ -230,11 +249,10 @@ describe('SocketServer', () => {
                 waitMs(100).then(() => false),
             ]);
             expect(got).toBe(false);
-            client.close();
         });
 
         it('forwards resize with different dimensions', async () => {
-            const client = await connectClient(server.getSocketPath());
+            const client = await connect();
             await client.readLine(); // initial 800x600
 
             provider.triggerResize(1024, 768);
@@ -242,7 +260,6 @@ describe('SocketServer', () => {
             expect(msg.type).toBe('resize');
             expect(msg.width).toBe(1024);
             expect(msg.height).toBe(768);
-            client.close();
         });
     });
 
@@ -251,29 +268,53 @@ describe('SocketServer', () => {
     describe('initial connection', () => {
         it('sends current panel dimensions on connect', async () => {
             provider.dims = { width: 500, height: 400 };
-            const client = await connectClient(server.getSocketPath());
+            const client = await connect();
             const msg = JSON.parse(await client.readLine());
             expect(msg.type).toBe('resize');
             expect(msg.width).toBe(500);
             expect(msg.height).toBe(400);
-            client.close();
         });
 
-        it('arms resizePending on initial connect', async () => {
-            const client = await connectClient(server.getSocketPath());
+        it('first frame after connect uses replaceLatest, not addPlot', async () => {
+            // Pre-populate a plot so we can distinguish replaceLatest from addPlot
+            history.addPlot('session-1', {
+                version: 1, sessionId: 'session-1',
+                device: { width: 800, height: 600, dpi: 96, bg: 'existing' },
+                ops: [],
+            });
+            expect(history.count()).toBe(1);
+
+            const client = await connect();
             await client.readLine(); // consume initial resize
 
-            // First frame after connect should be treated as resize response
-            client.send(makePlotMsg('initial'));
+            // First frame from R is a resize response (resizePending armed on connect).
+            // It should replace the existing plot, not add a second one.
+            client.send(makePlotMsg('resized', 800, 600));
             await waitMs(50);
 
-            // Add another frame — if resizePending was properly consumed,
-            // this should be a new plot (addPlot), not a replace
-            client.send(makePlotMsg('second'));
+            expect(history.count()).toBe(1);
+            expect(history.currentPlot()?.device.bg).toBe('resized');
+
+            // Second frame is a genuinely new plot
+            client.send(makePlotMsg('new'));
             await waitMs(50);
 
             expect(history.count()).toBe(2);
-            client.close();
+        });
+    });
+
+    // ---- Close message ----
+
+    describe('close message', () => {
+        it('forwards close to webview provider with session id', async () => {
+            const client = await connect();
+            await client.readLine();
+
+            client.send({ type: 'close' });
+            await waitMs(50);
+
+            expect(provider.closedSessions).toHaveLength(1);
+            expect(provider.closedSessions[0]).toMatch(/^session-/);
         });
     });
 
@@ -281,7 +322,7 @@ describe('SocketServer', () => {
 
     describe('metrics', () => {
         it('forwards metrics_request to provider and returns response', async () => {
-            const client = await connectClient(server.getSocketPath());
+            const client = await connect();
             await client.readLine();
 
             client.send({
@@ -297,7 +338,6 @@ describe('SocketServer', () => {
             expect(resp.id).toBe(7);
             expect(resp.width).toBe(42);
             expect(provider.measuredRequests).toHaveLength(1);
-            client.close();
         });
     });
 });
