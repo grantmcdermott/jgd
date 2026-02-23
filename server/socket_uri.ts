@@ -19,8 +19,10 @@ export type SocketAddr =
 export const socketUri = {
   tcp: (hostname: string, port: number): string =>
     `tcp://${hostname}:${port}`,
-  unix: (path: string): string =>
-    `unix://${encodeURI(path)}`,
+  unix: (path: string): string => {
+    if (!path.startsWith("/")) throw new Error(`Unix socket path must be absolute: ${path}`);
+    return `unix://${encodeURI(path).replace(/#/g, "%23").replace(/\?/g, "%3F")}`;
+  },
   npipe: (name: string): string =>
     `npipe:///${name}`,
 };

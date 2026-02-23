@@ -92,6 +92,26 @@ Deno.test("parseSocketUri", async (t) => {
     assertEquals(addr, { transport: "unix", path: "/tmp/path with spaces.sock" });
   });
 
+  await t.step("socketUri.unix encodes # and ? in path", () => {
+    const uri = socketUri.unix("/tmp/file#1.sock");
+    assertEquals(uri, "unix:///tmp/file%231.sock");
+    const addr = parseSocketUri(uri);
+    assertEquals(addr, { transport: "unix", path: "/tmp/file#1.sock" });
+
+    const uri2 = socketUri.unix("/tmp/file?v=2.sock");
+    assertEquals(uri2, "unix:///tmp/file%3Fv=2.sock");
+    const addr2 = parseSocketUri(uri2);
+    assertEquals(addr2, { transport: "unix", path: "/tmp/file?v=2.sock" });
+  });
+
+  await t.step("socketUri.unix rejects relative path", () => {
+    assertThrows(
+      () => socketUri.unix("relative.sock"),
+      Error,
+      "must be absolute",
+    );
+  });
+
   await t.step("socketUri.npipe round-trips", () => {
     const uri = socketUri.npipe("jgd-test123");
     assertEquals(uri, "npipe:///jgd-test123");
