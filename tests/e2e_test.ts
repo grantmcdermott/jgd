@@ -143,6 +143,47 @@ Deno.test({
   },
 });
 
+// Helper: run jgd_server_info() in R and parse the JSON output.
+// as.list() is needed because jsonlite::toJSON drops names from named
+// character vectors (atomic vectors always map to JSON arrays, not objects).
+// Converting to a list preserves the key-value structure in JSON output.
+const SERVER_INFO_R_CODE =
+  'jgd(width=4, height=3, dpi=72); info = jgd_server_info(); invisible(dev.off()); info$server_info = as.list(info$server_info); cat(jsonlite::toJSON(info, auto_unbox=TRUE))';
+
+for (const { label, opts, expectedTransport } of [
+  { label: "TCP", opts: { tcp: true }, expectedTransport: "tcp" },
+  { label: "native", opts: {}, expectedTransport: Deno.build.os === "windows" ? "npipe" : "unix" },
+] as const) {
+  Deno.test({
+    name: `E2E: jgd_server_info() over ${label} transport`,
+    ignore: !rAvailable,
+    async fn() {
+      const server = new TestServer(opts);
+
+      try {
+        await server.start();
+
+        const result = await runR(SERVER_INFO_R_CODE, server.socketPath);
+        if (!result.success) {
+          throw new Error(`R failed (exit ${result.exitCode}): ${result.stderr}`);
+        }
+
+        const info = JSON.parse(result.stdout);
+        assertEquals(info.server_name, "jgd-http-server");
+        assertEquals(info.protocol_version, 1);
+        assertEquals(
+          info.server_info.httpUrl,
+          `http://127.0.0.1:${server.httpPort}/`,
+        );
+        assertEquals(info.server_info.transport, expectedTransport);
+      } finally {
+        await server.shutdown();
+        server.cleanup();
+      }
+    },
+  });
+}
+
 Deno.test({
   name: "E2E: device dimensions",
   ignore: !rAvailable,

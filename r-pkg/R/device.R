@@ -31,3 +31,15 @@ jgd = function(
   .Call(C_jgd, as.double(width), as.double(height), as.double(dpi), socket)
   invisible()
 }
+
+#' Get server information
+#'
+#' Returns metadata about the server connected to the current jgd device,
+#' or `NULL` if no server information is available.
+#'
+#' @return A named list with `server_name` (character), `protocol_version`
+#'   (integer), and `server_info` (named character vector), or `NULL`.
+#' @export
+jgd_server_info = function() {
+  .Call(C_jgd_server_info)
+}

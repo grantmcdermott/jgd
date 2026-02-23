@@ -12,7 +12,7 @@
 # 4. Collects all received NDJSON messages
 # 5. Returns collected messages when the device sends "close"
 
-start_mock_server_local = function() {
+start_mock_server_local = function(send_welcome = FALSE) {
   skip_if_not_installed("callr")
   skip_if_not_installed("processx")
   skip_if_not_installed("jsonlite")
@@ -33,7 +33,7 @@ start_mock_server_local = function() {
   }
 
   bg = callr::r_bg(
-    function(conn_path, ready_file) {
+    function(conn_path, ready_file, send_welcome) {
       `%||%` = function(x, y) if (is.null(x)) y else x
       server = processx::conn_create_unix_socket(conn_path)
 
@@ -52,6 +52,7 @@ start_mock_server_local = function() {
       }
       processx::conn_accept_unix_socket(server)
 
+      welcome_sent = FALSE
       messages = list()
       repeat {
         res = processx::poll(list(server), 5000)
@@ -66,6 +67,21 @@ start_mock_server_local = function() {
           }
           msg = jsonlite::fromJSON(line, simplifyVector = FALSE)
           messages = c(messages, list(msg))
+
+          # Send server_info welcome after receiving the first message
+          if (send_welcome && !welcome_sent) {
+            welcome = list(
+              type = "server_info",
+              serverName = "jgd-mock",
+              protocolVersion = 1L,
+              serverInfo = list(httpUrl = "http://127.0.0.1:9999/")
+            )
+            processx::conn_write(
+              server,
+              paste0(jsonlite::toJSON(welcome, auto_unbox = TRUE), "\n")
+            )
+            welcome_sent = TRUE
+          }
 
           # Respond to metrics_request so tests run fast
           if (identical(msg$type, "metrics_request")) {
@@ -107,7 +123,8 @@ start_mock_server_local = function() {
     },
     args = list(
       conn_path = if (is_windows) win_path else socket_path,
-      ready_file = if (is_windows) ready_file else NULL
+      ready_file = if (is_windows) ready_file else NULL,
+      send_welcome = send_welcome
     ),
     supervise = TRUE
   )
@@ -160,14 +177,14 @@ start_mock_server_local = function() {
 }
 
 # TCP mock server using base R sockets (works on all platforms including Windows)
-start_mock_server_tcp = function() {
+start_mock_server_tcp = function(send_welcome = FALSE) {
   skip_if_not_installed("callr")
   skip_if_not_installed("jsonlite")
 
   port_file = tempfile(pattern = "jgd-tcp-port-", fileext = ".txt")
 
   bg = callr::r_bg(
-    function(port_file) {
+    function(port_file, send_welcome) {
       `%||%` = function(x, y) if (is.null(x)) y else x
       # Find a free port and start listening
       server = NULL
@@ -194,6 +211,7 @@ start_mock_server_tcp = function() {
       conn = socketAccept(server, blocking = TRUE, open = "r+")
       on.exit(close(conn), add = TRUE)
 
+      welcome_sent = FALSE
       messages = list()
       repeat {
         ready = socketSelect(list(conn), timeout = 5)
@@ -208,6 +226,19 @@ start_mock_server_tcp = function() {
 
         msg = jsonlite::fromJSON(line, simplifyVector = FALSE)
         messages = c(messages, list(msg))
+
+        # Send server_info welcome after receiving the first message
+        if (send_welcome && !welcome_sent) {
+          welcome = list(
+            type = "server_info",
+            serverName = "jgd-mock",
+            protocolVersion = 1L,
+            serverInfo = list(httpUrl = "http://127.0.0.1:9999/")
+          )
+          writeLines(jsonlite::toJSON(welcome, auto_unbox = TRUE), conn)
+          flush(conn)
+          welcome_sent = TRUE
+        }
 
         # Respond to metrics_request so tests run fast
         if (identical(msg$type, "metrics_request")) {
@@ -235,7 +266,7 @@ start_mock_server_tcp = function() {
 
       messages
     },
-    args = list(port_file = port_file),
+    args = list(port_file = port_file, send_welcome = send_welcome),
     supervise = TRUE
   )
 
@@ -283,14 +314,15 @@ with_mock_jgd = function(
   width = 4,
   height = 3,
   dpi = 72,
-  transport = c("unix", "tcp")
+  transport = c("unix", "tcp"),
+  send_welcome = FALSE
 ) {
   transport = match.arg(transport)
   if (transport == "tcp") {
-    server = start_mock_server_tcp()
+    server = start_mock_server_tcp(send_welcome = send_welcome)
     socket_addr = server$socket_url
   } else {
-    server = start_mock_server_local()
+    server = start_mock_server_local(send_welcome = send_welcome)
     socket_addr = server$socket_path
   }
   withr::defer(server$cleanup())

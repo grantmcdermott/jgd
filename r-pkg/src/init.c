@@ -4,10 +4,12 @@
 
 SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket);
 SEXP C_jgd_poll_resize(void);
+SEXP C_jgd_server_info(void);
 
 static const R_CallMethodDef CallEntries[] = {
     {"C_jgd",             (DL_FUNC) &C_jgd,             4},
     {"C_jgd_poll_resize", (DL_FUNC) &C_jgd_poll_resize, 0},
+    {"C_jgd_server_info", (DL_FUNC) &C_jgd_server_info, 0},
     {NULL, NULL, 0}
 };
 

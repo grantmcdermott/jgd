@@ -87,13 +87,17 @@ export class RSession {
           // side works avoids this race entirely.
           if (!welcomeSent) {
             welcomeSent = true;
+            const serverInfo: Record<string, string> = {
+              httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
+            };
+            if (this.hub.transport) {
+              serverInfo.transport = this.hub.transport;
+            }
             const welcome: ServerInfoMessage = {
               type: "server_info",
               serverName: "jgd-http-server",
               protocolVersion: 1,
-              serverInfo: {
-                httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
-              },
+              serverInfo,
             };
             this.send(JSON.stringify(welcome)).catch((e) => {
               if (
