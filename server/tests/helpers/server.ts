@@ -59,10 +59,11 @@ export class TestServer {
     if (this.useTcp) {
       serverArgs.push("-tcp", "0");
     } else if (this.socketPath) {
-      // Pass raw filesystem path to -socket (Unix socket mode only;
-      // on Windows socketPath is "" here — server auto-generates a named pipe)
+      // Unix socket mode only; on Windows socketPath is "" here
+      // because the server auto-generates a named pipe.
       const addr = parseSocketUri(this.socketPath);
-      serverArgs.push("-socket", addr.transport === "unix" ? addr.path : this.socketPath);
+      if (addr.transport !== "unix") throw new Error(`Expected unix:// URI, got: ${this.socketPath}`);
+      serverArgs.push("-socket", addr.path);
     }
     serverArgs.push("-http", "127.0.0.1:0", "-v");
 

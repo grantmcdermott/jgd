@@ -18,7 +18,8 @@ Deno.test("graceful shutdown", async (t) => {
       if (graceful) {
         try {
           const addr = parseSocketUri(server.socketPath);
-          await Deno.stat(addr.transport === "unix" ? addr.path : server.socketPath);
+          if (addr.transport !== "unix") throw new Error(`Expected unix:// URI, got: ${server.socketPath}`);
+          await Deno.stat(addr.path);
           assert(false, "Socket file should be removed after shutdown");
         } catch (e) {
           assert(e instanceof Deno.errors.NotFound, "Socket should not exist");
