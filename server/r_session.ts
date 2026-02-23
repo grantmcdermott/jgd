@@ -1,4 +1,5 @@
 import type { Hub } from "./hub.ts";
+import type { ServerInfoMessage } from "./types.ts";
 
 /**
  * Narrow interface covering only the members that RSession and test helpers
@@ -60,6 +61,17 @@ export class RSession {
    */
   async run(): Promise<void> {
     this.hub.registerSession(this);
+
+    // Send welcome message immediately
+    const welcome: ServerInfoMessage = {
+      type: "server_info",
+      serverName: "jgd-http-server",
+      protocolVersion: 1,
+      serverInfo: {
+        httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
+      },
+    };
+    await this.send(JSON.stringify(welcome));
 
     try {
       const reader = this.conn.readable

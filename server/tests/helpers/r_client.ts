@@ -2,6 +2,7 @@ import type {
   CloseMessage,
   FrameMessage,
   MetricsRequestMessage,
+  ServerInfoMessage,
   ServerMessage,
 } from "./types.ts";
 import { PipeConn } from "../../named_pipe.ts";
@@ -18,6 +19,8 @@ export class RClient {
   #writer: WritableStreamDefaultWriter<Uint8Array> | null = null;
   #encoder = new TextEncoder();
   #buffer = "";
+  /** Welcome message received on connect (if any). */
+  serverInfo: ServerInfoMessage | null = null;
 
   /** Connect to the server's socket. Supports "unix:///path", "tcp://host:port", and "npipe:///NAME". */
   async connect(uri: string): Promise<void> {
@@ -49,6 +52,16 @@ export class RClient {
     const stream = this.#conn.readable.pipeThrough(new TextDecoderStream());
     this.#reader = stream.getReader();
     this.#writer = this.#conn.writable.getWriter();
+
+    // Read and store welcome message
+    try {
+      const msg = await this.readMessage<ServerInfoMessage>(2000);
+      if (msg && typeof msg === "object" && msg.type === "server_info") {
+        this.serverInfo = msg;
+      }
+    } catch {
+      // Old server or timeout — proceed without
+    }
   }
 
   /** Send a JSON message followed by newline (NDJSON). */

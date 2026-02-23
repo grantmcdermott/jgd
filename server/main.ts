@@ -132,6 +132,7 @@ async function main(): Promise<void> {
     },
   );
   const httpPort = httpServer.addr.port;
+  hub.httpPort = httpPort;
   console.error(`HTTP server: http://127.0.0.1:${httpPort}/`);
 
   // Track active R connections for graceful shutdown

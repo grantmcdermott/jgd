@@ -41,6 +41,14 @@ export interface CloseMessage {
   type: "close";
 }
 
+/** Welcome message sent to R immediately on connect. */
+export interface ServerInfoMessage {
+  type: "server_info";
+  serverName: string;
+  protocolVersion: number;
+  serverInfo?: Record<string, string>;
+}
+
 /** Union of all R-to-server messages. */
 export type RMessage =
   | FrameMessage
