@@ -279,10 +279,10 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
 #ifdef _WIN32
     if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         HANDLE h = (HANDLE)t->pipe_handle;
-        OVERLAPPED ov = {0};
-        ov.hEvent = (HANDLE)t->overlap_event;
         size_t sent = 0;
         while (sent < len) {
+            OVERLAPPED ov = {0};
+            ov.hEvent = (HANDLE)t->overlap_event;
             DWORD written = 0;
             ResetEvent(ov.hEvent);
             if (!WriteFile(h, data + sent, (DWORD)(len - sent), &written, &ov)) {
@@ -303,6 +303,8 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
             sent += written;
         }
         {
+            OVERLAPPED ov = {0};
+            ov.hEvent = (HANDLE)t->overlap_event;
             char nl = '\n';
             DWORD nw = 0;
             ResetEvent(ov.hEvent);
@@ -411,8 +413,6 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
 #ifdef _WIN32
     if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         HANDLE h = (HANDLE)t->pipe_handle;
-        OVERLAPPED ov = {0};
-        ov.hEvent = (HANDLE)t->overlap_event;
         if (timeout_ms < 0) return -1;
         DWORD remaining_ms = (DWORD)timeout_ms;
 
@@ -425,6 +425,8 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
                 return -1;
             }
 
+            OVERLAPPED ov = {0};
+            ov.hEvent = (HANDLE)t->overlap_event;
             DWORD nread = 0;
             ResetEvent(ov.hEvent);
             if (!ReadFile(h, t->readbuf + t->readbuf_len, (DWORD)space, &nread, &ov)) {
@@ -433,7 +435,7 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
                     return -1;
                 }
                 /* Wait for data with remaining timeout */
-                DWORD t0 = GetTickCount();
+                ULONGLONG t0 = GetTickCount64();
                 DWORD wr = WaitForSingleObject(ov.hEvent, remaining_ms);
                 if (wr == WAIT_TIMEOUT) {
                     CancelIo(h);
@@ -445,6 +447,7 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
                 }
                 if (wr != WAIT_OBJECT_0) {
                     CancelIo(h);
+                    GetOverlappedResult(h, &ov, &nread, TRUE);
                     t->connected = 0;
                     return -1;
                 }
@@ -453,11 +456,11 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
                     return -1;
                 }
                 /* Update remaining timeout */
-                DWORD elapsed = GetTickCount() - t0;
+                ULONGLONG elapsed = GetTickCount64() - t0;
                 if (elapsed >= remaining_ms)
                     remaining_ms = 0;
                 else
-                    remaining_ms -= elapsed;
+                    remaining_ms -= (DWORD)elapsed;
             }
 
             if (nread == 0) {
@@ -519,13 +522,14 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
 
 void transport_close(jgd_transport_t *t) {
 #ifdef _WIN32
+    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
+        CancelIo((HANDLE)t->pipe_handle);
+        CloseHandle((HANDLE)t->pipe_handle);
+        t->pipe_handle = INVALID_HANDLE_VALUE;
+    }
     if (t->overlap_event) {
         CloseHandle((HANDLE)t->overlap_event);
         t->overlap_event = NULL;
-    }
-    if (t->pipe_handle != INVALID_HANDLE_VALUE) {
-        CloseHandle((HANDLE)t->pipe_handle);
-        t->pipe_handle = INVALID_HANDLE_VALUE;
     }
 #endif
     if (t->fd != (int)SOCK_INVALID) {
