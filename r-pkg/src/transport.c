@@ -472,16 +472,3 @@ void transport_close(jgd_transport_t *t) {
     t->readbuf_len = 0;
 }
 
-int transport_reconnect(jgd_transport_t *t) {
-    transport_close(t);
-    t->socket_path[0] = '\0';
-    for (int attempt = 0; attempt < 3; attempt++) {
-        if (transport_connect(t) == 0) return 0;
-#ifdef _WIN32
-        Sleep(100);
-#else
-        usleep(100000);
-#endif
-    }
-    return -1;
-}
