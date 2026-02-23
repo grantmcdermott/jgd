@@ -1,6 +1,6 @@
 import { dirname, fromFileUrl, join } from "@std/path";
 import type { DiscoveryFile } from "./types.ts";
-import { parseSocketUri } from "../../socket_uri.ts";
+import { parseSocketUri, socketUri } from "../../socket_uri.ts";
 
 /**
  * Manages a jgd server process for testing.
@@ -27,7 +27,7 @@ export class TestServer {
     const rawPath = join(this.tmpDir, `jgd-${crypto.randomUUID().slice(0, 8)}.sock`);
     this.socketPath = needsOutputParsing
       ? ""  // resolved after server starts
-      : `unix://${rawPath}`;
+      : socketUri.unix(rawPath);
   }
 
   /** Start the server and wait for it to be ready. */

@@ -1,5 +1,5 @@
 import { assertEquals, assertThrows } from "@std/assert";
-import { parseSocketUri } from "../socket_uri.ts";
+import { parseSocketUri, socketUri } from "../socket_uri.ts";
 
 Deno.test("parseSocketUri", async (t) => {
   await t.step("tcp://host:port", () => {
@@ -33,11 +33,17 @@ Deno.test("parseSocketUri", async (t) => {
     assertEquals(addr, { transport: "unix", path: "/tmp/jgd-abc.sock" });
   });
 
-  await t.step("unix URI preserves percent-encoded characters", () => {
+  await t.step("unix URI decodes percent-encoded characters", () => {
     const addr = parseSocketUri("unix:///tmp/path%20with%20spaces.sock");
-    // WHATWG URL spec: non-special schemes (unix://) treat paths as opaque,
-    // so .pathname preserves percent-encoding unlike http/https.
-    assertEquals(addr, { transport: "unix", path: "/tmp/path%20with%20spaces.sock" });
+    assertEquals(addr, { transport: "unix", path: "/tmp/path with spaces.sock" });
+  });
+
+  await t.step("unix:// without absolute path throws", () => {
+    assertThrows(
+      () => parseSocketUri("unix://relative.sock"),
+      Error,
+      "Unsupported socket URI:",
+    );
   });
 
   await t.step("npipe:///name", () => {
@@ -49,12 +55,48 @@ Deno.test("parseSocketUri", async (t) => {
     });
   });
 
+  await t.step("npipe with empty name throws", () => {
+    assertThrows(
+      () => parseSocketUri("npipe:///"),
+      Error,
+      "Empty pipe name",
+    );
+  });
+
   await t.step("raw path throws", () => {
     assertThrows(
       () => parseSocketUri("/tmp/jgd-test.sock"),
       Error,
       "Unsupported socket URI:",
     );
+  });
+
+  await t.step("socketUri.tcp round-trips", () => {
+    const uri = socketUri.tcp("127.0.0.1", 9999);
+    assertEquals(uri, "tcp://127.0.0.1:9999");
+    const addr = parseSocketUri(uri);
+    assertEquals(addr, { transport: "tcp", hostname: "127.0.0.1", port: 9999 });
+  });
+
+  await t.step("socketUri.unix round-trips", () => {
+    const uri = socketUri.unix("/tmp/jgd-test.sock");
+    assertEquals(uri, "unix:///tmp/jgd-test.sock");
+    const addr = parseSocketUri(uri);
+    assertEquals(addr, { transport: "unix", path: "/tmp/jgd-test.sock" });
+  });
+
+  await t.step("socketUri.unix encodes special characters", () => {
+    const uri = socketUri.unix("/tmp/path with spaces.sock");
+    assertEquals(uri, "unix:///tmp/path%20with%20spaces.sock");
+    const addr = parseSocketUri(uri);
+    assertEquals(addr, { transport: "unix", path: "/tmp/path with spaces.sock" });
+  });
+
+  await t.step("socketUri.npipe round-trips", () => {
+    const uri = socketUri.npipe("jgd-test123");
+    assertEquals(uri, "npipe:///jgd-test123");
+    const addr = parseSocketUri(uri);
+    assertEquals(addr, { transport: "npipe", name: "jgd-test123", pipePath: "\\\\.\\pipe\\jgd-test123" });
   });
 
   await t.step("unrecognized URI scheme throws", () => {

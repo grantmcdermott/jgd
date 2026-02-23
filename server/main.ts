@@ -7,7 +7,7 @@ import { handleWebSocket } from "./websocket.ts";
 import { serveStaticFile } from "./static.ts";
 import { assets } from "./web_assets.ts";
 import { PipeListener } from "./named_pipe.ts";
-import { parseSocketUri } from "./socket_uri.ts";
+import { parseSocketUri, socketUri } from "./socket_uri.ts";
 
 function printUsage(): void {
   console.log(`Usage: jgd-server [options]
@@ -76,7 +76,7 @@ async function main(): Promise<void> {
       port: tcpPort,
     });
     const addr = listener.addr as Deno.NetAddr;
-    socketPath = `tcp://127.0.0.1:${addr.port}`;
+    socketPath = socketUri.tcp("127.0.0.1", addr.port);
     rListener = listener;
   } else if (useNamedPipe) {
     // Named pipe (Windows default)
@@ -86,7 +86,7 @@ async function main(): Promise<void> {
       .map((b) => b.toString(16).padStart(2, "0"))
       .join("");
     const pipeName = `jgd-${hex}`;
-    socketPath = `npipe:///${pipeName}`;
+    socketPath = socketUri.npipe(pipeName);
     const pipeListener = new PipeListener();
     await pipeListener.listen(`\\\\.\\pipe\\${pipeName}`);
     rListener = pipeListener;
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
       const tmpdir = Deno.env.get("TMPDIR") || "/tmp";
       unixPath = join(tmpdir, `jgd-${hex}.sock`);
     }
-    socketPath = `unix://${unixPath}`;
+    socketPath = socketUri.unix(unixPath);
     await cleanStaleSocket(unixPath);
     rListener = Deno.listen({ transport: "unix", path: unixPath });
   }

@@ -19,7 +19,7 @@ export class RClient {
   #encoder = new TextEncoder();
   #buffer = "";
 
-  /** Connect to the server's socket. Supports "unix:///path", "tcp://host:port", "npipe:///NAME", or raw Unix path. */
+  /** Connect to the server's socket. Supports "unix:///path", "tcp://host:port", and "npipe:///NAME". */
   async connect(uri: string): Promise<void> {
     const addr = parseSocketUri(uri);
     switch (addr.transport) {
