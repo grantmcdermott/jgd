@@ -32,7 +32,8 @@ static void jgd_read_welcome(jgd_state_t *st) {
     char buf[2048];
     for (int attempt = 0; attempt < 3; attempt++) {
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 200);
-        if (n <= 0) return;
+        if (n < 0) return;   /* timeout or error — no point retrying */
+        if (n == 0) continue; /* empty line — skip */
 
         cJSON *msg = cJSON_Parse(buf);
         if (!msg) continue;
