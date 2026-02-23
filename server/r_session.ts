@@ -72,6 +72,9 @@ export class RSession {
 
       // Send welcome message.  The readable stream is already piped above,
       // so the await here won't cause data loss even if R replies quickly.
+      // If R has already closed the connection (fast plot + dev.off()),
+      // the write fails with BrokenPipe — catch it so the read loop below
+      // can still process any buffered data R sent before closing.
       const welcome: ServerInfoMessage = {
         type: "server_info",
         serverName: "jgd-http-server",
@@ -80,7 +83,11 @@ export class RSession {
           httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
         },
       };
-      await this.send(JSON.stringify(welcome));
+      try {
+        await this.send(JSON.stringify(welcome));
+      } catch {
+        // BrokenPipe / connection closed — continue to drain buffered data
+      }
 
       let buffer = "";
       let firstMessage = true;
