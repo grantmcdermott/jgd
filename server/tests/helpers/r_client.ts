@@ -6,6 +6,7 @@ import type {
 } from "./types.ts";
 import { PipeConn } from "../../named_pipe.ts";
 import type { RConn } from "../../r_session.ts";
+import { parseSocketUri } from "../../socket_uri.ts";
 import { connect as nodeConnect } from "node:net";
 
 /**
@@ -19,33 +20,30 @@ export class RClient {
   #buffer = "";
 
   /** Connect to the server's socket. Supports "unix:///path", "tcp://host:port", "npipe:///NAME", or raw Unix path. */
-  async connect(socketPath: string): Promise<void> {
-    if (socketPath.startsWith("tcp://")) {
-      const url = new URL(socketPath);
-      const port = parseInt(url.port, 10);
-      this.#conn = await Deno.connect({
-        transport: "tcp",
-        hostname: "127.0.0.1",
-        port,
-      });
-    } else if (socketPath.startsWith("npipe:///")) {
-      const pipeName = socketPath.slice("npipe:///".length);
-      const pipePath = `\\\\.\\pipe\\${pipeName}`;
-      // On Windows, the server may not have a new pipe instance ready
-      // immediately after accepting the previous connection (EBUSY).
-      // Retry with backoff to handle this inherent race.
-      const socket = await connectPipeWithRetry(pipePath);
-      this.#conn = new PipeConn(socket);
-    } else if (socketPath.startsWith("unix://")) {
-      this.#conn = await Deno.connect({
-        transport: "unix",
-        path: new URL(socketPath).pathname,
-      });
-    } else {
-      this.#conn = await Deno.connect({
-        transport: "unix",
-        path: socketPath,
-      });
+  async connect(uri: string): Promise<void> {
+    const addr = parseSocketUri(uri);
+    switch (addr.transport) {
+      case "tcp":
+        this.#conn = await Deno.connect({
+          transport: "tcp",
+          hostname: addr.hostname,
+          port: addr.port,
+        });
+        break;
+      case "npipe": {
+        // On Windows, the server may not have a new pipe instance ready
+        // immediately after accepting the previous connection (EBUSY).
+        // Retry with backoff to handle this inherent race.
+        const socket = await connectPipeWithRetry(addr.pipePath);
+        this.#conn = new PipeConn(socket);
+        break;
+      }
+      case "unix":
+        this.#conn = await Deno.connect({
+          transport: "unix",
+          path: addr.path,
+        });
+        break;
     }
 
     const stream = this.#conn.readable.pipeThrough(new TextDecoderStream());

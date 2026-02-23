@@ -1,5 +1,6 @@
 import { dirname, fromFileUrl, join } from "@std/path";
 import type { DiscoveryFile } from "./types.ts";
+import { parseSocketUri } from "../../socket_uri.ts";
 
 /**
  * Manages a jgd server process for testing.
@@ -58,11 +59,9 @@ export class TestServer {
     if (this.useTcp) {
       serverArgs.push("-tcp", "0");
     } else {
-      // Pass raw filesystem path to -socket (strip unix:// URI prefix)
-      const rawPath = this.socketPath.startsWith("unix://")
-        ? new URL(this.socketPath).pathname
-        : this.socketPath;
-      serverArgs.push("-socket", rawPath);
+      // Pass raw filesystem path to -socket
+      const addr = parseSocketUri(this.socketPath);
+      serverArgs.push("-socket", addr.transport === "unix" ? addr.path : this.socketPath);
     }
     serverArgs.push("-http", "127.0.0.1:0", "-v");
 

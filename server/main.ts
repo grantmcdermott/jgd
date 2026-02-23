@@ -1,5 +1,5 @@
 import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import { join } from "jsr:@std/path@1";
+import { join, resolve } from "jsr:@std/path@1";
 import { Hub } from "./hub.ts";
 import { RSession } from "./r_session.ts";
 import { writeDiscovery, removeDiscovery } from "./discovery.ts";
@@ -7,6 +7,7 @@ import { handleWebSocket } from "./websocket.ts";
 import { serveStaticFile } from "./static.ts";
 import { assets } from "./web_assets.ts";
 import { PipeListener } from "./named_pipe.ts";
+import { parseSocketUri } from "./socket_uri.ts";
 
 function printUsage(): void {
   console.log(`Usage: jgd-server [options]
@@ -91,7 +92,7 @@ async function main(): Promise<void> {
     rListener = pipeListener;
   } else {
     // Unix domain socket (Linux/macOS)
-    let unixPath = args.socket;
+    let unixPath = args.socket ? resolve(args.socket) : "";
     if (!unixPath) {
       const token = new Uint8Array(8);
       crypto.getRandomValues(token);
@@ -173,8 +174,8 @@ async function main(): Promise<void> {
   // Named pipes are kernel objects and don't need file removal.
   if (!useTcp && !useNamedPipe) {
     try {
-      // socketPath is a URI (unix:///path); extract the raw path for removal.
-      await Deno.remove(new URL(socketPath).pathname);
+      const addr = parseSocketUri(socketPath);
+      if (addr.transport === "unix") await Deno.remove(addr.path);
     } catch { /* ignore */ }
   }
 

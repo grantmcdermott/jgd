@@ -1,5 +1,6 @@
 import { assert } from "@std/assert";
 import { TestServer } from "./helpers/server.ts";
+import { parseSocketUri } from "../socket_uri.ts";
 import { BrowserClient } from "./helpers/browser_client.ts";
 import { delay } from "@std/async";
 
@@ -16,10 +17,8 @@ Deno.test("graceful shutdown", async (t) => {
       // If the server was force-killed (SIGKILL), cleanup won't run.
       if (graceful) {
         try {
-          const sockFile = server.socketPath.startsWith("unix://")
-            ? new URL(server.socketPath).pathname
-            : server.socketPath;
-          await Deno.stat(sockFile);
+          const addr = parseSocketUri(server.socketPath);
+          await Deno.stat(addr.transport === "unix" ? addr.path : server.socketPath);
           assert(false, "Socket file should be removed after shutdown");
         } catch (e) {
           assert(e instanceof Deno.errors.NotFound, "Socket should not exist");
