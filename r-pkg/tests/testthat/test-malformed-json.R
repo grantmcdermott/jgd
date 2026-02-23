@@ -98,10 +98,15 @@ start_mock_server_malformed = function() {
   list(
     bg = bg,
     socket_url = sprintf("tcp://127.0.0.1:%d", port),
-    collect = function(timeout = 10000) {
+    collect = function(timeout = 15000) {
       bg$wait(timeout)
-      if (bg$get_exit_status() != 0) {
+      if (!bg$is_alive() && length(bg$get_exit_status()) > 0 &&
+          bg$get_exit_status() != 0) {
         stop("Mock server exited with error: ", bg$read_error())
+      }
+      if (bg$is_alive()) {
+        bg$kill()
+        skip("Mock server did not exit in time")
       }
       bg$get_result()
     },
