@@ -1,1 +1,2 @@
-OBJECTS = init.o device.o callbacks.o display_list.o json_writer.o transport.o metrics.o color.o png_encoder.o
+PKG_CPPFLAGS = -Icjson
+OBJECTS = init.o device.o callbacks.o display_list.o json_writer.o transport.o metrics.o color.o png_encoder.o cjson/cJSON.o
