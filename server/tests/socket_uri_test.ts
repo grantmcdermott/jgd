@@ -37,6 +37,14 @@ Deno.test("parseSocketUri", async (t) => {
     );
   });
 
+  await t.step("tcp with query string throws", () => {
+    assertThrows(
+      () => parseSocketUri("tcp://127.0.0.1:8888?key=val"),
+      Error,
+      "unexpected query or fragment",
+    );
+  });
+
   await t.step("tcp with fragment throws", () => {
     assertThrows(
       () => parseSocketUri("tcp://127.0.0.1:8888#frag"),
