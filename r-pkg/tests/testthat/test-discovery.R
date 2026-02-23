@@ -27,8 +27,8 @@ test_that("explicit socket= does not fall back to discovery file", {
   )
   withr::local_options(jgd.socket = NULL)
 
-  # Open jgd with an explicit bogus socket (port 1 is privileged and
-  # will refuse connections).  The device should warn but NOT fall back.
+  # Open jgd with an explicit bogus socket (nothing listens on port 1).
+  # The device should warn but NOT fall back to the discovery file.
   expect_warning(
     jgd(socket = "tcp://127.0.0.1:1"),
     "could not connect"
@@ -38,9 +38,9 @@ test_that("explicit socket= does not fall back to discovery file", {
   dev.off()
 
   # If fallback had occurred, the mock server would have accepted a
-  # connection and progressed past socketAccept().  Give it a moment
-  # then check that it is still alive (blocked on accept = no connection).
-  Sys.sleep(0.5)
+  # connection, received the "close" message from dev.off(), and exited.
+  # Wait long enough for that to happen, then verify it is still alive
+  # (blocked on socketAccept = no connection was made).
+  server$bg$wait(2000)
   expect_true(server$bg$is_alive())
-  server$bg$kill()
 })
