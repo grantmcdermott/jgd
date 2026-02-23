@@ -248,6 +248,26 @@ test_that("rect op gc fields match snapshot", {
   expect_json_snapshot(rect_ops[[1]]$gc)
 })
 
+test_that("rect coordinates use full double precision", {
+  # Verify that coordinates are serialized with full double precision
+  # (cJSON_CreateNumber) rather than truncated to 4 decimal places (%.4f).
+  # Using 1/7 fractions produces repeating decimals that expose truncation.
+  msgs = with_mock_jgd({
+    par(mar = c(0, 0, 0, 0))
+    plot.new()
+    rect(1/3, 1/7, 2/3, 6/7)
+  })
+
+  rect_ops = extract_ops_by_type(msgs, "rect")
+  op = rect_ops[[1]]
+  # Use I(15) for 15 significant digits — enough to show precision beyond 4
+  # decimal places while matching cJSON's %1.15g output format
+  expect_snapshot(cat(jsonlite::toJSON(
+    list(x0 = op$x0, y0 = op$y0, x1 = op$x1, y1 = op$y1),
+    auto_unbox = TRUE, pretty = TRUE, digits = I(15)
+  )))
+})
+
 test_that("text op structure matches snapshot", {
   msgs = with_mock_jgd({
     par(mar = c(0, 0, 0, 0))
