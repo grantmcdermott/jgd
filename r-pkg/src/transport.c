@@ -413,6 +413,7 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
         HANDLE h = (HANDLE)t->pipe_handle;
         OVERLAPPED ov = {0};
         ov.hEvent = (HANDLE)t->overlap_event;
+        if (timeout_ms < 0) return -1;
         DWORD remaining_ms = (DWORD)timeout_ms;
 
         for (;;) {
