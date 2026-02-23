@@ -106,11 +106,13 @@ export class RSession {
             });
           }
 
-          // Extract session ID from first message's plot.sessionId
+          // Extract session ID from first message that contains one.
+          // Messages without a sessionId (e.g. pings) are skipped so
+          // the real first frame still gets its ID extracted.
           if (firstMessage) {
-            firstMessage = false;
             const sid = extractSessionId(line);
             if (sid) {
+              firstMessage = false;
               const oldId = this.id;
               this.id = sid;
               this.hub.updateSessionId(oldId, sid, this);
