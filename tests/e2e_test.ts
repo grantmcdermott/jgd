@@ -175,7 +175,7 @@ for (const { label, opts, expectedTransport } of [
           info.server_info.httpUrl,
           `http://127.0.0.1:${server.httpPort}/`,
         );
-        assertEquals(info.server_info.transport, expectedTransport);
+        assertEquals(info.transport, expectedTransport);
       } finally {
         await server.shutdown();
         server.cleanup();

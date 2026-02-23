@@ -38,7 +38,8 @@ jgd = function(
 #' or `NULL` if no server information is available.
 #'
 #' @return A named list with `server_name` (character), `protocol_version`
-#'   (integer), and `server_info` (named character vector), or `NULL`.
+#'   (integer), `transport` (character), and `server_info` (named character
+#'   vector), or `NULL`.
 #' @export
 jgd_server_info = function() {
   .Call(C_jgd_server_info)

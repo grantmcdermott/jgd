@@ -54,6 +54,11 @@ static void jgd_read_welcome(jgd_state_t *st) {
             st->protocol_version = (int)ver->valuedouble;
         }
 
+        cJSON *tr = cJSON_GetObjectItem(msg, "transport");
+        if (cJSON_IsString(tr)) {
+            snprintf(st->server_transport, sizeof(st->server_transport), "%s", tr->valuestring);
+        }
+
         cJSON *info = cJSON_GetObjectItem(msg, "serverInfo");
         if (cJSON_IsObject(info)) {
             cJSON *child = info->child;
@@ -283,17 +288,19 @@ SEXP C_jgd_server_info(void) {
     jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
     if (!st || !st->server_info_received) return R_NilValue;
 
-    /* Build the result: list(server_name, protocol_version, server_info) */
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 3));
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 3));
+    /* Build the result: list(server_name, protocol_version, transport, server_info) */
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
 
     SET_STRING_ELT(names, 0, Rf_mkChar("server_name"));
     SET_STRING_ELT(names, 1, Rf_mkChar("protocol_version"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("server_info"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("transport"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("server_info"));
     Rf_setAttrib(result, R_NamesSymbol, names);
 
     SET_VECTOR_ELT(result, 0, Rf_mkString(st->server_name));
     SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(st->protocol_version));
+    SET_VECTOR_ELT(result, 2, Rf_mkString(st->server_transport));
 
     /* Build named character vector from kv pairs */
     int np = st->n_info_pairs;
@@ -304,7 +311,7 @@ SEXP C_jgd_server_info(void) {
         SET_STRING_ELT(info, i, Rf_mkChar(st->server_info_pairs[i].val));
     }
     Rf_setAttrib(info, R_NamesSymbol, info_names);
-    SET_VECTOR_ELT(result, 2, info);
+    SET_VECTOR_ELT(result, 3, info);
 
     UNPROTECT(4);
     return result;

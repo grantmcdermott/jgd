@@ -30,6 +30,7 @@ typedef struct {
     void *ge_dev;             /* pGEDevDesc — stable for device lifetime */
     char server_name[128];
     int protocol_version;
+    char server_transport[32];
     int server_info_received;
     jgd_info_pair_t server_info_pairs[JGD_MAX_INFO_PAIRS];
     int n_info_pairs;

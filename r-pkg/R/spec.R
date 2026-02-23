@@ -36,7 +36,8 @@
 #' ```
 #' R -> Server:  {"type":"ping"}
 #' Server -> R:  {"type":"server_info","serverName":"jgd-http-server",
-#'                "protocolVersion":1,"serverInfo":{"httpUrl":"http://..."}}
+#'                "protocolVersion":1,"transport":"unix",
+#'                "serverInfo":{"httpUrl":"http://..."}}
 #' ```
 #'
 #' The R client reads up to 3 lines with a 200 ms timeout per read to
@@ -55,12 +56,12 @@
 #' - **`serverName`**: Human-readable server name, e.g. `"jgd-http-server"`
 #'   (string)
 #' - **`protocolVersion`**: Protocol version number, currently `1` (integer)
+#' - **`transport`**: Transport protocol in use: `"tcp"`, `"unix"`, or
+#'   `"npipe"` (string)
 #' - **`serverInfo`**: A flat JSON object whose values are all strings.
 #'   Provides additional server metadata:
 #'   - **`httpUrl`**: URL of the server's HTTP endpoint, e.g.
 #'     `"http://127.0.0.1:8080/"`
-#'   - **`transport`**: Transport protocol in use: `"tcp"`, `"unix"`, or
-#'     `"npipe"`
 #'
 #' Example:
 #'
@@ -69,22 +70,23 @@
 #'   "type": "server_info",
 #'   "serverName": "jgd-http-server",
 #'   "protocolVersion": 1,
+#'   "transport": "unix",
 #'   "serverInfo": {
-#'     "httpUrl": "http://127.0.0.1:8080/",
-#'     "transport": "unix"
+#'     "httpUrl": "http://127.0.0.1:8080/"
 #'   }
 #' }
 #' ```
 #'
 #' @section R-side representation:
 #'
-#' [jgd_server_info()] returns a named list with three elements, or `NULL`
+#' [jgd_server_info()] returns a named list with four elements, or `NULL`
 #' if no welcome was received:
 #'
 #' - **`server_name`**: The server name (character scalar)
 #' - **`protocol_version`**: The protocol version (integer scalar)
+#' - **`transport`**: The transport protocol (character scalar)
 #' - **`server_info`**: A named character vector of key-value pairs from the
-#'   `serverInfo` object (e.g. `c(httpUrl = "http://...", transport = "unix")`)
+#'   `serverInfo` object (e.g. `c(httpUrl = "http://...")`)
 #'
 #' `jgd_server_info()` returns `NULL` when:
 #'

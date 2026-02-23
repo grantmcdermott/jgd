@@ -8,7 +8,8 @@ jgd_server_info()
 }
 \value{
 A named list with \code{server_name} (character), \code{protocol_version}
-(integer), and \code{server_info} (named character vector), or \code{NULL}.
+(integer), \code{transport} (character), and \code{server_info} (named character
+vector), or \code{NULL}.
 }
 \description{
 Returns metadata about the server connected to the current jgd device,

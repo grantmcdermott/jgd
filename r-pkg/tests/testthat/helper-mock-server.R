@@ -12,7 +12,7 @@
 # 4. Collects all received NDJSON messages
 # 5. Returns collected messages when the device sends "close"
 
-start_mock_server_local = function(send_welcome = FALSE) {
+start_mock_server_local = function(send_welcome = FALSE, transport = "unix") {
   skip_if_not_installed("callr")
   skip_if_not_installed("processx")
   skip_if_not_installed("jsonlite")
@@ -33,7 +33,7 @@ start_mock_server_local = function(send_welcome = FALSE) {
   }
 
   bg = callr::r_bg(
-    function(conn_path, ready_file, send_welcome) {
+    function(conn_path, ready_file, send_welcome, transport) {
       `%||%` = function(x, y) if (is.null(x)) y else x
       server = processx::conn_create_unix_socket(conn_path)
 
@@ -74,6 +74,7 @@ start_mock_server_local = function(send_welcome = FALSE) {
               type = "server_info",
               serverName = "jgd-mock",
               protocolVersion = 1L,
+              transport = transport,
               serverInfo = list(httpUrl = "http://127.0.0.1:9999/")
             )
             processx::conn_write(
@@ -124,7 +125,8 @@ start_mock_server_local = function(send_welcome = FALSE) {
     args = list(
       conn_path = if (is_windows) win_path else socket_path,
       ready_file = if (is_windows) ready_file else NULL,
-      send_welcome = send_welcome
+      send_welcome = send_welcome,
+      transport = transport
     ),
     supervise = TRUE
   )
@@ -177,14 +179,14 @@ start_mock_server_local = function(send_welcome = FALSE) {
 }
 
 # TCP mock server using base R sockets (works on all platforms including Windows)
-start_mock_server_tcp = function(send_welcome = FALSE) {
+start_mock_server_tcp = function(send_welcome = FALSE, transport = "tcp") {
   skip_if_not_installed("callr")
   skip_if_not_installed("jsonlite")
 
   port_file = tempfile(pattern = "jgd-tcp-port-", fileext = ".txt")
 
   bg = callr::r_bg(
-    function(port_file, send_welcome) {
+    function(port_file, send_welcome, transport) {
       `%||%` = function(x, y) if (is.null(x)) y else x
       # Find a free port and start listening
       server = NULL
@@ -233,6 +235,7 @@ start_mock_server_tcp = function(send_welcome = FALSE) {
             type = "server_info",
             serverName = "jgd-mock",
             protocolVersion = 1L,
+            transport = transport,
             serverInfo = list(httpUrl = "http://127.0.0.1:9999/")
           )
           writeLines(jsonlite::toJSON(welcome, auto_unbox = TRUE), conn)
@@ -266,7 +269,7 @@ start_mock_server_tcp = function(send_welcome = FALSE) {
 
       messages
     },
-    args = list(port_file = port_file, send_welcome = send_welcome),
+    args = list(port_file = port_file, send_welcome = send_welcome, transport = transport),
     supervise = TRUE
   )
 

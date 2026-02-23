@@ -10,6 +10,7 @@ test_that("jgd_server_info() returns server metadata when welcome is sent", {
   expect_type(info, "list")
   expect_identical(info$server_name, "jgd-mock")
   expect_identical(info$protocol_version, 1L)
+  expect_identical(info$transport, "unix")
   expect_type(info$server_info, "character")
   expect_identical(info$server_info[["httpUrl"]], "http://127.0.0.1:9999/")
 
@@ -27,6 +28,7 @@ test_that("jgd_server_info() returns server metadata over TCP", {
   expect_type(info, "list")
   expect_identical(info$server_name, "jgd-mock")
   expect_identical(info$protocol_version, 1L)
+  expect_identical(info$transport, "tcp")
   expect_identical(info$server_info[["httpUrl"]], "http://127.0.0.1:9999/")
 
   dev.off()

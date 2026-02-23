@@ -46,6 +46,7 @@ export interface ServerInfoMessage {
   type: "server_info";
   serverName: string;
   protocolVersion: number;
+  transport: string;
   serverInfo?: Record<string, string>;
 }
 

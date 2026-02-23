@@ -45,7 +45,8 @@ after connecting:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{R -> Server:  \{"type":"ping"\}
 Server -> R:  \{"type":"server_info","serverName":"jgd-http-server",
-               "protocolVersion":1,"serverInfo":\{"httpUrl":"http://..."\}\}
+               "protocolVersion":1,"transport":"unix",
+               "serverInfo":\{"httpUrl":"http://..."\}\}
 }\if{html}{\out{</div>}}
 
 The R client reads up to 3 lines with a 200 ms timeout per read to
@@ -66,13 +67,13 @@ The \code{server_info} message has the following structure:
 \item \strong{\code{serverName}}: Human-readable server name, e.g. \code{"jgd-http-server"}
 (string)
 \item \strong{\code{protocolVersion}}: Protocol version number, currently \code{1} (integer)
+\item \strong{\code{transport}}: Transport protocol in use: \code{"tcp"}, \code{"unix"}, or
+\code{"npipe"} (string)
 \item \strong{\code{serverInfo}}: A flat JSON object whose values are all strings.
 Provides additional server metadata:
 \itemize{
 \item \strong{\code{httpUrl}}: URL of the server's HTTP endpoint, e.g.
 \code{"http://127.0.0.1:8080/"}
-\item \strong{\code{transport}}: Transport protocol in use: \code{"tcp"}, \code{"unix"}, or
-\code{"npipe"}
 }
 }
 
@@ -82,9 +83,9 @@ Example:
   "type": "server_info",
   "serverName": "jgd-http-server",
   "protocolVersion": 1,
+  "transport": "unix",
   "serverInfo": \{
-    "httpUrl": "http://127.0.0.1:8080/",
-    "transport": "unix"
+    "httpUrl": "http://127.0.0.1:8080/"
   \}
 \}
 }\if{html}{\out{</div>}}
@@ -93,13 +94,14 @@ Example:
 \section{R-side representation}{
 
 
-\code{\link[=jgd_server_info]{jgd_server_info()}} returns a named list with three elements, or \code{NULL}
+\code{\link[=jgd_server_info]{jgd_server_info()}} returns a named list with four elements, or \code{NULL}
 if no welcome was received:
 \itemize{
 \item \strong{\code{server_name}}: The server name (character scalar)
 \item \strong{\code{protocol_version}}: The protocol version (integer scalar)
+\item \strong{\code{transport}}: The transport protocol (character scalar)
 \item \strong{\code{server_info}}: A named character vector of key-value pairs from the
-\code{serverInfo} object (e.g. \code{c(httpUrl = "http://...", transport = "unix")})
+\code{serverInfo} object (e.g. \code{c(httpUrl = "http://...")})
 }
 
 \code{jgd_server_info()} returns \code{NULL} when:
