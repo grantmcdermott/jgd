@@ -60,16 +60,18 @@ export class PlotHistory {
         this.emitter.emit('change');
     }
 
-    replaceLatest(sessionId: string, plot: PlotFrame) {
+    replaceLatest(sessionId: string, plot: PlotFrame): boolean {
         const session = this.sessions.get(sessionId);
-        if (session && session.latestDeleted) return;
+        if (session && session.latestDeleted) return false;
         if (!session || session.plots.length === 0) {
-            return this.addPlot(sessionId, plot);
+            this.addPlot(sessionId, plot);
+            return true;
         }
         session.plots[session.plots.length - 1] = plot;
         // Don't change currentIndex — user stays on their historical view
         this.activeSessionId = sessionId;
         this.emitter.emit('change');
+        return true;
     }
 
     currentPlot(): PlotFrame | null {
@@ -109,6 +111,7 @@ export class PlotHistory {
         if (session) {
             session.plots = [];
             session.currentIndex = -1;
+            session.latestDeleted = false;
         }
         this.emitter.emit('change');
     }

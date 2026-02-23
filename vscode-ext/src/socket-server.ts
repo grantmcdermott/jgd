@@ -191,14 +191,15 @@ export class SocketServer {
                         msg.plot.sessionId = session.id;
                         const isResize = session.resizePending;
                         if (isResize) session.resizePending = false;
+                        let accepted = true;
                         if (isResize) {
-                            this.history.replaceLatest(session.id, msg.plot);
+                            accepted = this.history.replaceLatest(session.id, msg.plot);
                         } else if (msg.incremental) {
                             this.history.replaceCurrent(session.id, msg.plot);
                         } else {
                             this.history.addPlot(session.id, msg.plot);
                         }
-                        this.webviewProvider.showPlot(msg.plot);
+                        if (accepted) this.webviewProvider.showPlot(msg.plot);
                     }
                     break;
 
