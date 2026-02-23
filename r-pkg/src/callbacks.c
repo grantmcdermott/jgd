@@ -409,7 +409,11 @@ static void cb_mode(int mode, pDevDesc dd) {
          * cb_holdflush handles the single flush at the end.  Without hold
          * (e.g. interactive lines()/points()), we flush immediately. */
         if (st->hold_level == 0 && st->page.op_count > st->last_flushed_ops) {
-            jgd_flush_frame(st, 1);
+            /* First flush on a new page must be a complete frame so the
+             * browser creates a new plot entry (addPlot) rather than
+             * appending to the previous plot. */
+            int incr = (st->last_flushed_ops > 0) ? 1 : 0;
+            jgd_flush_frame(st, incr);
             st->last_flushed_ops = st->page.op_count;
         }
     }
