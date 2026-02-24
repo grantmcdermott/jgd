@@ -17,6 +17,8 @@ export class Hub {
   metricsRouting = new Map<number, string>();
   /** HTTP server port, set after the HTTP server starts. */
   httpPort = 0;
+  /** R transport type: "tcp", "unix", or "npipe". */
+  transport: "tcp" | "unix" | "npipe" = "tcp";
   verbose = false;
 
   registerSession(session: RSession): void {

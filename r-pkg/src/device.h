@@ -4,6 +4,15 @@
 #include "display_list.h"
 #include "transport.h"
 
+#define JGD_MAX_INFO_PAIRS 16
+#define JGD_INFO_KEY_LEN 64
+#define JGD_INFO_VAL_LEN 256
+
+typedef struct {
+    char key[JGD_INFO_KEY_LEN];
+    char val[JGD_INFO_VAL_LEN];
+} jgd_info_pair_t;
+
 typedef struct {
     jgd_transport_t transport;
     jgd_page_t page;
@@ -19,6 +28,12 @@ typedef struct {
     double pending_w;         /* pending resize width in pixels, 0 = none */
     double pending_h;         /* pending resize height in pixels */
     void *ge_dev;             /* pGEDevDesc — stable for device lifetime */
+    char server_name[128];
+    int protocol_version;
+    char server_transport[32];
+    int server_info_received;
+    jgd_info_pair_t server_info_pairs[JGD_MAX_INFO_PAIRS];
+    int n_info_pairs;
 #ifdef _WIN32
     void *hwnd;               /* HWND for message-only window (resize polling) */
     int timer_active;

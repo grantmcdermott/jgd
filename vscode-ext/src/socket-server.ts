@@ -12,6 +12,7 @@ interface RSession {
     id: string;
     socket: net.Socket;
     buffer: string;
+    welcomeSent: boolean;
 }
 
 const isWindows = process.platform === 'win32';
@@ -129,22 +130,9 @@ export class SocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
-        const session: RSession = { id: sessionId, socket, buffer: '' };
+        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
-
-        // Send welcome message before anything else
-        const welcome = {
-            type: 'server_info',
-            serverName: 'jgd-vscode',
-            protocolVersion: 1,
-        };
-        socket.write(JSON.stringify(welcome) + '\n');
-
-        const dims = this.webviewProvider.getPanelDimensions();
-        if (dims) {
-            socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');
-        }
 
         socket.on('data', (data) => {
             session.buffer += data.toString();
@@ -152,9 +140,27 @@ export class SocketServer {
             while ((newlineIdx = session.buffer.indexOf('\n')) !== -1) {
                 const line = session.buffer.substring(0, newlineIdx);
                 session.buffer = session.buffer.substring(newlineIdx + 1);
-                if (line.length > 0) {
-                    this.handleMessage(session, line);
+                if (line.length === 0) continue;
+
+                // Defer welcome until the first message from R is received,
+                // matching the Deno server handshake protocol.
+                if (!session.welcomeSent) {
+                    session.welcomeSent = true;
+                    const welcome = {
+                        type: 'server_info',
+                        serverName: 'jgd-vscode',
+                        protocolVersion: 1,
+                        transport: isWindows ? 'tcp' : 'unix',
+                    };
+                    socket.write(JSON.stringify(welcome) + '\n');
+
+                    const dims = this.webviewProvider.getPanelDimensions();
+                    if (dims) {
+                        socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');
+                    }
                 }
+
+                this.handleMessage(session, line);
             }
         });
 

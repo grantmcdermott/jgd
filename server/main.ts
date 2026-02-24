@@ -78,6 +78,7 @@ async function main(): Promise<void> {
     const addr = listener.addr as Deno.NetAddr;
     socketPath = socketUri.tcp("127.0.0.1", addr.port);
     rListener = listener;
+    hub.transport = "tcp";
   } else if (useNamedPipe) {
     // Named pipe (Windows default)
     const token = new Uint8Array(8);
@@ -90,6 +91,7 @@ async function main(): Promise<void> {
     const pipeListener = new PipeListener();
     await pipeListener.listen(`\\\\.\\pipe\\${pipeName}`);
     rListener = pipeListener;
+    hub.transport = "npipe";
   } else {
     // Unix domain socket (Linux/macOS)
     let unixPath = args.socket ? resolve(args.socket) : "";
@@ -105,6 +107,7 @@ async function main(): Promise<void> {
     socketPath = socketUri.unix(unixPath);
     await cleanStaleSocket(unixPath);
     rListener = Deno.listen({ transport: "unix", path: unixPath });
+    hub.transport = "unix";
   }
   console.error(`R listener: ${socketPath}`);
 

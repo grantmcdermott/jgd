@@ -91,6 +91,7 @@ export class RSession {
               type: "server_info",
               serverName: "jgd-http-server",
               protocolVersion: 1,
+              transport: this.hub.transport,
               serverInfo: {
                 httpUrl: `http://127.0.0.1:${this.hub.httpPort}/`,
               },

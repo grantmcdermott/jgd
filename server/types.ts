@@ -46,6 +46,7 @@ export interface ServerInfoMessage {
   type: "server_info";
   serverName: string;
   protocolVersion: number;
+  transport: "tcp" | "unix" | "npipe";
   serverInfo?: Record<string, string>;
 }
 

@@ -201,6 +201,10 @@ static unsigned int mcache_hash(const char *str, int len, const pGEcontext gc) {
     return h;
 }
 
+/* Lookup by hash only — no key comparison.  Two distinct (str, gc) pairs
+   that collide on the 32-bit hash will return a false hit.  This is an
+   intentional simplicity/performance tradeoff; collision probability is
+   negligible for typical plot workloads. */
 static mcache_entry_t *mcache_lookup(unsigned int hash) {
     mcache_entry_t *e = &mcache[hash % MCACHE_SIZE];
     if (e->occupied && e->hash == hash) return e;
@@ -569,4 +573,8 @@ void jgd_set_callbacks(pDevDesc dd) {
 #if R_GE_version >= 16
     dd->glyph = cb_glyph;
 #endif
+}
+
+int jgd_is_jgd_device(pDevDesc dd) {
+    return dd && dd->close == cb_close;
 }

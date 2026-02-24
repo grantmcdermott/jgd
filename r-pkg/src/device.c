@@ -19,6 +19,66 @@
 #include <stdio.h>
 #include <unistd.h>
 
+/* Read server_info welcome message after connecting.
+   The server defers the welcome until it receives R's first message,
+   so we send a ping to trigger it, then read back with a short timeout. */
+static void jgd_read_welcome(jgd_state_t *st) {
+    const char *ping = "{\"type\":\"ping\"}";
+    if (transport_send(&st->transport, ping, strlen(ping)) != 0)
+        return;
+
+    /* Read up to a few lines: the server sends server_info after receiving
+       the ping, but message ordering may vary across implementations. */
+    char buf[2048];
+    for (int attempt = 0; attempt < 3; attempt++) {
+        int n = transport_recv_line(&st->transport, buf, sizeof(buf), 200);
+        if (n < 0) return;   /* timeout or error — no point retrying */
+        if (n == 0) continue; /* empty line — skip */
+
+        cJSON *msg = cJSON_Parse(buf);
+        if (!msg) continue;
+
+        cJSON *type = cJSON_GetObjectItem(msg, "type");
+        if (!cJSON_IsString(type) || strcmp(type->valuestring, "server_info") != 0) {
+            cJSON_Delete(msg);
+            continue;
+        }
+
+        cJSON *name = cJSON_GetObjectItem(msg, "serverName");
+        if (cJSON_IsString(name)) {
+            snprintf(st->server_name, sizeof(st->server_name), "%s", name->valuestring);
+        }
+
+        cJSON *ver = cJSON_GetObjectItem(msg, "protocolVersion");
+        if (cJSON_IsNumber(ver)) {
+            st->protocol_version = (int)ver->valuedouble;
+        }
+
+        cJSON *tr = cJSON_GetObjectItem(msg, "transport");
+        if (cJSON_IsString(tr)) {
+            snprintf(st->server_transport, sizeof(st->server_transport), "%s", tr->valuestring);
+        }
+
+        cJSON *info = cJSON_GetObjectItem(msg, "serverInfo");
+        if (cJSON_IsObject(info)) {
+            cJSON *child = info->child;
+            while (child && st->n_info_pairs < JGD_MAX_INFO_PAIRS) {
+                if (cJSON_IsString(child) && child->string) {
+                    jgd_info_pair_t *p = &st->server_info_pairs[st->n_info_pairs];
+                    snprintf(p->key, sizeof(p->key), "%s", child->string);
+                    snprintf(p->val, sizeof(p->val), "%s", child->valuestring);
+                    st->n_info_pairs++;
+                }
+                child = child->next;
+            }
+        }
+
+        st->server_info_received = 1;
+        cJSON_Delete(msg);
+        return;
+    }
+}
+
 /* Called from R: .Call(C_jgd, width, height, dpi, socket) */
 SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     double width = Rf_asReal(s_width);
@@ -63,6 +123,10 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     if (transport_connect(&st->transport) != 0) {
         Rf_warning("jgd: could not connect to renderer. "
                    "Plots will be recorded but not displayed until connection is established.");
+    }
+
+    if (st->transport.connected) {
+        jgd_read_welcome(st);
     }
 
     pDevDesc dd = (pDevDesc)calloc(1, sizeof(DevDesc));
@@ -211,6 +275,46 @@ SEXP C_jgd_poll_resize(void) {
     if (!st || st->replaying || st->drawing) return Rf_ScalarLogical(FALSE);
 
     return Rf_ScalarLogical(poll_resize_impl(st, dd, gdd));
+}
+
+/* Called from R: .Call(C_jgd_server_info) */
+SEXP C_jgd_server_info(void) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) return R_NilValue;
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) return R_NilValue;
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st || !st->server_info_received) return R_NilValue;
+
+    /* Build the result: list(server_name, protocol_version, transport, server_info) */
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+
+    SET_STRING_ELT(names, 0, Rf_mkChar("server_name"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("protocol_version"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("transport"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("server_info"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
+
+    SET_VECTOR_ELT(result, 0, Rf_mkString(st->server_name));
+    SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(st->protocol_version));
+    SET_VECTOR_ELT(result, 2, Rf_mkString(st->server_transport));
+
+    /* Build named character vector from kv pairs */
+    int np = st->n_info_pairs;
+    SEXP info = PROTECT(Rf_allocVector(STRSXP, np));
+    SEXP info_names = PROTECT(Rf_allocVector(STRSXP, np));
+    for (int i = 0; i < np; i++) {
+        SET_STRING_ELT(info_names, i, Rf_mkChar(st->server_info_pairs[i].key));
+        SET_STRING_ELT(info, i, Rf_mkChar(st->server_info_pairs[i].val));
+    }
+    Rf_setAttrib(info, R_NamesSymbol, info_names);
+    SET_VECTOR_ELT(result, 3, info);
+
+    UNPROTECT(4);
+    return result;
 }
 
 /* ---- R input handler (POSIX) ---- */
