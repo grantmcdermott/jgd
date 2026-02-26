@@ -140,6 +140,11 @@ describe('SocketServer', () => {
     async function connect(): Promise<ClientHelper> {
         const client = await connectClient(server.getSocketPath());
         clients.push(client);
+        // Send an initial message to trigger the deferred welcome handshake,
+        // then consume the server_info and initial resize responses.
+        client.send({ type: 'hello' });
+        await client.readLine(); // server_info
+        await client.readLine(); // initial resize
         return client;
     }
 
@@ -148,7 +153,6 @@ describe('SocketServer', () => {
     describe('frame routing', () => {
         it('routes normal frame to addPlot', async () => {
             const client = await connect();
-            await client.readLine(); // consume initial resize
 
             client.send(makePlotMsg('A'));
             await waitMs(50);
@@ -160,7 +164,6 @@ describe('SocketServer', () => {
 
         it('routes incremental frame to replaceCurrent', async () => {
             const client = await connect();
-            await client.readLine();
 
             client.send(makePlotMsg('A'));
             await waitMs(50);
@@ -174,7 +177,6 @@ describe('SocketServer', () => {
 
         it('routes resize-response frame to replaceLatest', async () => {
             const client = await connect();
-            await client.readLine(); // initial resize (800x600)
 
             // Add a plot first
             client.send(makePlotMsg('A'));
@@ -201,7 +203,6 @@ describe('SocketServer', () => {
     describe('resize after delete (jgd#11)', () => {
         it('discards stale resize frame after latest plot was deleted', async () => {
             const client = await connect();
-            await client.readLine();
 
             // Two plots: RED then BLUE
             client.send(makePlotMsg('RED'));
@@ -237,9 +238,7 @@ describe('SocketServer', () => {
     describe('broadcastResize', () => {
         it('deduplicates resize with same dimensions', async () => {
             const client = await connect();
-            const initialResize = JSON.parse(await client.readLine());
-            // Initial dims are 800x600
-            expect(initialResize.width).toBe(800);
+            // Initial dims are 800x600 (already consumed by connect())
 
             // Trigger resize with same dimensions
             provider.triggerResize(800, 600);
@@ -253,7 +252,6 @@ describe('SocketServer', () => {
 
         it('forwards resize with different dimensions', async () => {
             const client = await connect();
-            await client.readLine(); // initial 800x600
 
             provider.triggerResize(1024, 768);
             const msg = JSON.parse(await client.readLine());
@@ -268,7 +266,12 @@ describe('SocketServer', () => {
     describe('initial connection', () => {
         it('sends current panel dimensions on connect', async () => {
             provider.dims = { width: 500, height: 400 };
-            const client = await connect();
+            const client = await connectClient(server.getSocketPath());
+            clients.push(client);
+            // Trigger the deferred welcome
+            client.send({ type: 'hello' });
+            const info = JSON.parse(await client.readLine());
+            expect(info.type).toBe('server_info');
             const msg = JSON.parse(await client.readLine());
             expect(msg.type).toBe('resize');
             expect(msg.width).toBe(500);
@@ -285,7 +288,6 @@ describe('SocketServer', () => {
             expect(history.count()).toBe(1);
 
             const client = await connect();
-            await client.readLine(); // consume initial resize
 
             // First frame from R is a resize response (resizePending armed on connect).
             // It should replace the existing plot, not add a second one.
@@ -308,7 +310,6 @@ describe('SocketServer', () => {
     describe('close message', () => {
         it('forwards close to webview provider with session id', async () => {
             const client = await connect();
-            await client.readLine();
 
             client.send({ type: 'close' });
             await waitMs(50);
@@ -323,7 +324,6 @@ describe('SocketServer', () => {
     describe('metrics', () => {
         it('forwards metrics_request to provider and returns response', async () => {
             const client = await connect();
-            await client.readLine();
 
             client.send({
                 type: 'metrics_request',
