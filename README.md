@@ -4,16 +4,16 @@
 
 **jgd** is a lightweight (C-based, zero dependency) R graphics device. It
 works by serializing R plotting operations into JSON and then streaming to
-an external renderer. A Deno-based reference server provides the primary
-rendering environment, serving a browser frontend over HTTP/WebSocket. A
-VS Code extension is also available as a demo client. Here's a screenshot
-of jgd running in VS Code:
+an external renderer. Two renderers are currently available:
+
+- A **VS Code extension** with an integrated plot pane
+- A **standalone Deno server** for rendering inside a web browser
 
 ![Screenshot of jgd running in VS Code](jgd-ss.png)
 
-The **jgd** protocol is designed to be frontend-agnostic. While VS Code is the
-current development focus, in principle any client able to read
-(newline-delimited) JSON could use it to render R plots.
+The **jgd** protocol is designed to be frontend-agnostic. While VS Code was our
+initial development focus, in principle any client able to read JSON could use
+it to render R plots (e.g., Neovim, Emacs, or a custom web app).
 
 **Caveats:** The package is experimental and may have some rough edges despite
 our best efforts at thorough local testing. The communication protocol between
@@ -24,16 +24,46 @@ been able to put this together without AI help.
 
 ## Installation
 
+To run **jgd**, you need to install the R package, as well as a frontend for
+displaying plots.
+
 ### R package
 
 ```r
 install.packages('jgd', repos = 'https://grantmcdermott.r-universe.dev')
 ```
 
-### Reference server (Deno)
+### Display frontend
 
-The reference server provides a browser-based renderer over HTTP/WebSocket.
-Run it directly with Deno (no install needed):
+You have two frontend options:
+
+#### Option 1) VS Code extension
+
+The simplest option is to download the `.vsix` from our
+[nightly release](https://github.com/grantmcdermott/jgd/releases/tag/nightly),
+then install it:
+
+```bash
+code --install-extension jgd-vscode-nightly.vsix
+```
+
+Alternatively, you can also build and install the extension from source[^1]:
+
+```bash
+cd vscode-ext && npm install && npm run compile \
+  && npx vsce package \
+  && code --install-extension jgd-vscode-0.0.1.vsix \
+  && cd ..
+```
+
+[^1]: Requires [Node.js](https://nodejs.org/). For extension development, you can also use `code --extensionDevelopmentPath="$(pwd)"` from the `vscode-ext` directory to launch a separate dev host window.
+
+#### Option 2) Deno server
+
+If you're not using VS Code, a standalone server provides a browser-based
+renderer over HTTP/WebSocket.
+First [install Deno](https://docs.deno.com/runtime/getting_started/installation/),
+then run directly (dependencies are fetched automatically):
 
 ```bash
 deno run https://raw.githubusercontent.com/grantmcdermott/jgd/refs/heads/main/server/main.ts
@@ -45,31 +75,20 @@ Or clone the repo and run locally:
 cd server && deno task start
 ```
 
-### VS Code extension (optional)
-
-A VS Code extension is available as a demo client. Download the `.vsix` from
-the
-[nightly release](https://github.com/grantmcdermott/jgd/releases/tag/nightly),
-then install it:
-
-```bash
-code --install-extension jgd-vscode-nightly.vsix
-```
-
-Alternatively, build from source for local development:
-
-```bash
-cd vscode-ext
-npm install && npm run compile
-code --extensionDevelopmentPath="$(pwd)"
-```
-
 ## Usage
 
-Start the reference server, then open `http://127.0.0.1:<port>/` in your
-browser (the URL is printed on startup). In a separate terminal, start R and
-run the following script. If you're using the VS Code extension instead, just
-run the script from the VS Code R terminal.
+Test your installation by running some R plotting commands, like those provided
+by the script below. Note that you need to call `jgd::jgd()` first to activate
+the device. The steps differ slightly depending on your chosen frontend:
+
+- **VS Code:** With the extension installed, simply run the script below from a
+VS Code R terminal (either via the
+[R extension](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r)
+or a regular terminal with R).
+
+- **Standalone server:** Start the Deno server, open `http://127.0.0.1:<port>/`
+in your browser (the URL is printed on startup), then run the script from any
+R session.
 
 ```r
 library(jgd)
