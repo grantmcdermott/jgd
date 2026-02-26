@@ -38,6 +38,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm test
+
       - run: npm run compile
 
       - run: npx @vscode/vsce package -o jgd-vscode-nightly.vsix

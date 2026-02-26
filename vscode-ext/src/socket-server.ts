@@ -13,6 +13,9 @@ interface RSession {
     socket: net.Socket;
     buffer: string;
     welcomeSent: boolean;
+    resizePending: boolean;
+    lastResizeW: number;
+    lastResizeH: number;
 }
 
 const isWindows = process.platform === 'win32';
@@ -55,7 +58,7 @@ export class SocketServer {
 
     start() {
         this.webviewProvider.onResize((w, h) => {
-            this.broadcast({ type: 'resize', width: w, height: h });
+            this.broadcastResize(w, h);
         });
 
         this.server = net.createServer((socket) => this.handleConnection(socket));
@@ -130,7 +133,7 @@ export class SocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
-        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false };
+        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, resizePending: false, lastResizeW: 0, lastResizeH: 0 };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
 
@@ -156,6 +159,9 @@ export class SocketServer {
 
                     const dims = this.webviewProvider.getPanelDimensions();
                     if (dims) {
+                        session.resizePending = true;
+                        session.lastResizeW = dims.width;
+                        session.lastResizeH = dims.height;
                         socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');
                     }
                 }
@@ -183,12 +189,17 @@ export class SocketServer {
                 case 'frame':
                     if (msg.plot) {
                         msg.plot.sessionId = session.id;
-                        if (msg.incremental) {
+                        const isResize = session.resizePending;
+                        if (isResize) session.resizePending = false;
+                        let accepted = true;
+                        if (isResize) {
+                            accepted = this.history.replaceLatest(session.id, msg.plot);
+                        } else if (msg.incremental) {
                             this.history.replaceCurrent(session.id, msg.plot);
                         } else {
                             this.history.addPlot(session.id, msg.plot);
                         }
-                        this.webviewProvider.showPlot(msg.plot);
+                        if (accepted) this.webviewProvider.showPlot(msg.plot);
                     }
                     break;
 
@@ -219,9 +230,13 @@ export class SocketServer {
         }
     }
 
-    broadcast(msg: object) {
-        const data = JSON.stringify(msg) + '\n';
+    private broadcastResize(w: number, h: number) {
+        const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
+            if (session.lastResizeW === w && session.lastResizeH === h) continue;
+            session.resizePending = true;
+            session.lastResizeW = w;
+            session.lastResizeH = h;
             session.socket.write(data);
         }
     }
