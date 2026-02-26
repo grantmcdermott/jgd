@@ -1,74 +1,123 @@
 # jgd — Project Status
 
-## Date: 2026-02-08
+## Date: 2026-02-26
+
+## Overview
+
+**jgd** (JSON Graphics Device) is a lightweight R graphics device that
+serializes plotting operations to JSON and streams them to an external
+renderer. Pure C, zero dependencies. Two frontends exist: a VS Code
+extension and a standalone Deno server with browser UI.
+
+## Architecture
+
+```
+R Process (jgd R package, pure C)
+  DevDesc callbacks → JSON serializer → socket/pipe client
+    ↕ NDJSON over Unix socket / named pipe / TCP
+Frontend (VS Code extension OR Deno server)
+  Listener → Plot history → Canvas2D renderer (webview / browser)
+```
+
+### Protocol
+
+- Transport: Unix domain sockets (macOS/Linux), named pipes (Windows default), TCP (all platforms)
+- Framing: NDJSON (newline-delimited JSON)
+- Message types: `frame`, `metrics_request`, `metrics_response`, `resize`, `close`, `server_info`
+- Handshake: server sends `server_info` + initial `resize` on first message from R (deferred welcome)
+
+## Components
+
+### R package (`r-pkg/`)
+- `device.c` — DevDesc setup and registration
+- `callbacks.c` — All graphics primitives (line, rect, text, polygon, path, raster, etc.)
+- `display_list.c` — Page state and JSON frame serialization
+- `json_writer.c` — Streaming JSON builder
+- `transport.c` — Socket/pipe/TCP client + discovery
+- `metrics.c` — Font metrics (approximation + synchronous round-trip to frontend with caching)
+- `color.c` — R color → CSS rgba()
+- `png_encoder.c` — Minimal uncompressed PNG encoder + base64
+- `init.c` — .Call registration
+
+### Deno server (`server/`)
+- `main.ts` — CLI entry, accepts connections via Unix socket, named pipe, or TCP
+- `hub.ts` — Routes messages between R sessions and browser clients
+- `r_session.ts` — Per-connection NDJSON parsing and write-back
+- `named_pipe.ts` — Windows named pipe support
+- `websocket.ts` / `static.ts` / `web_assets.ts` — HTTP/WebSocket for browser frontend
+- `discovery.ts` — Socket path discovery
+
+### VS Code extension (`vscode-ext/`)
+- `extension.ts` — Activation, commands, `JGD_SOCKET` env var injection
+- `socket-server.ts` — Socket server + NDJSON framing + per-session resize state
+- `webview-provider.ts` — Webview panel + Canvas2D renderer
+- `plot-history.ts` — Per-session plot history with back/forward navigation
 
 ## What Works
-- **Full rendering pipeline**: R → C device → JSON/NDJSON → Unix socket → VS Code extension → Canvas2D webview
-- **Base graphics**: plot, hist, lines, points, text, abline, polygon, polyline, rect, circle, path, raster
-- **ggplot2**: Full support (no-op stubs for pattern/mask/group callbacks prevent segfaults)
-- **Plot history**: Back/forward navigation, ◀ ▶ buttons side by side
-- **Incremental updates**: `plot()` + `lines()` = 1 history entry (mode(0) sends incremental, newPage commits)
-- **No duplicate plots on close**: `last_flushed_ops` tracking prevents double-flush
-- **Auto-discovery**: `JGD_SOCKET` env var injected into VS Code terminals via `environmentVariableCollection`
-- **Discovery file**: Written to `os.tmpdir()`, `/tmp/`, and `/private/tmp/`
-- **Deferred resize**: Panel dimensions stored as pending, applied on next `newPage` so next plot uses current panel size
-- **Live resize**: Task callback (`addTaskCallback`) polls for pending resize and calls `GEplayDisplayList()` when R is idle, re-rendering the current plot at new dimensions with proper layout reflow. Uses `later` package (soft dependency) for automatic 200ms polling when available; falls back to task callback otherwise.
-- **Text rotation**: Works correctly
-- **Transparent colors**: JSON null handled properly (C writes null, JS checks `!= null`)
-- **Clip regions**: save/restore stack correct with base y-flip-free transform
-- **Raster positioning**: Correct handling of negative width/height from R's raster callback, synchronous image decode to preserve clip/transform state
-- **Text metrics from webview**: Synchronous round-trip to measure text in the webview's Canvas2D context for accurate label positioning. Cached (512-entry hash map) to avoid repeated round-trips. Falls back to approximation when not connected.
-- **Stale socket fallback**: If `JGD_SOCKET` env var points to a dead socket (e.g. restored terminal), automatically retries via discovery file
-- **Export**: PNG (canvas.toBlob) and SVG (ops-to-SVG serializer) export from toolbar dropdown
-- **Discovery file reliability**: Extension writes to `os.tmpdir()`, `/tmp/`, and `/private/tmp/`; C side checks `TMPDIR`, `TMP`, `/tmp`. Combined with stale socket fallback, discovery works across TMPDIR mismatches.
-- **R 4.1+ compatibility**: No-op stubs for setPattern, setMask, setClipPath, defineGroup, etc.
-
-## Rename: vscgd → jgd
-- Package renamed from `vscgd` to `jgd` (JSON Graphics Device) to reflect frontend-agnostic design
-- All C symbols, R functions, env vars, discovery files updated
-- VS Code extension commands/config updated from `vscgd.*` to `jgd.*`
-
-## Known Issues / TODO
-
-### High Priority
-1. **Custom export dimensions**: Allow user to specify width/height for PNG/SVG export instead of inheriting the current panel size. Needs input dialog + offscreen canvas re-render.
-2. **Delete individual plots**: Add a 🗑️ button to toolbar to remove the current plot from history. Needs `removeCurrent()` method in `plot-history.ts` + toolbar wiring.
-
-### Medium Priority
-3. **Windows support**: TCP transport implemented on `windows` branch, needs testing on actual Windows machines.
-4. **Multiple device support**: Currently one device at a time.
-5. **First-plot focus stealing**: First plot steals editor focus due to VS Code `ViewColumn.Beside` behavior + upstream R extension issue (REditorSupport/vscode-R#1658). Subsequent plots preserve focus correctly.
+- Base graphics, ggplot2, tinyplot, lattice
+- Plot history with back/forward navigation
+- Incremental updates (plot + lines = one history entry)
+- Text metrics via synchronous round-trip to frontend (cached)
+- Live resize via task callback + GEplayDisplayList
+- Export: PNG and SVG with custom dimensions
+- Auto-discovery: `JGD_SOCKET` env var + `jgd-discovery.json` file
+- Cross-platform: Unix sockets (macOS/Linux), named pipes (Windows), TCP (all)
+- Delta encoding for incremental frames
+- Deferred welcome handshake (server_info + resize on first R message)
+- Resize-after-delete guard (latestDeleted flag prevents deleted plots from resurrecting)
 
 ## Build Commands
+
 ```bash
-# R package
+# R package (from repo root)
 cd r-pkg && R CMD build . && R CMD INSTALL jgd_0.0.1.tar.gz && cd ..
 
-# VS Code extension
-cd vscode-extension && npm install && npm run compile && cd ..
+# VS Code extension — build, package, install
+cd vscode-ext && npm install && npm run compile \
+  && npx vsce package \
+  && code --install-extension jgd-vscode-0.0.1.vsix \
+  && cd ..
 
-# Dev launch
-cd vscode-extension && code --extensionDevelopmentPath="$(pwd)" && cd ..
+# VS Code extension — tests
+cd vscode-ext && npx vitest run && cd ..
+
+# Deno server
+cd server && deno task start
+
+# Deno server — tests
+cd server && deno task test
 ```
 
 ## Test Sequence
+
 ```r
-# In a fresh terminal inside dev VS Code:
 library(jgd); jgd()
 plot(1:10)
-lines(1:10, col = "red", lwd = 3)       # should update same plot
-hist(rnorm(1000), col = "steelblue")     # new plot in history
+lines(1:10, col = "red", lwd = 3)
+hist(rnorm(1000), col = "steelblue")
 plot(cars); abline(lm(dist ~ speed, data = cars), col = "red", lwd = 2)
 library(ggplot2)
 ggplot(mtcars, aes(wt, mpg)) + geom_point(aes(color = factor(cyl))) + theme_minimal()
-# Back/forward should cycle through 4 plots
-# Resize the panel, then type 1+1 — plot should re-render at new dimensions
+# Back/forward should cycle through plots
+# Resize panel — plot should re-render at new dimensions
+# Delete latest plot, resize — deleted plot should NOT reappear
 ```
 
-## Key Architecture Decisions
-- **No y-flip**: R device coords are top-left origin (same as Canvas2D). No transform needed.
-- **JSON null for transparent**: C writes `null`, JS checks `!= null` (not string `'null'`).
-- **Incremental vs commit**: `mode(0)` sends `incremental: true` (replaces current in history). `newPage` sends `incremental: false` (adds new entry). `close` only sends if unsent ops exist.
-- **Deferred + live resize**: Resize dimensions stored in `pending_w`/`pending_h`. Applied either on next `newPage` (deferred) or via task callback + `GEplayDisplayList()` (live, when R is idle).
-- **deviceVersion = 0**: Tells R we're a basic device. Combined with no-op stubs for all R 4.1+ callbacks.
-- **Frontend-agnostic**: Package renamed to `jgd` (JSON Graphics Device). The R package is a pure C recorder with no rendering — any NDJSON client can render the plots.
+## Key Design Decisions
+- Pure C, no C++ — compiles anywhere R does
+- No y-flip: R device coords are top-left origin (same as Canvas2D)
+- JSON null for transparent colors
+- Incremental vs commit: `mode(0)` sends `incremental: true`, `newPage` sends new frame
+- Deferred + live resize: pending dimensions applied on next newPage or via GEplayDisplayList
+- Frontend-agnostic: any NDJSON client can render the plots
+- `latestDeleted` flag in PlotHistory prevents resize from resurrecting deleted plots
+
+## Known Limitations
+- No PDF export (use SVG → external converter)
+- Surviving plot doesn't re-render after deleting latest and resizing (follow-up needed)
+- Protocol not yet stabilized
+
+## Roadmap
+- [ ] Protocol stabilization and documentation
+- [ ] CRAN submission
+- [ ] R extension integration (if upstream agrees)
