@@ -29,8 +29,17 @@ displaying plots.
 
 ### R package
 
+Install from R-universe:
+
 ```r
 install.packages('jgd', repos = 'https://grantmcdermott.r-universe.dev')
+```
+
+Or, clone this repo and install locally:
+
+```sh
+git clone https://github.com/grantmcdermott/jgd.git
+R CMD INSTALL r-pkg
 ```
 
 ### Display frontend
@@ -44,6 +53,9 @@ The simplest option is to download the `.vsix` from our
 then install it:
 
 ```bash
+curl -fsSL \
+  https://github.com/grantmcdermott/jgd/releases/download/nightly/jgd-vscode-nightly.vsix \
+  -o jgd-vscode-nightly.vsix
 code --install-extension jgd-vscode-nightly.vsix
 ```
 
@@ -60,8 +72,8 @@ cd vscode-ext && npm install && npm run compile \
 
 #### Option 2) Deno server
 
-If you're not using VS Code, a standalone server provides a browser-based
-renderer over HTTP/WebSocket.
+If you're not using VS Code, our standalone Deno server provides a browser-based
+renderer.
 First [install Deno](https://docs.deno.com/runtime/getting_started/installation/),
 then run directly (dependencies are fetched automatically):
 
@@ -69,22 +81,22 @@ then run directly (dependencies are fetched automatically):
 deno run https://raw.githubusercontent.com/grantmcdermott/jgd/refs/heads/main/server/main.ts
 ```
 
-Or clone the repo and run locally:
+Or, clone the repo and run locally:
 
 ```bash
-cd server && deno task start
+cd server && deno task start && cd ..
 ```
 
-## Usage
+## Use
 
 Test your installation by running some R plotting commands, like those provided
 by the script below. Note that you need to call `jgd::jgd()` first to activate
 the device. The steps differ slightly depending on your chosen frontend:
 
-- **VS Code:** With the extension installed, simply run the script below from a
-VS Code R terminal (either via the
+- **VS Code:** Once you have installed the `jgd` extension, simply execute the
+below script from an R terminal inside VS Code (either via the
 [R extension](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r)
-or a regular terminal with R).
+or by manually starting R inside the VS Code terminal).
 
 - **Standalone server:** Start the Deno server, open `http://127.0.0.1:<port>/`
 in your browser (the URL is printed on startup), then run the script from any
