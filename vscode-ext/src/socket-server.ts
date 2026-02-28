@@ -246,9 +246,12 @@ export class SocketServer {
 
         for (const session of this.sessions.values()) {
             if (hasPlotIndex) {
-                // plotIndex resizes bypass dedup — always forward
+                // plotIndex resizes bypass dedup — always forward.
+                // Update lastResize dims to match the new device dimensions.
                 session.resizePending = true;
                 session.pendingPlotIndex = plotIndex;
+                session.lastResizeW = w;
+                session.lastResizeH = h;
             } else {
                 if (session.lastResizeW === w && session.lastResizeH === h) continue;
                 session.resizePending = true;

@@ -97,10 +97,14 @@ export class Hub {
 
     for (const session of this.sessions.values()) {
       if (hasPlotIndex) {
-        // plotIndex resizes bypass dedup — always forward, don't update
-        // lastResize dims so subsequent normal resizes still dedup correctly.
+        // plotIndex resizes bypass dedup — always forward.  Update lastResize
+        // dims to match the new device dimensions so that a subsequent normal
+        // resize with the same dims is correctly deduped, while a resize back
+        // to the pre-plotIndex dims is correctly forwarded.
         session.resizePending = true;
         session.pendingPlotIndex = dims!.plotIndex;
+        session.lastResizeW = dims!.width;
+        session.lastResizeH = dims!.height;
       } else if (dims) {
         // When dimensions haven't changed, skip entirely — don't forward
         // to R and don't arm the flag.  This prevents duplicate resizes
