@@ -19,15 +19,10 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { extractTextOps } from "./helpers/plot_ops.ts";
 import { checkRAvailable, startR } from "./helpers/r_process.ts";
 
 const rAvailable = await checkRAvailable();
-
-function extractTextOps(frame: FrameMessage): string[] {
-  return (frame.plot.ops as Array<Record<string, unknown>>)
-    .filter((op) => op.op === "text")
-    .map((op) => op.str as string);
-}
 
 Deno.test({
   name: "E2E: normal resize works after plotIndex resize (regression)",

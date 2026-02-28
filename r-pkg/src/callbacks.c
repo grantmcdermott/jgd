@@ -49,6 +49,7 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
                                VECTOR_ELT(st->snapshot_store, i + 1));
             SET_VECTOR_ELT(st->snapshot_store, JGD_MAX_SNAPSHOTS - 1,
                            st->last_snapshot);
+            st->snapshot_base++;
         } else {
             SET_VECTOR_ELT(st->snapshot_store, st->snapshot_count,
                            st->last_snapshot);
@@ -382,6 +383,9 @@ static void check_incoming(jgd_state_t *st, pDevDesc dd) {
         char buf[1024];
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
         if (n <= 0) break;
+        /* Pass NULL for plot_index: check_incoming runs during cb_newPage
+         * (while R is drawing), and plotIndex resizes are handled exclusively
+         * by poll_resize_impl when R is idle. */
         jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h, NULL);
     }
 }
@@ -422,10 +426,12 @@ static void cb_mode(int mode, pDevDesc dd) {
             if (!incr) {
                 pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
                 SEXP snap = GEcreateSnapshot(gdd);
-                if (st->last_snapshot != R_NilValue)
-                    R_ReleaseObject(st->last_snapshot);
-                R_PreserveObject(snap);
-                st->last_snapshot = snap;
+                if (snap != R_NilValue) {
+                    if (st->last_snapshot != R_NilValue)
+                        R_ReleaseObject(st->last_snapshot);
+                    R_PreserveObject(snap);
+                    st->last_snapshot = snap;
+                }
             }
         }
     }
@@ -447,10 +453,12 @@ static int cb_holdflush(pDevDesc dd, int level) {
             /* Capture snapshot after complete frame flush */
             pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
             SEXP snap = GEcreateSnapshot(gdd);
-            if (st->last_snapshot != R_NilValue)
-                R_ReleaseObject(st->last_snapshot);
-            R_PreserveObject(snap);
-            st->last_snapshot = snap;
+            if (snap != R_NilValue) {
+                if (st->last_snapshot != R_NilValue)
+                    R_ReleaseObject(st->last_snapshot);
+                R_PreserveObject(snap);
+                st->last_snapshot = snap;
+            }
         }
     }
     return old;

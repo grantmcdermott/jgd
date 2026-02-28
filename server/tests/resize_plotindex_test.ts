@@ -80,7 +80,7 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
       assertEquals(msg.height, 480);
     });
 
-    await t.step("normal resize after plotIndex resize is forwarded (regression)", async () => {
+    await t.step("normal resize after plotIndex resize is forwarded when dims differ", async () => {
       // Consume the frame from previous step
       await rClient.sendFrame(
         { ops: [{ op: "line" }], device: { width: 640, height: 480 } },

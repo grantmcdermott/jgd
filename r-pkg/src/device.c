@@ -102,6 +102,7 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     st->drawing = 0;
     st->pending_plot_index = -1;
     st->snapshot_count = 0;
+    st->snapshot_base = 0;
     st->snapshot_store = Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS);
     R_PreserveObject(st->snapshot_store);
     st->last_snapshot = R_NilValue;
@@ -248,7 +249,8 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
     int pi = st->pending_plot_index;
     st->pending_plot_index = -1;
 
-    if (pi >= 0 && pi < st->snapshot_count) {
+    int store_idx = pi - st->snapshot_base;
+    if (store_idx >= 0 && store_idx < st->snapshot_count) {
         /* Historical plot resize: replay the snapshot at new dimensions,
          * flush its frame, then restore the current display list.
          *
@@ -256,7 +258,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * and replays it through device callbacks.  We use hold_level
          * to suppress intermediate flushes and replaying=1 to prevent
          * snapshot saving in cb_newPage during the replay. */
-        SEXP snap = VECTOR_ELT(st->snapshot_store, pi);
+        SEXP snap = VECTOR_ELT(st->snapshot_store, store_idx);
         SEXP current = PROTECT(GEcreateSnapshot(gdd));
 
         st->replaying = 1;
