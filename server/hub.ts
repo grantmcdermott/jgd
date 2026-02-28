@@ -156,26 +156,18 @@ export class Hub {
         if (dims.width === session.lastResizeW && dims.height === session.lastResizeH) {
           continue;
         }
-        // Collapse: remove any previous normal resize entries from the queue.
-        // Multiple normal resizes in flight are redundant (only the latest
-        // matters), and keeping stale entries would mis-tag subsequent frames.
-        // plotIndex entries are preserved to maintain correct ordering.
-        session.pendingResizes = session.pendingResizes.filter(
-          (e) => e.plotIndex !== undefined,
-        );
-        if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
-          session.pendingResizes.push({ plotIndex: undefined });
-        }
         session.lastResizeW = dims.width;
         session.lastResizeH = dims.height;
-      } else {
-        session.pendingResizes = session.pendingResizes.filter(
-          (e) => e.plotIndex !== undefined,
-        );
-        if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
-          session.pendingResizes.push({ plotIndex: undefined });
-        }
       }
+      // Collapse: remove any previous normal resize entries from the queue.
+      // Multiple normal resizes in flight are redundant (only the latest
+      // matters), and keeping stale entries would mis-tag subsequent frames.
+      // plotIndex entries are preserved to maintain correct ordering.
+      session.pendingResizes = session.pendingResizes.filter(
+        (e) => e.plotIndex !== undefined,
+      );
+      if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
+      session.pendingResizes.push({ plotIndex: undefined });
       session.send(data).catch((e) => {
         console.error(
           `failed to send to R session ${session.id}: ${e}`,
