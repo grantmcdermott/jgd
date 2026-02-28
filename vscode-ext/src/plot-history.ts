@@ -60,6 +60,15 @@ export class PlotHistory {
         this.emitter.emit('change');
     }
 
+    replaceAtIndex(sessionId: string, plotIndex: number, plot: PlotFrame): boolean {
+        const session = this.sessions.get(sessionId);
+        if (!session || plotIndex < 0 || plotIndex >= session.plots.length) return false;
+        session.plots[plotIndex] = plot;
+        this.activeSessionId = sessionId;
+        this.emitter.emit('change');
+        return true;
+    }
+
     replaceLatest(sessionId: string, plot: PlotFrame): boolean {
         const session = this.sessions.get(sessionId);
         if (session && session.latestDeleted) return false;

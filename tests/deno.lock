@@ -2,6 +2,7 @@
   "version": "5",
   "specifiers": {
     "jsr:@std/assert@1": "1.0.18",
+    "jsr:@std/async@*": "1.1.1",
     "jsr:@std/async@1": "1.1.1",
     "jsr:@std/cli@1": "1.0.27",
     "jsr:@std/internal@^1.0.12": "1.0.12",

@@ -16,6 +16,7 @@ interface RSession {
     resizePending: boolean;
     lastResizeW: number;
     lastResizeH: number;
+    pendingPlotIndex: number | undefined;
 }
 
 const isWindows = process.platform === 'win32';
@@ -133,7 +134,7 @@ export class SocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
-        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, resizePending: false, lastResizeW: 0, lastResizeH: 0 };
+        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, resizePending: false, lastResizeW: 0, lastResizeH: 0, pendingPlotIndex: undefined };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
 
@@ -190,9 +191,15 @@ export class SocketServer {
                     if (msg.plot) {
                         msg.plot.sessionId = session.id;
                         const isResize = session.resizePending;
-                        if (isResize) session.resizePending = false;
-                        let accepted = true;
+                        const plotIndex = session.pendingPlotIndex;
                         if (isResize) {
+                            session.resizePending = false;
+                            session.pendingPlotIndex = undefined;
+                        }
+                        let accepted = true;
+                        if (isResize && plotIndex !== undefined) {
+                            accepted = this.history.replaceAtIndex(session.id, plotIndex, msg.plot);
+                        } else if (isResize) {
                             accepted = this.history.replaceLatest(session.id, msg.plot);
                         } else if (msg.incremental) {
                             this.history.replaceCurrent(session.id, msg.plot);
@@ -230,13 +237,25 @@ export class SocketServer {
         }
     }
 
-    private broadcastResize(w: number, h: number) {
-        const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
+    broadcastResize(w: number, h: number, plotIndex?: number) {
+        const msg: Record<string, unknown> = { type: 'resize', width: w, height: h };
+        if (plotIndex !== undefined) msg.plotIndex = plotIndex;
+        const data = JSON.stringify(msg) + '\n';
+
+        const hasPlotIndex = plotIndex !== undefined;
+
         for (const session of this.sessions.values()) {
-            if (session.lastResizeW === w && session.lastResizeH === h) continue;
-            session.resizePending = true;
-            session.lastResizeW = w;
-            session.lastResizeH = h;
+            if (hasPlotIndex) {
+                // plotIndex resizes bypass dedup — always forward
+                session.resizePending = true;
+                session.pendingPlotIndex = plotIndex;
+            } else {
+                if (session.lastResizeW === w && session.lastResizeH === h) continue;
+                session.resizePending = true;
+                session.pendingPlotIndex = undefined;
+                session.lastResizeW = w;
+                session.lastResizeH = h;
+            }
             session.socket.write(data);
         }
     }

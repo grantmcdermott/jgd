@@ -34,6 +34,7 @@ export interface ResizeMessage {
   type: "resize";
   width: number;
   height: number;
+  plotIndex?: number;
 }
 
 /** Device close message from R. */

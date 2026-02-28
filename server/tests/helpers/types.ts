@@ -9,12 +9,14 @@ export interface FrameMessage {
   };
   incremental?: boolean;
   resize?: boolean;
+  plotIndex?: number;
 }
 
 export interface ResizeMessage {
   type: "resize";
   width: number;
   height: number;
+  plotIndex?: number;
 }
 
 export interface MetricsRequestMessage {

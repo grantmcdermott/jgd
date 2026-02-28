@@ -4,7 +4,10 @@
 #include "display_list.h"
 #include "transport.h"
 
+#include <Rinternals.h>
+
 #define JGD_MAX_INFO_PAIRS 16
+#define JGD_MAX_SNAPSHOTS 50
 #define JGD_INFO_KEY_LEN 64
 #define JGD_INFO_VAL_LEN 256
 
@@ -27,7 +30,11 @@ typedef struct {
     int replaying;            /* guard against re-entry from GEplayDisplayList */
     double pending_w;         /* pending resize width in pixels, 0 = none */
     double pending_h;         /* pending resize height in pixels */
+    int pending_plot_index;   /* plotIndex from resize msg, -1 = none */
     void *ge_dev;             /* pGEDevDesc — stable for device lifetime */
+    SEXP snapshot_store;      /* VECSXP holding GEcreateSnapshot results */
+    int snapshot_count;       /* number of stored snapshots */
+    SEXP last_snapshot;       /* most recent complete-page snapshot, or R_NilValue */
     char server_name[128];
     int protocol_version;
     char server_transport[32];
@@ -50,7 +57,8 @@ void jgd_flush_frame(jgd_state_t *st, int incremental);
 void jgd_register_input_handler(jgd_state_t *st);
 void jgd_remove_input_handler(jgd_state_t *st);
 
-/* Parse a JSON message; if it's a resize, store dimensions in *w/*h and return 1. */
-int jgd_try_parse_resize(const char *buf, double *w, double *h);
+/* Parse a JSON message; if it's a resize, store dimensions in *w/*h and
+   optionally extract plotIndex into *plot_index (-1 if absent).  Returns 1. */
+int jgd_try_parse_resize(const char *buf, double *w, double *h, int *plot_index);
 
 #endif

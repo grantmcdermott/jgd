@@ -25,6 +25,8 @@ export class RSession {
   resizePending = false;
   lastResizeW = 0;
   lastResizeH = 0;
+  /** When set, the next resize frame targets a historical plot at this index. */
+  pendingPlotIndex: number | undefined = undefined;
   private conn: RConn;
   private hub: Hub;
   private encoder = new TextEncoder();

@@ -84,7 +84,7 @@ export class Hub {
    * Duplicate resizes with identical dimensions are silently dropped.
    */
   broadcastResizeToR(data: string): void {
-    let dims: { width: number; height: number } | null = null;
+    let dims: { width: number; height: number; plotIndex?: number } | null = null;
     try {
       const parsed = JSON.parse(data);
       if (typeof parsed.width === "number" && typeof parsed.height === "number" &&
@@ -93,16 +93,24 @@ export class Hub {
       }
     } catch { /* malformed — skip dedup, always arm */ }
 
+    const hasPlotIndex = dims !== null && typeof dims.plotIndex === "number";
+
     for (const session of this.sessions.values()) {
-      // When dimensions haven't changed, skip entirely — don't forward
-      // to R and don't arm the flag.  This prevents duplicate resizes
-      // (ws.onopen + ResizeObserver with same dims) from generating
-      // untagged frames that corrupt plot history.
-      if (dims) {
+      if (hasPlotIndex) {
+        // plotIndex resizes bypass dedup — always forward, don't update
+        // lastResize dims so subsequent normal resizes still dedup correctly.
+        session.resizePending = true;
+        session.pendingPlotIndex = dims!.plotIndex;
+      } else if (dims) {
+        // When dimensions haven't changed, skip entirely — don't forward
+        // to R and don't arm the flag.  This prevents duplicate resizes
+        // (ws.onopen + ResizeObserver with same dims) from generating
+        // untagged frames that corrupt plot history.
         if (dims.width === session.lastResizeW && dims.height === session.lastResizeH) {
           continue;
         }
         session.resizePending = true;
+        session.pendingPlotIndex = undefined;
         session.lastResizeW = dims.width;
         session.lastResizeH = dims.height;
       } else {
@@ -130,6 +138,11 @@ export class Hub {
         if (session.resizePending) {
           session.resizePending = false;
           data = injectResizeFlag(data);
+          // If this resize targeted a historical plot, tag the frame
+          if (session.pendingPlotIndex !== undefined) {
+            data = injectPlotIndex(data, session.pendingPlotIndex);
+            session.pendingPlotIndex = undefined;
+          }
         }
         // Inject sessionId into the plot object if not present
         if (session.id && !data.includes('"sessionId"')) {
@@ -318,6 +331,16 @@ function injectResizeFlag(line: string): string {
   const idx = line.indexOf("{");
   if (idx < 0) return line;
   return line.slice(0, idx + 1) + '"resize":true,' + line.slice(idx + 1);
+}
+
+/**
+ * Inject "plotIndex":N into a frame message so the browser knows which
+ * historical plot this resize frame corresponds to.
+ */
+function injectPlotIndex(line: string, plotIndex: number): string {
+  const idx = line.indexOf("{");
+  if (idx < 0) return line;
+  return line.slice(0, idx + 1) + `"plotIndex":${plotIndex},` + line.slice(idx + 1);
 }
 
 /**

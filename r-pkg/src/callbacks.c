@@ -8,6 +8,7 @@
 
 #include <R.h>
 #include <Rinternals.h>
+#include <R_ext/GraphicsEngine.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -36,6 +37,25 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
 
     if (st->page_count > 0 && st->page.op_count > st->last_flushed_ops && !st->replaying) {
         jgd_flush_frame(st, 0);
+    }
+
+    /* Move the last_snapshot (captured when the complete frame was flushed)
+     * into the snapshot store.  R clears the display list before calling
+     * newPage, so GEcreateSnapshot here would capture an empty DL. */
+    if (st->page_count > 0 && !st->replaying && st->last_snapshot != R_NilValue) {
+        if (st->snapshot_count >= JGD_MAX_SNAPSHOTS) {
+            for (int i = 0; i < JGD_MAX_SNAPSHOTS - 1; i++)
+                SET_VECTOR_ELT(st->snapshot_store, i,
+                               VECTOR_ELT(st->snapshot_store, i + 1));
+            SET_VECTOR_ELT(st->snapshot_store, JGD_MAX_SNAPSHOTS - 1,
+                           st->last_snapshot);
+        } else {
+            SET_VECTOR_ELT(st->snapshot_store, st->snapshot_count,
+                           st->last_snapshot);
+            st->snapshot_count++;
+        }
+        R_ReleaseObject(st->last_snapshot);
+        st->last_snapshot = R_NilValue;
     }
 
     if (st->page_count > 0) {
@@ -68,6 +88,9 @@ static void cb_close(pDevDesc dd) {
 
     page_free(&st->page);
     transport_close(&st->transport);
+    if (st->last_snapshot != R_NilValue)
+        R_ReleaseObject(st->last_snapshot);
+    R_ReleaseObject(st->snapshot_store);
     free(st);
     dd->deviceSpecific = NULL;
 }
@@ -359,7 +382,7 @@ static void check_incoming(jgd_state_t *st, pDevDesc dd) {
         char buf[1024];
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
         if (n <= 0) break;
-        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h);
+        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h, NULL);
     }
 }
 
@@ -394,6 +417,16 @@ static void cb_mode(int mode, pDevDesc dd) {
             int incr = (st->last_flushed_ops > 0) ? 1 : 0;
             jgd_flush_frame(st, incr);
             st->last_flushed_ops = st->page.op_count;
+            /* Capture a snapshot after each complete frame for historical
+             * plot resizing.  The display list is valid at this point. */
+            if (!incr) {
+                pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
+                SEXP snap = GEcreateSnapshot(gdd);
+                if (st->last_snapshot != R_NilValue)
+                    R_ReleaseObject(st->last_snapshot);
+                R_PreserveObject(snap);
+                st->last_snapshot = snap;
+            }
         }
     }
 }
@@ -411,6 +444,13 @@ static int cb_holdflush(pDevDesc dd, int level) {
         if (st->page.op_count > st->last_flushed_ops) {
             jgd_flush_frame(st, 0);
             st->last_flushed_ops = st->page.op_count;
+            /* Capture snapshot after complete frame flush */
+            pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
+            SEXP snap = GEcreateSnapshot(gdd);
+            if (st->last_snapshot != R_NilValue)
+                R_ReleaseObject(st->last_snapshot);
+            R_PreserveObject(snap);
+            st->last_snapshot = snap;
         }
     }
     return old;
