@@ -142,6 +142,13 @@ export const assets: Record<string, { body: string; type: string }> = {
         // Don't change currentIndex — user stays on their historical view
     };
 
+    PlotHistory.prototype.replaceAtIndex = function(sessionId, plotIndex, plot) {
+        var session = this._sessions.get(sessionId);
+        if (!session || plotIndex < 0 || plotIndex >= session.plots.length) return;
+        session.plots[plotIndex] = plot;
+        this._activeSessionId = sessionId;
+    };
+
     PlotHistory.prototype.currentIndex = function() {
         var session = this._sessions.get(this._activeSessionId);
         return session ? session.currentIndex + 1 : 0;
@@ -273,7 +280,11 @@ export const assets: Record<string, { body: string; type: string }> = {
         var plot = msg.plot;
         var sessionId = plot.sessionId || 'default';
         if (msg.resize) {
-            history.replaceLatest(sessionId, plot);
+            if (msg.plotIndex !== undefined) {
+                history.replaceAtIndex(sessionId, msg.plotIndex, plot);
+            } else {
+                history.replaceLatest(sessionId, plot);
+            }
         } else if (msg.incremental) {
             history.appendOps(sessionId, plot);
         } else {
@@ -324,11 +335,18 @@ export const assets: Record<string, { body: string; type: string }> = {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function() {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
+                var msg = {
                     type: 'resize',
                     width: container.clientWidth,
                     height: container.clientHeight
-                }));
+                };
+                // Include plotIndex when viewing a historical plot (not the latest)
+                var idx = history.currentIndex();
+                var total = history.count();
+                if (total > 0 && idx < total) {
+                    msg.plotIndex = idx - 1;
+                }
+                ws.send(JSON.stringify(msg));
             }
         }, 300);
     });
