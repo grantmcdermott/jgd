@@ -156,8 +156,6 @@ export class Hub {
         if (dims.width === session.lastResizeW && dims.height === session.lastResizeH) {
           continue;
         }
-        session.lastResizeW = dims.width;
-        session.lastResizeH = dims.height;
       }
       // Collapse: remove any previous normal resize entries from the queue.
       // Multiple normal resizes in flight are redundant (only the latest
@@ -168,6 +166,10 @@ export class Hub {
       );
       if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
       session.pendingResizes.push({ plotIndex: undefined });
+      if (dims) {
+        session.lastResizeW = dims.width;
+        session.lastResizeH = dims.height;
+      }
       session.send(data).catch((e) => {
         console.error(
           `failed to send to R session ${session.id}: ${e}`,

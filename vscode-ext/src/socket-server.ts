@@ -279,14 +279,14 @@ export class SocketServer {
         const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
             if (session.lastResizeW === w && session.lastResizeH === h) continue;
-            session.lastResizeW = w;
-            session.lastResizeH = h;
             // Collapse previous normal entries; preserve plotIndex entries.
             session.pendingResizes = session.pendingResizes.filter(
                 (e) => e.plotIndex !== undefined,
             );
             if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
             session.pendingResizes.push({ plotIndex: undefined });
+            session.lastResizeW = w;
+            session.lastResizeH = h;
             session.socket.write(data);
         }
     }
