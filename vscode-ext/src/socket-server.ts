@@ -13,10 +13,14 @@ interface RSession {
     socket: net.Socket;
     buffer: string;
     welcomeSent: boolean;
-    resizePending: boolean;
+    /**
+     * Queue of pending resize entries.  Each browser resize message pushes one
+     * entry; each R frame shifts one entry off.  Normal resize entries are
+     * collapsed (only the latest is kept) while plotIndex entries are preserved.
+     */
+    pendingResizes: Array<{ plotIndex?: number }>;
     lastResizeW: number;
     lastResizeH: number;
-    pendingPlotIndex: number | undefined;
 }
 
 const isWindows = process.platform === 'win32';
@@ -59,7 +63,17 @@ export class SocketServer {
 
     start() {
         this.webviewProvider.onResize((w, h) => {
-            this.broadcastResize(w, h);
+            // When viewing a historical plot, include plotIndex and sessionId
+            // so R re-renders the correct historical snapshot.
+            const idx = this.history.currentIndex();
+            const total = this.history.count();
+            if (total > 0 && idx < total) {
+                const plotIndex = idx - 1;
+                const sessionId = this.history.getActiveSessionId();
+                this.broadcastResize(w, h, plotIndex, sessionId);
+            } else {
+                this.broadcastResize(w, h);
+            }
         });
 
         this.server = net.createServer((socket) => this.handleConnection(socket));
@@ -134,7 +148,7 @@ export class SocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
-        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, resizePending: false, lastResizeW: 0, lastResizeH: 0, pendingPlotIndex: undefined };
+        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, pendingResizes: [], lastResizeW: 0, lastResizeH: 0 };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
 
@@ -160,7 +174,7 @@ export class SocketServer {
 
                     const dims = this.webviewProvider.getPanelDimensions();
                     if (dims) {
-                        session.resizePending = true;
+                        session.pendingResizes.push({ plotIndex: undefined });
                         session.lastResizeW = dims.width;
                         session.lastResizeH = dims.height;
                         socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');
@@ -190,12 +204,12 @@ export class SocketServer {
                 case 'frame':
                     if (msg.plot) {
                         msg.plot.sessionId = session.id;
-                        const isResize = session.resizePending;
-                        const plotIndex = session.pendingPlotIndex;
-                        if (isResize) {
-                            session.resizePending = false;
-                            session.pendingPlotIndex = undefined;
-                        }
+                        // Shift from the queue so each frame gets the correct entry
+                        const entry = session.pendingResizes.length > 0
+                            ? session.pendingResizes.shift()!
+                            : undefined;
+                        const isResize = entry !== undefined;
+                        const plotIndex = entry?.plotIndex;
                         let accepted = true;
                         if (isResize && plotIndex !== undefined) {
                             accepted = this.history.replaceAtIndex(session.id, plotIndex, msg.plot);
@@ -237,25 +251,40 @@ export class SocketServer {
         }
     }
 
-    broadcastResize(w: number, h: number, plotIndex?: number) {
+    broadcastResize(w: number, h: number, plotIndex?: number, sessionId?: string) {
+        const hasPlotIndex = plotIndex !== undefined;
+
+        if (hasPlotIndex && sessionId) {
+            // plotIndex resize targeting a specific session — route only to that session.
+            // If the session is dead (not in map), the resize is silently dropped.
+            const session = this.sessions.get(sessionId);
+            if (session) {
+                session.pendingResizes.push({ plotIndex });
+                session.lastResizeW = w;
+                session.lastResizeH = h;
+                const data = JSON.stringify({ type: 'resize', width: w, height: h, plotIndex }) + '\n';
+                session.socket.write(data);
+            }
+            return;
+        }
+
         const msg: Record<string, unknown> = { type: 'resize', width: w, height: h };
         if (plotIndex !== undefined) msg.plotIndex = plotIndex;
         const data = JSON.stringify(msg) + '\n';
 
-        const hasPlotIndex = plotIndex !== undefined;
-
         for (const session of this.sessions.values()) {
             if (hasPlotIndex) {
-                // plotIndex resizes bypass dedup — always forward.
-                // Update lastResize dims to match the new device dimensions.
-                session.resizePending = true;
-                session.pendingPlotIndex = plotIndex;
+                // plotIndex resize without sessionId (backward compat) — broadcast to all.
+                session.pendingResizes.push({ plotIndex });
                 session.lastResizeW = w;
                 session.lastResizeH = h;
             } else {
                 if (session.lastResizeW === w && session.lastResizeH === h) continue;
-                session.resizePending = true;
-                session.pendingPlotIndex = undefined;
+                // Collapse: remove previous normal resize entries from the queue.
+                session.pendingResizes = session.pendingResizes.filter(
+                    (e) => e.plotIndex !== undefined,
+                );
+                session.pendingResizes.push({ plotIndex: undefined });
                 session.lastResizeW = w;
                 session.lastResizeH = h;
             }

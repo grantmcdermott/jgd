@@ -79,12 +79,20 @@ export class Hub {
   }
 
   /**
-   * Broadcast a resize message to all R sessions, marking each so the
+   * Broadcast a resize message to R sessions, marking each so the
    * next frame can be tagged as a resize response.
-   * Duplicate resizes with identical dimensions are silently dropped.
+   *
+   * Each resize pushes an entry onto the session's pendingResizes queue.
+   * When R responds with a frame, handleRMessage shifts one entry off,
+   * ensuring each frame gets the correct metadata even when multiple
+   * resize messages are in flight.
+   *
+   * Duplicate normal resizes with identical dimensions are silently dropped.
+   * plotIndex resizes bypass dedup and are routed only to the session that
+   * owns the target plot (identified by sessionId in the message).
    */
   broadcastResizeToR(data: string): void {
-    let dims: { width: number; height: number; plotIndex?: number } | null = null;
+    let dims: { width: number; height: number; plotIndex?: number; sessionId?: string } | null = null;
     try {
       const parsed = JSON.parse(data);
       if (typeof parsed.width === "number" && typeof parsed.height === "number" &&
@@ -95,14 +103,35 @@ export class Hub {
 
     const hasPlotIndex = dims !== null && typeof dims.plotIndex === "number";
 
+    if (hasPlotIndex && dims!.sessionId) {
+      // plotIndex resize targeting a specific session — route only to that session.
+      // If the session is dead (not in map), the resize is silently dropped.
+      const session = this.sessions.get(dims!.sessionId);
+      if (session) {
+        session.pendingResizes.push({ plotIndex: dims!.plotIndex });
+        session.lastResizeW = dims!.width;
+        session.lastResizeH = dims!.height;
+        // Strip sessionId before forwarding to R (R doesn't need it)
+        const forR = JSON.stringify({
+          type: "resize",
+          width: dims!.width,
+          height: dims!.height,
+          plotIndex: dims!.plotIndex,
+        });
+        session.send(forR).catch((e) => {
+          console.error(
+            `failed to send to R session ${session.id}: ${e}`,
+          );
+        });
+      }
+      return;
+    }
+
     for (const session of this.sessions.values()) {
       if (hasPlotIndex) {
-        // plotIndex resizes bypass dedup — always forward.  Update lastResize
-        // dims to match the new device dimensions so that a subsequent normal
-        // resize with the same dims is correctly deduped, while a resize back
-        // to the pre-plotIndex dims is correctly forwarded.
-        session.resizePending = true;
-        session.pendingPlotIndex = dims!.plotIndex;
+        // plotIndex resize without sessionId (backward compat) — broadcast to all.
+        // Update lastResize dims so subsequent normal resizes dedup correctly.
+        session.pendingResizes.push({ plotIndex: dims!.plotIndex });
         session.lastResizeW = dims!.width;
         session.lastResizeH = dims!.height;
       } else if (dims) {
@@ -113,12 +142,21 @@ export class Hub {
         if (dims.width === session.lastResizeW && dims.height === session.lastResizeH) {
           continue;
         }
-        session.resizePending = true;
-        session.pendingPlotIndex = undefined;
+        // Collapse: remove any previous normal resize entries from the queue.
+        // Multiple normal resizes in flight are redundant (only the latest
+        // matters), and keeping stale entries would mis-tag subsequent frames.
+        // plotIndex entries are preserved to maintain correct ordering.
+        session.pendingResizes = session.pendingResizes.filter(
+          (e) => e.plotIndex !== undefined,
+        );
+        session.pendingResizes.push({ plotIndex: undefined });
         session.lastResizeW = dims.width;
         session.lastResizeH = dims.height;
       } else {
-        session.resizePending = true;
+        session.pendingResizes = session.pendingResizes.filter(
+          (e) => e.plotIndex !== undefined,
+        );
+        session.pendingResizes.push({ plotIndex: undefined });
       }
       session.send(data).catch((e) => {
         console.error(
@@ -138,14 +176,14 @@ export class Hub {
     switch (type) {
       case "frame": {
         let data = line;
-        // Tag resize-triggered frames so the browser can update in place
-        if (session.resizePending) {
-          session.resizePending = false;
+        // Tag resize-triggered frames so the browser can update in place.
+        // Shift from the queue so each frame gets the correct entry even
+        // when multiple resizes are in flight (fixes state race condition).
+        if (session.pendingResizes.length > 0) {
+          const entry = session.pendingResizes.shift()!;
           data = injectResizeFlag(data);
-          // If this resize targeted a historical plot, tag the frame
-          if (session.pendingPlotIndex !== undefined) {
-            data = injectPlotIndex(data, session.pendingPlotIndex);
-            session.pendingPlotIndex = undefined;
+          if (entry.plotIndex !== undefined) {
+            data = injectPlotIndex(data, entry.plotIndex);
           }
         }
         // Inject sessionId into the plot object if not present

@@ -17,6 +17,7 @@ export interface ResizeMessage {
   width: number;
   height: number;
   plotIndex?: number;
+  sessionId?: string;
 }
 
 export interface MetricsRequestMessage {

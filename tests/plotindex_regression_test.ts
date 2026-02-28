@@ -66,7 +66,8 @@ Deno.test({
         assert(textsStep3.length > 0, "Step 3: should have text ops");
 
         // Step 5: plotIndex=0 resize — verify historical plot (plot 1) re-renders
-        browser.sendResizeWithPlotIndex(700, 500, 0);
+        const sessionId = frame1.plot.sessionId!;
+        browser.sendResizeWithPlotIndex(700, 500, 0, sessionId);
 
         const plotIndexResize = await browser.waitForMessage<FrameMessage>(
           (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -149,8 +150,9 @@ Deno.test({
 
       try {
         // Wait for both plots
+        const initFrame = await browser.waitForType<FrameMessage>("frame", 15000);
         await browser.waitForType<FrameMessage>("frame", 15000);
-        await browser.waitForType<FrameMessage>("frame", 15000);
+        const sessionId = initFrame.plot.sessionId!;
 
         // Normal resize AFTER R session is established to properly set
         // the server's lastResizeW/H dedup state.
@@ -164,9 +166,9 @@ Deno.test({
         // lastResizeW/H is now 640x480 on the server
 
         // plotIndex resize with DIFFERENT dimensions (700x500).
-        // This bypasses dedup and does NOT update lastResizeW/H (still 640x480).
-        // However, the R device dimensions ARE changed to 700x500.
-        browser.sendResizeWithPlotIndex(700, 500, 0);
+        // This bypasses dedup and updates lastResizeW/H to 700x500.
+        // R's device dimensions are also changed to 700x500.
+        browser.sendResizeWithPlotIndex(700, 500, 0, sessionId);
 
         const plotIndexFrame = await browser.waitForMessage<FrameMessage>(
           (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -174,14 +176,9 @@ Deno.test({
         );
         assertEquals(plotIndexFrame.plotIndex, 0);
 
-        // Now send a normal resize with the SAME dimensions as the first
-        // normal resize (640x480).  The server's lastResizeW/H is still
-        // 640x480, so this will be deduped — but R's device is at 700x500,
-        // so it genuinely needs this resize.
-        //
-        // This demonstrates the dedup bug: the server thinks R is already
-        // at 640x480, but R is actually at 700x500 due to the plotIndex
-        // resize that didn't update lastResizeW/H.
+        // Now send a normal resize with 640x480.  The server's lastResizeW/H
+        // is 700x500 (plotIndex resize updated dedup state), so 640x480
+        // should be forwarded (different dims).
         browser.sendResize(640, 480);
 
         const normalFrame = await browser.waitForMessage<FrameMessage>(

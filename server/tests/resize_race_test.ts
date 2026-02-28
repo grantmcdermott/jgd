@@ -40,9 +40,14 @@ Deno.test("resize state race — normal then plotIndex", async (t) => {
     );
     await browser.waitForType<FrameMessage>("frame");
 
-    // Prime dedup state
+    // Prime dedup state.  Consume the pending resize with a frame so the
+    // queue stays in sync (in production, every resize triggers a frame).
     browser.sendResize(800, 600);
     await rClient.readMessage<ResizeMessage>();
+    await rClient.sendFrame(
+      { ops: [{ op: "text", str: "plot2" }], device: { width: 800, height: 600 } },
+    );
+    await browser.waitForType<FrameMessage>("frame");
 
     await t.step("normal resize frame should not get plotIndex from later message", async () => {
       // Simulate the real browser behavior:

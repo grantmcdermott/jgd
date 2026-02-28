@@ -15,9 +15,14 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
     await rClient.connect(server.socketPath);
     await browser.connect(server.wsUrl);
 
-    // Prime dedup state
+    // Prime dedup state.  Consume the pending resize with a frame so the
+    // queue stays in sync (in production, every resize triggers a frame).
     browser.sendResize(1, 1);
     await rClient.readMessage<ResizeMessage>();
+    await rClient.sendFrame(
+      { ops: [], device: { width: 1, height: 1 } },
+    );
+    await browser.waitForType<FrameMessage>("frame");
 
     await t.step("plotIndex passes through to R in resize message", async () => {
       browser.sendResizeWithPlotIndex(800, 600, 2);

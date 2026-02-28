@@ -62,7 +62,8 @@ Deno.test({
 
         // Simulate: navigate to plot 1, then resize.
         // At the protocol level, this is a resize with plotIndex=0.
-        browser.sendResizeWithPlotIndex(640, 480, 0);
+        const sessionId = frame1.plot.sessionId!;
+        browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
 
         // Wait for the resize response frame
         const resized = await browser.waitForMessage<FrameMessage>(

@@ -149,6 +149,10 @@ export const assets: Record<string, { body: string; type: string }> = {
         this._activeSessionId = sessionId;
     };
 
+    PlotHistory.prototype.activeSessionId = function() {
+        return this._activeSessionId;
+    };
+
     PlotHistory.prototype.currentIndex = function() {
         var session = this._sessions.get(this._activeSessionId);
         return session ? session.currentIndex + 1 : 0;
@@ -341,10 +345,13 @@ export const assets: Record<string, { body: string; type: string }> = {
                     height: container.clientHeight
                 };
                 // Include plotIndex when viewing a historical plot (not the latest)
+                // Also include the sessionId so the server can route to the
+                // correct R session (and drop if that session is dead).
                 var idx = history.currentIndex();
                 var total = history.count();
                 if (total > 0 && idx < total) {
                     msg.plotIndex = idx - 1;
+                    msg.sessionId = history.activeSessionId();
                 }
                 ws.send(JSON.stringify(msg));
             }

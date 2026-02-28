@@ -74,8 +74,8 @@ export class AutoMetricsBrowserClient {
   }
 
   /** Send a resize message with plotIndex for historical plot resizing. */
-  sendResizeWithPlotIndex(width: number, height: number, plotIndex: number): void {
-    this.#inner.sendResizeWithPlotIndex(width, height, plotIndex);
+  sendResizeWithPlotIndex(width: number, height: number, plotIndex: number, sessionId?: string): void {
+    this.#inner.sendResizeWithPlotIndex(width, height, plotIndex, sessionId);
   }
 
   /** Wait for a message matching a predicate (delegates to inner BrowserClient). */

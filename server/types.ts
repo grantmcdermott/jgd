@@ -35,6 +35,8 @@ export interface ResizeMessage {
   width: number;
   height: number;
   plotIndex?: number;
+  /** Session that owns the target plot (for plotIndex routing). */
+  sessionId?: string;
 }
 
 /** Device close message from R. */

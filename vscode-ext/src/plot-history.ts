@@ -105,6 +105,10 @@ export class PlotHistory {
         return session.plots[session.currentIndex];
     }
 
+    getActiveSessionId(): string {
+        return this.activeSessionId;
+    }
+
     currentIndex(): number {
         const session = this.sessions.get(this.activeSessionId);
         return session ? session.currentIndex + 1 : 0;

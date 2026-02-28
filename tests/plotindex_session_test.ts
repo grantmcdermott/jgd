@@ -76,7 +76,8 @@ Deno.test({
         );
 
         // --- Send plotIndex=0 resize (targeting plot 1 from dead session 1) ---
-        browser.sendResizeWithPlotIndex(640, 480, 0);
+        // Include session1Id so the server routes to the correct (dead) session.
+        browser.sendResizeWithPlotIndex(640, 480, 0, session1Id);
 
         // Bug: The server broadcasts this resize to session 2, which renders
         // its own current plot (plot 2) at new dimensions.  The server tags

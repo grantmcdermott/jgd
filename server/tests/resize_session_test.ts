@@ -51,7 +51,8 @@ Deno.test("plotIndex resize — session isolation after reconnect", async (t) =>
       await r2.readMessage<ResizeMessage>();
 
       // --- Browser sends plotIndex=0 resize (targeting plot 1 from session 1) ---
-      browser.sendResizeWithPlotIndex(640, 480, 0);
+      // Include session1Id so the server routes to the correct (dead) session.
+      browser.sendResizeWithPlotIndex(640, 480, 0, session1Id);
 
       // Bug: R client 2 receives this resize even though it doesn't own
       // the plot at index 0 (that was session 1's plot).
@@ -91,7 +92,8 @@ Deno.test("plotIndex resize — session isolation after reconnect", async (t) =>
       await r.sendFrame(
         { ops: [{ op: "text", str: "plotA" }], device: { width: 800, height: 600 } },
       );
-      await browser.waitForType<FrameMessage>("frame");
+      const frameA = await browser.waitForType<FrameMessage>("frame");
+      const rSessionId = frameA.plot.sessionId!;
 
       await r.sendFrame(
         { ops: [{ op: "text", str: "plotB" }], device: { width: 800, height: 600 } },
@@ -103,7 +105,7 @@ Deno.test("plotIndex resize — session isolation after reconnect", async (t) =>
       await r.readMessage<ResizeMessage>();
 
       // plotIndex=0 resize — targeting the first plot from THIS session
-      browser.sendResizeWithPlotIndex(640, 480, 0);
+      browser.sendResizeWithPlotIndex(640, 480, 0, rSessionId);
       const msg = await r.readMessage<ResizeMessage>();
       assertEquals(msg.type, "resize");
       assertEquals(msg.plotIndex, 0, "Same-session plotIndex resize should arrive");

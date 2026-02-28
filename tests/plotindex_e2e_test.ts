@@ -50,7 +50,8 @@ Deno.test({
         assert(frame2.plot.ops.length > 0, "Second frame should have ops");
 
         // --- Test 1: plotIndex=0 resize re-renders the first plot ---
-        browser.sendResizeWithPlotIndex(640, 480, 0);
+        const sessionId = frame1.plot.sessionId!;
+        browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
 
         const resized0 = await browser.waitForMessage<FrameMessage>(
           (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -67,7 +68,7 @@ Deno.test({
 
         // --- Test 2: plotIndex=1 resize re-renders the second plot ---
         // Use different dimensions to avoid dedup (though plotIndex bypasses it)
-        browser.sendResizeWithPlotIndex(700, 500, 1);
+        browser.sendResizeWithPlotIndex(700, 500, 1, sessionId);
 
         const resized1 = await browser.waitForMessage<FrameMessage>(
           (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,

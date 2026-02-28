@@ -21,12 +21,15 @@ let sessionCounter = 0;
  */
 export class RSession {
   id: string;
-  /** Whether the next frame should be tagged as a resize response. */
-  resizePending = false;
+  /**
+   * Queue of pending resize entries.  Each browser resize message pushes one
+   * entry; each R frame shifts one entry off.  This prevents a later resize
+   * (e.g. plotIndex) from overwriting an earlier one's metadata before R
+   * responds to the first.
+   */
+  pendingResizes: Array<{ plotIndex?: number }> = [];
   lastResizeW = 0;
   lastResizeH = 0;
-  /** When set, the next resize frame targets a historical plot at this index. */
-  pendingPlotIndex: number | undefined = undefined;
   private conn: RConn;
   private hub: Hub;
   private encoder = new TextEncoder();
