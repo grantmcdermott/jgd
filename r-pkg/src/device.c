@@ -106,7 +106,15 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     st->snapshot_store = Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS);
     R_PreserveObject(st->snapshot_store);
     st->last_snapshot = R_NilValue;
-    snprintf(st->session_id, sizeof(st->session_id), "r-%d", (int)getpid());
+    /* Each device instance gets a unique sessionId so the browser can
+     * separate plot histories across dev.off()/jgd() cycles within the
+     * same R process.  PID alone is not sufficient — multiple devices
+     * from the same process would collide. */
+    {
+        static int device_counter = 0;
+        snprintf(st->session_id, sizeof(st->session_id),
+                 "r-%d-%d", (int)getpid(), ++device_counter);
+    }
 
     transport_init(&st->transport);
 
@@ -220,18 +228,23 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
 /* Drain resize messages from the transport socket into pending_w/pending_h.
    Returns 1 if a resize was applied and the display list replayed, 0 otherwise. */
 static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
-    /* Read all available resize messages */
-    int plot_index = -1;
-    while (transport_has_data(&st->transport)) {
+    /* Read at most ONE resize message per call.  The caller invokes us
+     * repeatedly (via C_jgd_poll_resize or the R input handler), so each
+     * resize produces its own frame.  This keeps the server's per-session
+     * queue in sync — the server pushes one queue entry per resize sent
+     * and shifts one entry per frame received.  Reading all messages in a
+     * loop (coalescing) would produce fewer frames than queue entries,
+     * causing stale entries to mis-tag subsequent regular frames. */
+    if (transport_has_data(&st->transport)) {
         char buf[1024];
+        int plot_index = -1;
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
-        if (n <= 0) break;
-        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h, &plot_index);
+        if (n > 0) {
+            jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h, &plot_index);
+            if (plot_index >= 0)
+                st->pending_plot_index = plot_index;
+        }
     }
-
-    /* Store the last plotIndex we saw (or -1 if none) */
-    if (plot_index >= 0)
-        st->pending_plot_index = plot_index;
 
     if (st->pending_w <= 0 || st->pending_h <= 0)
         return 0;

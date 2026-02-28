@@ -267,6 +267,10 @@ static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
                     st->pending_w = w->valuedouble;
                     st->pending_h = h->valuedouble;
                 }
+                /* Preserve plotIndex for poll_resize_impl */
+                cJSON *pi = cJSON_GetObjectItem(msg, "plotIndex");
+                if (cJSON_IsNumber(pi))
+                    st->pending_plot_index = (int)pi->valuedouble;
             }
         }
         cJSON_Delete(msg);
@@ -379,15 +383,18 @@ static void cb_metricInfo(int c, const pGEcontext gc,
 }
 
 static void check_incoming(jgd_state_t *st, pDevDesc dd) {
+    int plot_index = -1;
     while (transport_has_data(&st->transport)) {
         char buf[1024];
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
         if (n <= 0) break;
-        /* Pass NULL for plot_index: check_incoming runs during cb_newPage
-         * (while R is drawing), and plotIndex resizes are handled exclusively
-         * by poll_resize_impl when R is idle. */
-        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h, NULL);
+        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h, &plot_index);
     }
+    /* Preserve plotIndex so poll_resize_impl can process it later
+     * when R becomes idle.  Dimensions are applied immediately by
+     * apply_pending_resize, but snapshot replay must wait. */
+    if (plot_index >= 0)
+        st->pending_plot_index = plot_index;
 }
 
 static void apply_pending_resize(jgd_state_t *st, pDevDesc dd) {

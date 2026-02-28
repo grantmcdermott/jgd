@@ -23,6 +23,15 @@ export class Hub {
   clients = new Set<BrowserClient>();
   /** Maps metrics request ID → R session ID for routing responses. */
   metricsRouting = new Map<number, string>();
+  /**
+   * SessionIds that have been used by now-dead connections.  When a new
+   * connection registers the same sessionId (e.g. R uses PID-based IDs
+   * and the same process opens a new device), the hub disambiguates by
+   * appending a suffix.  This prevents plotIndex resizes for old plots
+   * from reaching the new connection, which has different snapshots.
+   */
+  private retiredSessionIds = new Set<string>();
+  private sessionReuseCounter = 0;
   /** HTTP server port, set after the HTTP server starts. */
   httpPort = 0;
   /** R transport type: "tcp", "unix", or "npipe". */
@@ -38,6 +47,7 @@ export class Hub {
 
   unregisterSession(id: string): void {
     this.sessions.delete(id);
+    this.retiredSessionIds.add(id);
     // Clean up any pending metrics routing entries for this session
     for (const [reqId, sessId] of this.metricsRouting) {
       if (sessId === id) {
@@ -55,11 +65,27 @@ export class Hub {
    */
   updateSessionId(oldId: string, newId: string, session: RSession): void {
     this.sessions.delete(oldId);
-    this.sessions.set(newId, session);
+    // If this sessionId was previously used by a now-dead connection
+    // (e.g. same R process did dev.off() + jgd()), disambiguate so
+    // the browser keeps plot histories separate and plotIndex resizes
+    // for old plots don't reach this new connection.
+    let finalId = newId;
+    if (this.retiredSessionIds.has(newId)) {
+      this.sessionReuseCounter++;
+      finalId = `${newId}:${this.sessionReuseCounter}`;
+      session.remappedSessionId = true;
+      if (this.verbose) {
+        console.error(
+          `sessionId ${newId} was retired, remapped to ${finalId}`,
+        );
+      }
+    }
+    session.id = finalId;
+    this.sessions.set(finalId, session);
     // Update any pending metrics routing entries to use the new session ID
     for (const [reqId, sessId] of this.metricsRouting) {
       if (sessId === oldId) {
-        this.metricsRouting.set(reqId, newId);
+        this.metricsRouting.set(reqId, finalId);
       }
     }
   }
@@ -198,9 +224,20 @@ export class Hub {
             data = injectPlotIndex(data, entry.plotIndex);
           }
         }
-        // Inject sessionId into the plot object if not present
-        if (session.id && !data.includes('"sessionId"')) {
-          data = injectSessionId(data, session.id);
+        // Ensure the frame carries the server-assigned sessionId.
+        if (session.id) {
+          if (data.includes('"sessionId"')) {
+            // Only replace when the server remapped the session ID
+            // (retired ID dedup).  Otherwise preserve R's explicit sessionId.
+            if (session.remappedSessionId) {
+              data = data.replace(
+                /"sessionId"\s*:\s*"[^"]*"/,
+                `"sessionId":${JSON.stringify(session.id)}`,
+              );
+            }
+          } else {
+            data = injectSessionId(data, session.id);
+          }
         }
         this.broadcastToClients(data);
         if (this.verbose) {

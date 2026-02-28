@@ -1,20 +1,16 @@
 /**
- * Server protocol test: R coalescing multiple resize messages.
+ * Server protocol test: one resize → one frame (no coalescing).
  *
- * In real R, poll_resize_impl() reads ALL available messages from the
- * transport socket in a while(transport_has_data) loop and produces a
- * single resize + frame.  The server's FIFO queue assumes one frame
- * per resize message.  When R coalesces, the queue goes out of sync:
+ * Real R's poll_resize_impl() reads ONE message per call, producing
+ * one frame per resize.  This keeps the server's FIFO queue in sync.
  *
- * 1. Browser sends normal resize → server queues {plotIndex: undefined}
- * 2. Browser sends plotIndex resize → server queues {plotIndex: 0}
- * 3. R reads BOTH, renders historical plot, sends ONE frame
- * 4. Server shifts first entry → frame tagged as normal resize (WRONG)
- * 5. R sends a new regular frame
- * 6. Server shifts stale second entry → new frame tagged plotIndex:0 (WRONG)
+ * Previously, poll_resize_impl read ALL available messages in a loop
+ * (coalescing), producing fewer frames than queue entries.  Stale
+ * entries would mis-tag subsequent regular frames.
  *
- * This test simulates R's coalescing by reading both resize messages
- * but responding with only one frame.
+ * This test verifies that when R processes each resize separately,
+ * each frame gets the correct tag and subsequent regular frames are
+ * not contaminated by stale queue entries.
  */
 
 import { assertEquals } from "@std/assert";
@@ -24,7 +20,7 @@ import { BrowserClient } from "./helpers/browser_client.ts";
 import { delay } from "@std/async";
 import type { FrameMessage, ResizeMessage } from "./helpers/types.ts";
 
-Deno.test("coalesced resize — stale queue entry must not tag subsequent frame", async (t) => {
+Deno.test("one resize per frame — no stale queue entries", async (t) => {
   const server = new TestServer();
   const rClient = new RClient();
   const browser = new BrowserClient();
@@ -56,7 +52,7 @@ Deno.test("coalesced resize — stale queue entry must not tag subsequent frame"
     );
     await browser.waitForType<FrameMessage>("frame");
 
-    await t.step("stale queue entry should not tag a new plot as resize response", async () => {
+    await t.step("each resize produces its own correctly-tagged frame", async () => {
       // Browser sends two resize messages in quick succession:
       // 1. Normal resize (no plotIndex) — e.g. ws.onopen
       // 2. plotIndex resize — e.g. ResizeObserver after debounce
@@ -73,41 +69,47 @@ Deno.test("coalesced resize — stale queue entry must not tag subsequent frame"
       assertEquals(msg2.type, "resize");
       assertEquals(msg2.plotIndex, 0, "Second resize should have plotIndex=0");
 
-      // R COALESCES both messages: its poll_resize_impl reads all available
-      // messages, takes the last plotIndex, and produces a single frame.
-      // We simulate this by sending only ONE frame in response to both resizes.
+      // R processes resize 1 (normal) — sends one frame.
+      // poll_resize_impl reads ONE message per call, so this frame
+      // corresponds exactly to the first resize.
+      await rClient.sendFrame(
+        { ops: [{ op: "text", str: "plot2-resized" }], device: { width: 640, height: 480 } },
+      );
+      const resizeFrame1 = await browser.waitForType<FrameMessage>("frame");
+      assertEquals(resizeFrame1.resize, true, "First frame should be a resize response");
+      assertEquals(
+        resizeFrame1.plotIndex,
+        undefined,
+        "First frame (normal resize) should NOT have plotIndex",
+      );
+
+      // R processes resize 2 (plotIndex=0) — sends another frame.
       await rClient.sendFrame(
         { ops: [{ op: "text", str: "plot1-resized" }], device: { width: 640, height: 480 } },
       );
+      const resizeFrame2 = await browser.waitForType<FrameMessage>("frame");
+      assertEquals(resizeFrame2.resize, true, "Second frame should be a resize response");
+      assertEquals(
+        resizeFrame2.plotIndex,
+        0,
+        "Second frame (plotIndex resize) should have plotIndex=0",
+      );
 
-      // Browser receives the coalesced frame (tagged from the first queue entry).
-      const coalescedFrame = await browser.waitForType<FrameMessage>("frame");
-      assertEquals(coalescedFrame.resize, true, "Coalesced frame should be a resize response");
-
-      // Now R sends a NEW regular frame — user draws a new plot.
-      // This is NOT a resize response; it's a fresh plot.
+      // R sends a NEW regular frame — user draws a new plot.
+      // Queue should be empty — no stale entries to contaminate this frame.
       await rClient.sendFrame(
         { ops: [{ op: "text", str: "plot3-new" }], device: { width: 640, height: 480 } },
       );
-
       const newFrame = await browser.waitForType<FrameMessage>("frame");
-
-      // CRITICAL ASSERTION: The new plot frame must NOT be tagged as a
-      // resize response.  If the server has a stale queue entry from the
-      // unconsumed second resize, it will incorrectly tag this frame with
-      // resize:true and plotIndex:0, causing the browser to overwrite
-      // plot history instead of adding a new plot.
       assertEquals(
         newFrame.resize,
         undefined,
-        "New plot frame must NOT be tagged as resize response. " +
-          "Server has a stale queue entry from the coalesced resize.",
+        "New plot frame must NOT be tagged as resize response",
       );
       assertEquals(
         newFrame.plotIndex,
         undefined,
-        "New plot frame must NOT have plotIndex. " +
-          "Stale queue entry corrupts frame metadata.",
+        "New plot frame must NOT have plotIndex",
       );
     });
   } finally {
