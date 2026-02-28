@@ -1,5 +1,13 @@
 import type { RSession } from "./r_session.ts";
 
+/**
+ * Maximum number of pending resize entries per session.  Under normal
+ * operation the queue rarely exceeds 2-3 entries because each R frame
+ * shifts one off.  This cap prevents unbounded growth if a browser
+ * floods resize messages without R consuming them.
+ */
+const MAX_PENDING_RESIZES = 32;
+
 /** Placeholder for browser clients (implemented in be2.2). */
 export interface BrowserClient {
   send(data: string): void;
@@ -92,49 +100,55 @@ export class Hub {
    * owns the target plot (identified by sessionId in the message).
    */
   broadcastResizeToR(data: string): void {
-    let dims: { width: number; height: number; plotIndex?: number; sessionId?: string } | null = null;
+    let dims: {
+      width: number;
+      height: number;
+      plotIndex?: number;
+      sessionId?: string;
+    } | null = null;
     try {
       const parsed = JSON.parse(data);
       if (typeof parsed.width === "number" && typeof parsed.height === "number" &&
           (parsed.width > 0 || parsed.height > 0)) {
-        dims = parsed;
+        dims = {
+          width: parsed.width,
+          height: parsed.height,
+          plotIndex: typeof parsed.plotIndex === "number" ? parsed.plotIndex : undefined,
+          sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : undefined,
+        };
       }
     } catch { /* malformed — skip dedup, always arm */ }
 
-    const hasPlotIndex = dims !== null && typeof dims.plotIndex === "number";
+    const hasPlotIndex = dims !== null && dims.plotIndex !== undefined;
 
-    if (hasPlotIndex && dims!.sessionId) {
-      // plotIndex resize targeting a specific session — route only to that session.
-      // If the session is dead (not in map), the resize is silently dropped.
+    // plotIndex resizes require sessionId for routing.
+    // Route to the target session only; drop if the session is dead.
+    if (hasPlotIndex) {
+      if (!dims!.sessionId) return; // no session to route to
       const session = this.sessions.get(dims!.sessionId);
-      if (session) {
-        session.pendingResizes.push({ plotIndex: dims!.plotIndex });
-        session.lastResizeW = dims!.width;
-        session.lastResizeH = dims!.height;
-        // Strip sessionId before forwarding to R (R doesn't need it)
-        const forR = JSON.stringify({
-          type: "resize",
-          width: dims!.width,
-          height: dims!.height,
-          plotIndex: dims!.plotIndex,
-        });
-        session.send(forR).catch((e) => {
-          console.error(
-            `failed to send to R session ${session.id}: ${e}`,
-          );
-        });
-      }
+      if (!session) return; // target session is dead
+      if (session.pendingResizes.length >= MAX_PENDING_RESIZES) return;
+      session.pendingResizes.push({ plotIndex: dims!.plotIndex });
+      session.lastResizeW = dims!.width;
+      session.lastResizeH = dims!.height;
+      // Strip sessionId before forwarding to R (R doesn't need it)
+      const forR = JSON.stringify({
+        type: "resize",
+        width: dims!.width,
+        height: dims!.height,
+        plotIndex: dims!.plotIndex,
+      });
+      session.send(forR).catch((e) => {
+        console.error(
+          `failed to send to R session ${session.id}: ${e}`,
+        );
+      });
       return;
     }
 
+    // Normal resize — broadcast to all sessions with dedup.
     for (const session of this.sessions.values()) {
-      if (hasPlotIndex) {
-        // plotIndex resize without sessionId (backward compat) — broadcast to all.
-        // Update lastResize dims so subsequent normal resizes dedup correctly.
-        session.pendingResizes.push({ plotIndex: dims!.plotIndex });
-        session.lastResizeW = dims!.width;
-        session.lastResizeH = dims!.height;
-      } else if (dims) {
+      if (dims) {
         // When dimensions haven't changed, skip entirely — don't forward
         // to R and don't arm the flag.  This prevents duplicate resizes
         // (ws.onopen + ResizeObserver with same dims) from generating
@@ -149,14 +163,18 @@ export class Hub {
         session.pendingResizes = session.pendingResizes.filter(
           (e) => e.plotIndex !== undefined,
         );
-        session.pendingResizes.push({ plotIndex: undefined });
+        if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
+          session.pendingResizes.push({ plotIndex: undefined });
+        }
         session.lastResizeW = dims.width;
         session.lastResizeH = dims.height;
       } else {
         session.pendingResizes = session.pendingResizes.filter(
           (e) => e.plotIndex !== undefined,
         );
-        session.pendingResizes.push({ plotIndex: undefined });
+        if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
+          session.pendingResizes.push({ plotIndex: undefined });
+        }
       }
       session.send(data).catch((e) => {
         console.error(

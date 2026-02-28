@@ -22,10 +22,11 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
     await rClient.sendFrame(
       { ops: [], device: { width: 1, height: 1 } },
     );
-    await browser.waitForType<FrameMessage>("frame");
+    const primingFrame = await browser.waitForType<FrameMessage>("frame");
+    const sessionId = primingFrame.plot.sessionId!;
 
     await t.step("plotIndex passes through to R in resize message", async () => {
-      browser.sendResizeWithPlotIndex(800, 600, 2);
+      browser.sendResizeWithPlotIndex(800, 600, 2, sessionId);
       const msg = await rClient.readMessage<ResizeMessage>();
       assertEquals(msg.type, "resize");
       assertEquals(msg.width, 800);
@@ -60,7 +61,7 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
       // (already done in previous step)
 
       // Now send plotIndex resize with SAME dimensions — should NOT be deduped
-      browser.sendResizeWithPlotIndex(1024, 768, 0);
+      browser.sendResizeWithPlotIndex(1024, 768, 0, sessionId);
       const msg = await rClient.readMessage<ResizeMessage>();
       assertEquals(msg.type, "resize");
       assertEquals(msg.width, 1024);
@@ -95,7 +96,7 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
       // Current dedup state is 640x480 from previous step.
       // Send a plotIndex resize with different dimensions — this bypasses
       // dedup and does NOT update lastResizeW/H.
-      browser.sendResizeWithPlotIndex(500, 400, 0);
+      browser.sendResizeWithPlotIndex(500, 400, 0, sessionId);
       const plotIndexMsg = await rClient.readMessage<ResizeMessage>();
       assertEquals(plotIndexMsg.plotIndex, 0);
 
@@ -127,7 +128,7 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
       // Current dedup state is 750x550 from previous step.
       // Send a plotIndex resize — this changes R's device dimensions
       // but should also invalidate the dedup state.
-      browser.sendResizeWithPlotIndex(600, 400, 1);
+      browser.sendResizeWithPlotIndex(600, 400, 1, sessionId);
       const plotIndexMsg = await rClient.readMessage<ResizeMessage>();
       assertEquals(plotIndexMsg.plotIndex, 1);
 

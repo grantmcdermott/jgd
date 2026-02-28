@@ -33,7 +33,8 @@ Deno.test("resize state race — normal then plotIndex", async (t) => {
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "plot1" }], device: { width: 800, height: 600 } },
     );
-    await browser.waitForType<FrameMessage>("frame");
+    const frame1 = await browser.waitForType<FrameMessage>("frame");
+    const sessionId = frame1.plot.sessionId!;
 
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "plot2" }], device: { width: 800, height: 600 } },
@@ -58,7 +59,7 @@ Deno.test("resize state race — normal then plotIndex", async (t) => {
       browser.sendResize(640, 480);
       // Small delay to ensure server processes the first resize
       await delay(50);
-      browser.sendResizeWithPlotIndex(640, 480, 0);
+      browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
 
       // R receives both resize messages (in order)
       const msg1 = await rClient.readMessage<ResizeMessage>();
@@ -78,8 +79,8 @@ Deno.test("resize state race — normal then plotIndex", async (t) => {
       );
 
       // The browser should receive this frame as a normal resize (no plotIndex).
-      // BUG: The server's pendingPlotIndex was overwritten by message 2 (plotIndex=0),
-      // so the frame gets tagged with plotIndex:0 even though it's plot 2's content.
+      // The server uses a FIFO queue so each frame gets the correct entry,
+      // even when multiple resizes are in flight.
       const frame1 = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame1.resize, true, "First frame should be a resize response");
       assertEquals(
@@ -95,8 +96,7 @@ Deno.test("resize state race — normal then plotIndex", async (t) => {
       );
 
       // The browser should receive this frame with plotIndex:0.
-      // BUG: The server already cleared resizePending for frame 1,
-      // so this frame is treated as a new (non-resize) plot.
+      // The queue ensures the second entry (with plotIndex) is still available.
       const frame2 = await browser.waitForType<FrameMessage>("frame");
       assertEquals(
         frame2.resize,

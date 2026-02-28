@@ -23,6 +23,14 @@ interface RSession {
     lastResizeH: number;
 }
 
+/**
+ * Maximum number of pending resize entries per session.  Under normal
+ * operation the queue rarely exceeds 2-3 entries because each R frame
+ * shifts one off.  This cap prevents unbounded growth if a browser
+ * floods resize messages without R consuming them.
+ */
+const MAX_PENDING_RESIZES = 32;
+
 const isWindows = process.platform === 'win32';
 
 export class SocketServer {
@@ -252,42 +260,33 @@ export class SocketServer {
     }
 
     broadcastResize(w: number, h: number, plotIndex?: number, sessionId?: string) {
-        const hasPlotIndex = plotIndex !== undefined;
-
-        if (hasPlotIndex && sessionId) {
-            // plotIndex resize targeting a specific session — route only to that session.
-            // If the session is dead (not in map), the resize is silently dropped.
+        // plotIndex resizes require sessionId for routing.
+        // Route to the target session only; drop if the session is dead.
+        if (plotIndex !== undefined) {
+            if (!sessionId) return;
             const session = this.sessions.get(sessionId);
-            if (session) {
-                session.pendingResizes.push({ plotIndex });
-                session.lastResizeW = w;
-                session.lastResizeH = h;
-                const data = JSON.stringify({ type: 'resize', width: w, height: h, plotIndex }) + '\n';
-                session.socket.write(data);
-            }
+            if (!session) return;
+            if (session.pendingResizes.length >= MAX_PENDING_RESIZES) return;
+            session.pendingResizes.push({ plotIndex });
+            session.lastResizeW = w;
+            session.lastResizeH = h;
+            const data = JSON.stringify({ type: 'resize', width: w, height: h, plotIndex }) + '\n';
+            session.socket.write(data);
             return;
         }
 
-        const msg: Record<string, unknown> = { type: 'resize', width: w, height: h };
-        if (plotIndex !== undefined) msg.plotIndex = plotIndex;
-        const data = JSON.stringify(msg) + '\n';
-
+        // Normal resize — broadcast to all sessions with dedup.
+        const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
-            if (hasPlotIndex) {
-                // plotIndex resize without sessionId (backward compat) — broadcast to all.
-                session.pendingResizes.push({ plotIndex });
-                session.lastResizeW = w;
-                session.lastResizeH = h;
-            } else {
-                if (session.lastResizeW === w && session.lastResizeH === h) continue;
-                // Collapse: remove previous normal resize entries from the queue.
-                session.pendingResizes = session.pendingResizes.filter(
-                    (e) => e.plotIndex !== undefined,
-                );
+            if (session.lastResizeW === w && session.lastResizeH === h) continue;
+            session.pendingResizes = session.pendingResizes.filter(
+                (e) => e.plotIndex !== undefined,
+            );
+            if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
                 session.pendingResizes.push({ plotIndex: undefined });
-                session.lastResizeW = w;
-                session.lastResizeH = h;
             }
+            session.lastResizeW = w;
+            session.lastResizeH = h;
             session.socket.write(data);
         }
     }

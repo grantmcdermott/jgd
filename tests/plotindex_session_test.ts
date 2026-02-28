@@ -100,25 +100,17 @@ Deno.test({
             3000,
           );
         } catch {
-          // Timeout — no resize frame arrived.  This is correct behavior:
-          // session 1 is dead and cannot re-render plot 1.
+          // Timeout — no resize frame arrived.
           resizeFrame = null;
         }
 
-        if (resizeFrame !== null && resizeFrame.plotIndex === 0) {
-          // A frame arrived tagged as plotIndex:0.
-          // It MUST contain plot 1's content (from session 1), not plot 2's
-          // (from session 2).
-          const textsResized = extractTextOps(resizeFrame);
-          assertEquals(
-            JSON.stringify(textsResized),
-            JSON.stringify(texts1),
-            "plotIndex=0 resize frame should contain plot 1 content (from session 1), " +
-              "not plot 2 content (from session 2). Session confusion detected.",
-          );
-        }
-
-        // If no frame arrived, that's the correct behavior — session 1 is dead.
+        // No frame should arrive — session 1 is dead and cannot re-render.
+        // The server should drop the plotIndex resize entirely.
+        assertEquals(
+          resizeFrame,
+          null,
+          "No resize frame should arrive — session 1 is dead and cannot re-render plot 1",
+        );
       } finally {
         r2.kill();
         try { await r2.process.output(); } catch { /* ignore */ }
