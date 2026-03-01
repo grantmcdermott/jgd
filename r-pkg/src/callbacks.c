@@ -234,11 +234,13 @@ static unsigned int mcache_hash(const char *str, int len, const pGEcontext gc) {
     for (int i = 0; i < len; i++)
         h = ((h << 5) + h) ^ (unsigned char)str[i];
     h = ((h << 5) + h) ^ gc->fontface;
-    /* hash the font size bits */
+    /* hash all 8 bytes of the font size double */
     double sz = gc->cex * gc->ps;
-    unsigned int sz_bits;
-    memcpy(&sz_bits, &sz, sizeof(sz_bits));
-    h = ((h << 5) + h) ^ sz_bits;
+    unsigned int sz_lo, sz_hi;
+    memcpy(&sz_lo, &sz, sizeof(sz_lo));
+    memcpy(&sz_hi, (char *)&sz + sizeof(sz_lo), sizeof(sz_hi));
+    h = ((h << 5) + h) ^ sz_lo;
+    h = ((h << 5) + h) ^ sz_hi;
     const char *fam = gc->fontfamily;
     while (*fam) h = ((h << 5) + h) ^ (unsigned char)*fam++;
     return h;
