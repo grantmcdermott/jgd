@@ -90,6 +90,81 @@ Deno.test("initial resize before R frames — stale entry bug", async (t) => {
   }
 });
 
+/**
+ * Reproduction test: two resizes arrive before R's first frame.
+ *
+ * In practice, ws.onopen sends the first resize and ResizeObserver sends
+ * a second one (with different dims due to layout changes) while R is
+ * still drawing its first plot.  R stashes the second resize via
+ * recv_metrics_response and processes it after the first frame is sent,
+ * producing a second frame (replay) that must be tagged resize:true.
+ *
+ * Without the fix, the server has no pendingResizes entry for the replay
+ * frame, so it arrives untagged → browser calls addPlot → duplicate plot.
+ */
+Deno.test("two resizes before first frame — replay must be tagged", async (t) => {
+  const server = new TestServer();
+  const rClient = new RClient();
+  const browser = new BrowserClient();
+
+  try {
+    await server.start();
+    await rClient.connect(server.socketPath);
+    await browser.connect(server.wsUrl);
+    await rClient.waitForWelcome();
+
+    await t.step("first resize (ws.onopen) before any frame", async () => {
+      browser.sendResize(800, 600);
+      const msg = await rClient.readMessage<ResizeMessage>();
+      assertEquals(msg.type, "resize");
+    });
+
+    await t.step("second resize (ResizeObserver, different dims) before any frame", async () => {
+      browser.sendResize(900, 700);
+      const msg = await rClient.readMessage<ResizeMessage>();
+      assertEquals(msg.type, "resize");
+      assertEquals(msg.width, 900);
+    });
+
+    await t.step("first frame (new plot) must NOT be tagged", async () => {
+      // R draws plot 1 — new plot, not a resize response.
+      await rClient.sendFrame({
+        ops: [{ op: "text", str: "plot1-new" }],
+        device: { width: 900, height: 700 },
+      });
+
+      const frame1 = await browser.waitForType<FrameMessage>("frame");
+      assertEquals(
+        frame1.resize,
+        undefined,
+        "New-plot frame must not be tagged as resize response",
+      );
+    });
+
+    await t.step("second frame (stashed resize replay) MUST be tagged resize:true", async () => {
+      // R processes the stashed resize (from recv_metrics_response) and
+      // replays the current plot at the new dimensions.
+      await rClient.sendFrame({
+        ops: [{ op: "text", str: "plot1-resized" }],
+        device: { width: 900, height: 700 },
+      });
+
+      const frame2 = await browser.waitForType<FrameMessage>("frame");
+      assertEquals(
+        frame2.resize,
+        true,
+        "Replay frame from stashed resize must be tagged resize:true (otherwise browser creates duplicate plot)",
+      );
+    });
+  } finally {
+    browser.close();
+    rClient.close();
+    await delay(100);
+    await server.shutdown();
+    server.cleanup();
+  }
+});
+
 Deno.test("resize after first frame — correctly tags replay", async (t) => {
   const server = new TestServer();
   const rClient = new RClient();
