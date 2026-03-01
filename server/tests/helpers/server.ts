@@ -95,11 +95,12 @@ export class TestServer {
 
     // Drain stderr in the background, always capturing for diagnostics
     const stderrBuf = this.#stderrBuf;
+    const decoder = new TextDecoder();
     this.#stderrDone = this.#process.stderr
       .pipeTo(
         new WritableStream({
           write(chunk) {
-            stderrBuf.push(new TextDecoder().decode(chunk));
+            stderrBuf.push(decoder.decode(chunk));
             if (Deno.env.get("JGD_TEST_VERBOSE")) {
               Deno.stderr.writeSync(chunk);
             }
