@@ -5,9 +5,12 @@ import { join } from "@std/path";
 Deno.test("discovery file lifecycle", async (t) => {
   const tmpDir = Deno.makeTempDirSync({ prefix: "jgd-disc-test-" });
 
-  // Override TMPDIR so discovery writes to our test directory
+  // Override temp dir env vars so discovery writes to our test directory.
+  // POSIX uses TMPDIR; Windows uses TEMP/TMP.
   const origTmpDir = Deno.env.get("TMPDIR");
+  const origTemp = Deno.env.get("TEMP");
   Deno.env.set("TMPDIR", tmpDir);
+  Deno.env.set("TEMP", tmpDir);
 
   try {
     await t.step("removeDiscovery skips file owned by another PID", async () => {
@@ -62,11 +65,16 @@ Deno.test("discovery file lifecycle", async (t) => {
       }
     });
   } finally {
-    // Restore TMPDIR
+    // Restore temp dir env vars
     if (origTmpDir !== undefined) {
       Deno.env.set("TMPDIR", origTmpDir);
     } else {
       Deno.env.delete("TMPDIR");
+    }
+    if (origTemp !== undefined) {
+      Deno.env.set("TEMP", origTemp);
+    } else {
+      Deno.env.delete("TEMP");
     }
     try {
       await Deno.remove(tmpDir, { recursive: true });
