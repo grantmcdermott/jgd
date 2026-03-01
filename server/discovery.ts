@@ -83,7 +83,7 @@ export async function removeDiscovery(paths: string[]): Promise<void> {
       // File missing, unreadable, or corrupt JSON — skip
       continue;
     }
-    if (info == null || info.pid !== Deno.pid) continue;
+    if (typeof info !== "object" || info === null || info.pid !== Deno.pid) continue;
     try {
       await Deno.remove(p);
     } catch (e) {
