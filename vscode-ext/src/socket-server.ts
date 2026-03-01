@@ -15,10 +15,11 @@ interface RSession {
     welcomeSent: boolean;
     /**
      * Queue of pending resize entries.  Each browser resize message pushes one
-     * entry; each R frame shifts one entry off.  Normal resize entries are
-     * collapsed (only the latest is kept) while plotIndex entries are preserved.
+     * entry; each R frame shifts one entry off.  Entries are never collapsed
+     * because R has already received the resize and will send a replay frame
+     * for each.
      */
-    pendingResizes: Array<{ plotIndex?: number }>;
+    pendingResizes: Array<{ plotIndex?: number; width?: number; height?: number }>;
     lastResizeW: number;
     lastResizeH: number;
 }
@@ -182,7 +183,7 @@ export class SocketServer {
 
                     const dims = this.webviewProvider.getPanelDimensions();
                     if (dims) {
-                        session.pendingResizes.push({ plotIndex: undefined });
+                        session.pendingResizes.push({ plotIndex: undefined, width: dims.width, height: dims.height });
                         session.lastResizeW = dims.width;
                         session.lastResizeH = dims.height;
                         socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');
@@ -267,7 +268,7 @@ export class SocketServer {
             const session = this.sessions.get(sessionId);
             if (!session) return;
             if (session.pendingResizes.length >= MAX_PENDING_RESIZES) return;
-            session.pendingResizes.push({ plotIndex });
+            session.pendingResizes.push({ plotIndex, width: w, height: h });
             // Do NOT update lastResizeW/H here — plotIndex resizes target a
             // specific historical plot, not the device viewport.
             const data = JSON.stringify({ type: 'resize', width: w, height: h, plotIndex }) + '\n';
@@ -276,15 +277,15 @@ export class SocketServer {
         }
 
         // Normal resize — broadcast to all sessions with dedup.
+        // Each forwarded resize gets its own pendingResizes entry because R
+        // will send a replay frame for each.  Do NOT collapse (remove) earlier
+        // entries: R has already received those resizes and the corresponding
+        // replay frames need matching entries to be tagged resize:true.
         const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
             if (session.lastResizeW === w && session.lastResizeH === h) continue;
-            // Collapse previous normal entries; preserve plotIndex entries.
-            session.pendingResizes = session.pendingResizes.filter(
-                (e) => e.plotIndex !== undefined,
-            );
             if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
-            session.pendingResizes.push({ plotIndex: undefined });
+            session.pendingResizes.push({ plotIndex: undefined, width: w, height: h });
             session.lastResizeW = w;
             session.lastResizeH = h;
             session.socket.write(data);

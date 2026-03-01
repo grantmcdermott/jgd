@@ -288,16 +288,14 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * flush its frame, then restore the current display list.
          *
          * GEplaySnapshot restores the display list from the snapshot
-         * and replays it through device callbacks.  We use hold_level
-         * to suppress intermediate flushes and replaying=1 to prevent
-         * snapshot saving in cb_newPage during the replay. */
+         * and replays it through device callbacks.  replaying=1 suppresses
+         * intermediate flushes (cb_mode) and snapshot saving (cb_newPage)
+         * during the replay. */
         SEXP snap = VECTOR_ELT(st->snapshot_store, pi);
         SEXP current = PROTECT(GEcreateSnapshot(gdd));
 
         st->replaying = 1;
-        st->hold_level = 100;
         GEplaySnapshot(snap, gdd);
-        st->hold_level = 0;
         st->replaying = 0;
 
         if (st->page.op_count > st->last_flushed_ops) {
@@ -307,9 +305,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
 
         /* Restore the current plot state */
         st->replaying = 1;
-        st->hold_level = 100;
         GEplaySnapshot(current, gdd);
-        st->hold_level = 0;
         st->replaying = 0;
 
         /* Suppress re-flushing the restored current plot */

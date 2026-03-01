@@ -49,13 +49,11 @@ export class Hub {
   unregisterSession(id: string): void {
     this.sessions.delete(id);
     this.retiredSessionIds.add(id);
-    // Trim oldest entries to prevent unbounded growth on long-running servers.
+    // Prevent unbounded growth on long-running servers.  Session IDs
+    // include a per-process counter, so reuse after a clear() is
+    // effectively impossible.
     if (this.retiredSessionIds.size > 1000) {
-      let toRemove = this.retiredSessionIds.size - 500;
-      for (const old of this.retiredSessionIds) {
-        if (toRemove-- <= 0) break;
-        this.retiredSessionIds.delete(old);
-      }
+      this.retiredSessionIds.clear();
     }
     // Clean up any pending metrics routing entries for this session
     for (const [reqId, sessId] of this.metricsRouting) {
@@ -538,15 +536,11 @@ function extractDeviceDims(line: string): { width: number; height: number } | nu
 /**
  * Consume the appropriate pending resize entry for a frame.
  *
- * plotIndex entries are consumed strictly FIFO (no coalescing).
- *
- * Normal entries use dimension matching:
- * - If the first entry matches, consume it (FIFO — R is processing in order).
- * - If the first entry does NOT match, R may have coalesced: search deeper
- *   for the last matching entry and drain all entries up to it.
- * - If dimensions are available but nothing matches, fall back to FIFO
- *   (R may have rendered at adjusted dimensions due to device constraints).
- * - If dimensions are unavailable (unparseable), fall back to FIFO.
+ * - plotIndex entries: strict FIFO (no coalescing).
+ * - Normal entries: first-match FIFO when the head entry's dimensions match,
+ *   otherwise deep-search for the last matching entry and drain up to it
+ *   (handles R-side coalescing).  Falls back to FIFO when no match is found
+ *   or dimensions are unavailable.
  */
 export function consumePendingResize(
   queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
@@ -559,43 +553,34 @@ export function consumePendingResize(
     return queue.shift()!;
   }
 
-  if (frameDims) {
-    // If the first entry matches, consume it directly (R is processing
-    // resizes in order, no coalescing).  This avoids over-consuming
-    // later entries with the same dimensions (A, B, A pattern).
-    //
-    // Known limitation: if R receives A, B, A and coalesces all three
-    // into a single frame at A's dims, we consume only the first entry
-    // and the remaining B + A become orphaned.  This is inherently
-    // ambiguous (we can't distinguish "processed first individually"
-    // from "coalesced to matching dims") and unlikely because the dedup
-    // guard prevents consecutive identical dims — A, B, A requires
-    // three genuinely distinct events queued before R processes any.
-    if (queue[0].width === frameDims.width && queue[0].height === frameDims.height) {
-      return queue.shift()!;
-    }
+  // Without frame dimensions, fall back to FIFO.
+  if (!frameDims) return queue.shift()!;
 
-    // First entry doesn't match — R may have coalesced past it.  Find the
-    // last matching entry in the consecutive normal prefix and drain all
-    // entries up to and including it.
-    let matchIdx = -1;
-    for (let i = 1; i < queue.length; i++) {
-      if (queue[i].plotIndex !== undefined) break;
-      if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
-        matchIdx = i;
-      }
-    }
-    if (matchIdx >= 0) {
-      const removed = queue.splice(0, matchIdx + 1);
-      return removed[removed.length - 1];
-    }
-
-    // No dimension match — R may have rendered at adjusted dimensions
-    // (e.g. device constraints).  Fall back to FIFO.
+  // If the first entry matches, consume it directly (R is processing
+  // resizes in order, no coalescing).  Checking the first entry separately
+  // prevents over-draining in A, B, A patterns where each resize produces
+  // its own frame.
+  if (queue[0].width === frameDims.width && queue[0].height === frameDims.height) {
     return queue.shift()!;
   }
 
-  // Fallback: dimensions unavailable (unparseable frame) — consume FIFO.
+  // First entry doesn't match — R may have coalesced past it.  Find the
+  // last matching entry in the consecutive normal prefix and drain all
+  // entries up to and including it.
+  let matchIdx = -1;
+  for (let i = 1; i < queue.length; i++) {
+    if (queue[i].plotIndex !== undefined) break;
+    if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
+      matchIdx = i;
+    }
+  }
+  if (matchIdx >= 0) {
+    const removed = queue.splice(0, matchIdx + 1);
+    return removed[removed.length - 1];
+  }
+
+  // No dimension match — R may have rendered at adjusted dimensions
+  // (e.g. device constraints).  Fall back to FIFO.
   return queue.shift()!;
 }
 

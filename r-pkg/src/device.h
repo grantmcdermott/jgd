@@ -26,7 +26,7 @@ typedef struct {
     int page_count;
     int drawing;              /* 1 if between mode(1) and mode(0) */
     int last_flushed_ops;     /* op_count at last flush */
-    int hold_level;           /* >0 means display updates are held (holdflush) */
+    int hold_level;           /* R's dev.hold/dev.flush level (>0 = held) */
     int replaying;            /* guard against re-entry from GEplayDisplayList */
     int new_page;             /* 1 after cb_newPage; cleared on first complete flush */
     double pending_w;         /* pending resize width in pixels, 0 = none */

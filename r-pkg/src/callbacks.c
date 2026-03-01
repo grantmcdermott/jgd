@@ -315,9 +315,16 @@ static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
                     w->valuedouble > 0 && h->valuedouble > 0) {
                     if (cJSON_IsNumber(pi)) {
                         /* plotIndex resize — buffer for poll_resize_impl,
-                         * same as check_incoming does.  Always buffer the
-                         * latest resize so that every resize read from the
-                         * transport is later processed into a frame. */
+                         * same as check_incoming does.  Unlike check_incoming
+                         * (which skips reading when a buffer exists), we must
+                         * overwrite here because the message is already
+                         * consumed from the transport. */
+                        if (st->has_buffered_resize && st->debug_frames)
+                            REprintf("[jgd] recv_metrics_response: "
+                                     "overwriting buffered resize "
+                                     "(pi=%d -> %d)\n",
+                                     st->buffered_plot_index,
+                                     (int)pi->valuedouble);
                         st->has_buffered_resize = 1;
                         st->buffered_w = w->valuedouble;
                         st->buffered_h = h->valuedouble;
@@ -499,7 +506,7 @@ static void cb_mode(int mode, pDevDesc dd) {
          * (plot, hist, …) bracket drawing with dev.hold/dev.flush, so
          * cb_holdflush handles the single flush at the end.  Without hold
          * (e.g. interactive lines()/points()), we flush immediately. */
-        if (st->hold_level == 0 && st->page.op_count > st->last_flushed_ops) {
+        if (!st->replaying && st->hold_level == 0 && st->page.op_count > st->last_flushed_ops) {
             /* First flush on a new page must be a complete frame so the
              * browser creates a new plot entry (addPlot) rather than
              * appending to the previous plot. */
