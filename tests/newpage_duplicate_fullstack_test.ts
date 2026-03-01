@@ -14,27 +14,10 @@
 import { assertEquals } from "@std/assert";
 import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
-import { E2EBrowser, plotInfoText } from "../server/tests/helpers/e2e_browser.ts";
+import { E2EBrowser, plotInfoText, waitForPlotCount } from "../server/tests/helpers/e2e_browser.ts";
 import { checkRAvailable, startR } from "./helpers/r_process.ts";
 
 const rAvailable = await checkRAvailable();
-
-/** Poll until plotInfo shows expected count or timeout. */
-async function waitForPlotCount(
-  page: Awaited<ReturnType<E2EBrowser["newPage"]>>,
-  expectedCount: number,
-  timeoutMs: number,
-): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  let info = "";
-  while (Date.now() < deadline) {
-    info = await plotInfoText(page);
-    const count = parseInt(info.split("/")[1]?.trim() ?? "0");
-    if (count >= expectedCount) return info;
-    await delay(200);
-  }
-  return info;
-}
 
 Deno.test({
   name: "Full-stack: R + Browser — 3 plots must show 3/3 (no duplication)",

@@ -9,28 +9,10 @@
 import { assertEquals } from "@std/assert";
 import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
-import { E2EBrowser, plotInfoText } from "../server/tests/helpers/e2e_browser.ts";
-import { checkRAvailable } from "./helpers/r_process.ts";
-import { toRSocketAddress } from "./helpers/r_process.ts";
+import { E2EBrowser, plotInfoText, waitForPlotCount } from "../server/tests/helpers/e2e_browser.ts";
+import { checkRAvailable, toRSocketAddress } from "./helpers/r_process.ts";
 
 const rAvailable = await checkRAvailable();
-
-/** Poll until plotInfo shows expected count or timeout. */
-async function waitForPlotCount(
-  page: Awaited<ReturnType<E2EBrowser["newPage"]>>,
-  expectedCount: number,
-  timeoutMs: number,
-): Promise<string> {
-  const deadline = Date.now() + timeoutMs;
-  let info = "";
-  while (Date.now() < deadline) {
-    info = await plotInfoText(page);
-    const count = parseInt(info.split("/")[1]?.trim() ?? "0");
-    if (count >= expectedCount) return info;
-    await delay(200);
-  }
-  return info;
-}
 
 Deno.test({
   name: "Interactive R: plots via stdin must not duplicate",
@@ -122,18 +104,10 @@ Deno.test({
         );
 
       } finally {
-        try {
-          await send("dev.off()");
-          await send("q('no')");
-          writer.releaseLock();
-          await proc.stdin.close();
-        } catch { /* ignore */ }
-        try {
-          proc.kill("SIGKILL");
-        } catch { /* ignore */ }
-        try {
-          await proc.output();
-        } catch { /* ignore */ }
+        try { writer.releaseLock(); } catch { /* ignore */ }
+        try { await proc.stdin.close(); } catch { /* ignore */ }
+        try { proc.kill("SIGKILL"); } catch { /* ignore */ }
+        try { await proc.output(); } catch { /* ignore */ }
       }
     } finally {
       await e2e.close();

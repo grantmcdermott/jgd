@@ -176,10 +176,12 @@ export class Hub {
       return;
     }
 
-    console.error(
-      `[hub] resize from browser: ${dims?.width}x${dims?.height}` +
-      (hasPlotIndex ? ` plotIndex=${dims?.plotIndex}` : ""),
-    );
+    if (this.verbose) {
+      console.error(
+        `[hub] resize from browser: ${dims?.width}x${dims?.height}` +
+        (hasPlotIndex ? ` plotIndex=${dims?.plotIndex}` : ""),
+      );
+    }
     // Normal resize — broadcast to all sessions with dedup.
     for (const session of this.sessions.values()) {
       if (dims) {
@@ -303,11 +305,13 @@ export class Hub {
             }
           }
         }
-        console.error(
-          `[hub] frame: ${classification}, pendingResizes=${session.pendingResizes.length}` +
-          `, deferred=${!!session.deferredResize}, newPage=${isNewPage}` +
-          `, incremental=${isIncremental}`,
-        );
+        if (this.verbose) {
+          console.error(
+            `[hub] frame: ${classification}, pendingResizes=${session.pendingResizes.length}` +
+            `, deferred=${!!session.deferredResize}, newPage=${isNewPage}` +
+            `, incremental=${isIncremental}`,
+          );
+        }
         // Ensure the frame carries the server-assigned sessionId.
         if (session.id) {
           if (data.includes('"sessionId"')) {
@@ -342,10 +346,12 @@ export class Hub {
               `failed to send deferred resize to R session ${session.id}: ${e}`,
             );
           });
-          console.error(
-            `[hub] sent deferred resize to R (${deferred.width}x${deferred.height})` +
-            `, pendingResizes now=${session.pendingResizes.length}`,
-          );
+          if (this.verbose) {
+            console.error(
+              `[hub] sent deferred resize to R (${deferred.width}x${deferred.height})` +
+              `, pendingResizes now=${session.pendingResizes.length}`,
+            );
+          }
         }
         if (this.verbose) {
           console.error(

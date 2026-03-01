@@ -4,6 +4,7 @@
     "jsr:@astral/astral@0.5": "0.5.5",
     "jsr:@deno-library/progress@^1.5.1": "1.5.1",
     "jsr:@deno/cache-dir@0.22.2": "0.22.2",
+    "jsr:@deno/graph@0.86": "0.86.9",
     "jsr:@std/assert@1": "1.0.18",
     "jsr:@std/async@*": "1.1.1",
     "jsr:@std/async@1": "1.1.1",
@@ -44,11 +45,15 @@
     "@deno/cache-dir@0.22.2": {
       "integrity": "0c84b8db6175618cc2e25ed7d7648d83b38e298c14c1aae1e4b4e1b2219b840c",
       "dependencies": [
+        "jsr:@deno/graph",
         "jsr:@std/fmt@^1.0.3",
         "jsr:@std/fs@^1.0.6",
         "jsr:@std/io@0.225",
         "jsr:@std/path@^1.0.8"
       ]
+    },
+    "@deno/graph@0.86.9": {
+      "integrity": "c4f353a695bcc5246c099602977dabc6534eacea9999a35a8cb24e807192e6a1"
     },
     "@std/assert@1.0.18": {
       "integrity": "270245e9c2c13b446286de475131dc688ca9abcd94fc5db41d43a219b34d1c78",
