@@ -31,8 +31,8 @@ void jgd_flush_frame(jgd_state_t *st, int incremental) {
     if (json) {
         transport_send(&st->transport, json, strlen(json));
         free(json);
+        if (np) st->new_page = 0;
     }
-    if (np) st->new_page = 0;
 }
 
 /* --- Device callbacks --- */
