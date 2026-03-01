@@ -138,7 +138,7 @@ test_that("device survives malformed JSON and produces correct output", {
   # Frame metadata is intact
   frame = frames[[1]]
   expect_equal(frame$plot$version, 1)
-  expect_match(frame$plot$sessionId, "^r-[0-9]+$")
+  expect_match(frame$plot$sessionId, "^r-[0-9]+-[0-9]+$")
 
   # Ops are present and correct
   ops = unlist(lapply(frames, function(f) f$plot$ops), recursive = FALSE)
