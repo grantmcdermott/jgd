@@ -336,11 +336,13 @@ export class Hub {
         if (session.deferredResize) {
           const deferred = session.deferredResize;
           session.deferredResize = null;
-          session.pendingResizes.push({
-            plotIndex: undefined,
-            width: deferred.width,
-            height: deferred.height,
-          });
+          if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
+            session.pendingResizes.push({
+              plotIndex: undefined,
+              width: deferred.width,
+              height: deferred.height,
+            });
+          }
           session.send(deferred.data).catch((e) => {
             console.error(
               `failed to send deferred resize to R session ${session.id}: ${e}`,
