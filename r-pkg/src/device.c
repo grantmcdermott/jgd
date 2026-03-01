@@ -128,6 +128,7 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
         const char *sock = CHAR(STRING_ELT(s_socket, 0));
         if (sock && sock[0]) {
             if (strlen(sock) >= sizeof(st->transport.socket_path)) {
+                R_ReleaseObject(st->snapshot_store);
                 free(st);
                 Rf_error("jgd: socket path too long (max %zu characters)",
                          sizeof(st->transport.socket_path) - 1);
@@ -150,6 +151,9 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
 
     pDevDesc dd = (pDevDesc)calloc(1, sizeof(DevDesc));
     if (!dd) {
+        transport_close(&st->transport);
+        page_free(&st->page);
+        R_ReleaseObject(st->snapshot_store);
         free(st);
         Rf_error("jgd: failed to allocate DevDesc");
     }
