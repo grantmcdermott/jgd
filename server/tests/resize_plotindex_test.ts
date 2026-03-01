@@ -56,7 +56,7 @@ Deno.test("plotIndex resize — pass-through and frame tagging", withTestHarness
     assertEquals(msg.plotIndex, 0);
   });
 
-  await t.step("plotIndex resize does NOT update dedup state", async () => {
+  await t.step("plotIndex resize updates dedup state", async () => {
     // Consume the frame from previous step
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 1024, height: 768 } },
@@ -64,9 +64,8 @@ Deno.test("plotIndex resize — pass-through and frame tagging", withTestHarness
     await browser.waitForType<FrameMessage>("frame");
 
     // Current dedup state: 1024x768.
-    // Send a plotIndex resize with DIFFERENT dimensions — this should
-    // NOT update lastResizeW/H (plotIndex targets a historical plot,
-    // not the device viewport).
+    // Send a plotIndex resize with DIFFERENT dimensions — this DOES
+    // update lastResizeW/H because R's device.c applies the new dims.
     browser.sendResizeWithPlotIndex(500, 400, 0, sessionId);
     await rClient.readMessage<ResizeMessage>();
     await rClient.sendFrame(
@@ -74,17 +73,17 @@ Deno.test("plotIndex resize — pass-through and frame tagging", withTestHarness
     );
     await browser.waitForType<FrameMessage>("frame");
 
-    // Dedup state should still be 1024x768 (NOT 500x400).
-    // A normal resize at 1024x768 should be DEDUPED.
-    browser.sendResize(1024, 768); // should be dropped (dedup unchanged)
-    browser.sendResize(640, 480);  // should arrive
+    // Dedup state is now 500x400 (updated by plotIndex resize).
+    // A normal resize at 500x400 should be DEDUPED.
+    browser.sendResize(500, 400); // should be dropped (dedup matches)
+    browser.sendResize(640, 480); // should arrive
 
     const msg = await rClient.readMessage<ResizeMessage>();
-    assertEquals(msg.width, 640, "1024x768 should be deduped; 640x480 should arrive");
+    assertEquals(msg.width, 640, "500x400 should be deduped; 640x480 should arrive");
     assertEquals(msg.height, 480);
   });
 
-  await t.step("normal resize after plotIndex resize uses pre-plotIndex dedup state", async () => {
+  await t.step("normal resize after plotIndex resize reflects updated dedup state", async () => {
     // Consume the frame from previous step
     await rClient.sendFrame(
       { ops: [{ op: "line" }], device: { width: 640, height: 480 } },
@@ -92,8 +91,8 @@ Deno.test("plotIndex resize — pass-through and frame tagging", withTestHarness
     await browser.waitForType<FrameMessage>("frame");
 
     // Current dedup state is 640x480.
-    // Send a plotIndex resize with different dimensions — this bypasses
-    // dedup but does NOT update lastResizeW/H.
+    // Send a plotIndex resize with different dimensions — dedup state
+    // updates to 500x400.
     browser.sendResizeWithPlotIndex(500, 400, 0, sessionId);
     const plotIndexMsg = await rClient.readMessage<ResizeMessage>();
     assertEquals(plotIndexMsg.plotIndex, 0);
@@ -104,28 +103,27 @@ Deno.test("plotIndex resize — pass-through and frame tagging", withTestHarness
     );
     await browser.waitForType<FrameMessage>("frame");
 
-    // Dedup state is STILL 640x480 (not changed by plotIndex resize).
-    // 640x480 should be deduped; 750x550 should arrive.
+    // Dedup state is now 500x400 (updated by plotIndex resize).
+    // 640x480 should NOT be deduped (different from 500x400).
     browser.sendResize(640, 480);
-    browser.sendResize(750, 550);
     const normalMsg = await rClient.readMessage<ResizeMessage>();
     assertEquals(normalMsg.type, "resize");
-    assertEquals(normalMsg.width, 750);
-    assertEquals(normalMsg.height, 550);
+    assertEquals(normalMsg.width, 640);
+    assertEquals(normalMsg.height, 480);
     assertEquals(normalMsg.plotIndex, undefined, "Normal resize should not have plotIndex");
 
     // Verify the frame is tagged correctly
     await rClient.sendFrame(
-      { ops: [{ op: "circle" }], device: { width: 750, height: 550 } },
+      { ops: [{ op: "circle" }], device: { width: 640, height: 480 } },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true, "Should be tagged as resize");
     assertEquals(frame.plotIndex, undefined, "Should NOT have plotIndex");
   });
 
-  await t.step("normal resize with same dims as before plotIndex is still deduped", async () => {
-    // Current dedup state is 750x550 from previous step.
-    // Send a plotIndex resize — dedup state stays 750x550.
+  await t.step("normal resize at plotIndex dims is deduped", async () => {
+    // Current dedup state is 640x480 from previous step.
+    // Send a plotIndex resize — dedup state updates to 600x400.
     browser.sendResizeWithPlotIndex(600, 400, 1, sessionId);
     const plotIndexMsg = await rClient.readMessage<ResizeMessage>();
     assertEquals(plotIndexMsg.plotIndex, 1);
@@ -136,13 +134,13 @@ Deno.test("plotIndex resize — pass-through and frame tagging", withTestHarness
     );
     await browser.waitForType<FrameMessage>("frame");
 
-    // Normal resize at 750x550 — dedup state is STILL 750x550 (not
-    // changed by the plotIndex resize), so this is DEDUPED.
-    browser.sendResize(750, 550);
+    // Normal resize at 600x400 — dedup state is 600x400 (updated by
+    // the plotIndex resize), so this is DEDUPED.
+    browser.sendResize(600, 400);
     browser.sendResize(900, 700);
 
     const msg = await rClient.readMessage<ResizeMessage>();
-    assertEquals(msg.width, 900, "750x550 should be deduped; 900x700 should arrive");
+    assertEquals(msg.width, 900, "600x400 should be deduped; 900x700 should arrive");
     assertEquals(msg.height, 700);
   });
 }));

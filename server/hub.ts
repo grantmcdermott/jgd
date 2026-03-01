@@ -167,10 +167,13 @@ export class Hub {
         width: dims!.width,
         height: dims!.height,
       });
-      // Do NOT update lastResizeW/H here — plotIndex resizes target a
-      // specific historical plot, not the device viewport.  Updating the
-      // dedup state would cause a subsequent normal resize to the same
-      // dimensions to be silently suppressed.
+      // Update lastResizeW/H: R's device.c poll_resize_impl applies the
+      // new dimensions BEFORE the plotIndex/normal branch, so R's actual
+      // device size changes after a plotIndex resize.  If we don't update
+      // dedup state, a subsequent normal resize back to the pre-plotIndex
+      // dimensions is silently suppressed (matches stale lastResize).
+      session.lastResizeW = dims!.width;
+      session.lastResizeH = dims!.height;
       // Strip sessionId before forwarding to R (R doesn't need it)
       const forR = JSON.stringify({
         type: "resize",

@@ -269,8 +269,11 @@ export class SocketServer {
             if (!session) return;
             if (session.pendingResizes.length >= MAX_PENDING_RESIZES) return;
             session.pendingResizes.push({ plotIndex, width: w, height: h });
-            // Do NOT update lastResizeW/H here — plotIndex resizes target a
-            // specific historical plot, not the device viewport.
+            // Update lastResizeW/H: R's device.c applies the new dimensions
+            // before the plotIndex/normal branch, so a subsequent normal resize
+            // back to the pre-plotIndex dims must not be deduped.
+            session.lastResizeW = w;
+            session.lastResizeH = h;
             const data = JSON.stringify({ type: 'resize', width: w, height: h, plotIndex }) + '\n';
             session.socket.write(data);
             return;
