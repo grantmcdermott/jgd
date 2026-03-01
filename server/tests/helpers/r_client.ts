@@ -64,9 +64,11 @@ export class RClient {
   /** Send a frame message. */
   async sendFrame(
     plot: FrameMessage["plot"],
-    incremental = false,
+    opts?: { incremental?: boolean; newPage?: boolean },
   ): Promise<void> {
-    await this.send({ type: "frame", plot, incremental });
+    const msg: Record<string, unknown> = { type: "frame", plot, incremental: opts?.incremental ?? false };
+    if (opts?.newPage) msg.newPage = true;
+    await this.send(msg);
   }
 
   /** Send a metrics request. */

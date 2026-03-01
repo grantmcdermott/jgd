@@ -20,11 +20,13 @@ static jgd_state_t *get_state(pDevDesc dd) {
 }
 
 void jgd_flush_frame(jgd_state_t *st, int incremental) {
-    char *json = page_serialize_frame(&st->page, st->session_id, incremental);
+    int np = (!incremental && st->new_page && !st->replaying) ? 1 : 0;
+    char *json = page_serialize_frame(&st->page, st->session_id, incremental, np);
     if (json) {
         transport_send(&st->transport, json, strlen(json));
         free(json);
     }
+    if (np) st->new_page = 0;
 }
 
 /* --- Device callbacks --- */
@@ -71,6 +73,7 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     page_init(&st->page, w_px, h_px, st->dpi, gc->fill);
     st->page_count++;
     st->last_flushed_ops = 0;
+    st->new_page = 1;
 }
 
 static void cb_close(pDevDesc dd) {

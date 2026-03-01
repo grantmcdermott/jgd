@@ -196,10 +196,19 @@ export class Hub {
         // arrives untagged → browser calls addPlot → duplicate plot.
         if (!session.initialResizeSent) {
           // Allow the very first resize (ws.onopen) through so R's device
-          // gets the correct initial dimensions.  Don't push pendingResizes:
-          // R's display list is empty, GEplayDisplayList is a no-op, and
-          // R won't send a frame back.
+          // gets the correct initial dimensions.  Push a pendingResizes
+          // entry so that if R processes the resize AFTER the first plot
+          // (user typed fast), the replay frame gets tagged.  If R
+          // processes it before any plot (DL empty, no replay frame), the
+          // entry is silently drained when the first newPage frame arrives.
           session.initialResizeSent = true;
+          if (dims) {
+            session.pendingResizes.push({
+              plotIndex: undefined,
+              width: dims.width,
+              height: dims.height,
+            });
+          }
         } else {
           // Defer subsequent resizes.  The latest deferred resize will be
           // forwarded after the first frame arrives (see handleRMessage).
@@ -252,19 +261,33 @@ export class Hub {
       case "frame": {
         session.hasReceivedFrame = true;
         let data = line;
+        const isNewPage = line.includes('"newPage":true');
         // Tag resize-triggered frames so the browser can update in place.
         // Use dimension matching to handle R-side coalescing: when R
         // receives multiple resizes quickly, it may only replay the last
         // one.  By matching the frame's device dimensions against queued
         // entries, we consume the correct entry (and any earlier entries
         // that R coalesced into it).
+        //
+        // When the frame has newPage:true, this is a genuinely new plot —
+        // not a resize replay.  If a pending entry happens to match the
+        // new plot's dimensions (Race A: cb_newPage consumed the resize),
+        // silently drain it so it doesn't contaminate later frames, but
+        // do NOT tag the frame as a resize.
         if (session.pendingResizes.length > 0) {
           const frameDims = extractDeviceDims(line);
-          const entry = consumePendingResize(session.pendingResizes, frameDims);
-          if (entry) {
-            data = injectResizeFlag(data);
-            if (entry.plotIndex !== undefined) {
-              data = injectPlotIndex(data, entry.plotIndex);
+          if (isNewPage) {
+            // New plot: drain matching entry if present (Race A cleanup),
+            // but never tag.  No FIFO fallback — a non-matching entry
+            // belongs to a resize that R hasn't replayed yet.
+            drainMatchingEntry(session.pendingResizes, frameDims);
+          } else {
+            const entry = consumePendingResize(session.pendingResizes, frameDims);
+            if (entry) {
+              data = injectResizeFlag(data);
+              if (entry.plotIndex !== undefined) {
+                data = injectPlotIndex(data, entry.plotIndex);
+              }
             }
           }
         }
@@ -554,6 +577,31 @@ export function consumePendingResize(
 
   // Fallback: dimensions unavailable (unparseable frame) — consume FIFO.
   return queue.shift()!;
+}
+
+/**
+ * Drain a pending resize entry whose dimensions match the given frame.
+ *
+ * Used for newPage frames: when R consumes a resize in cb_newPage
+ * (Race A), the new plot's dimensions coincidentally match the entry.
+ * We remove the orphaned entry so it doesn't contaminate later frames,
+ * but we do NOT tag the frame — it's a new plot, not a replay.
+ *
+ * Only removes the first matching entry.  No FIFO fallback: if dims
+ * don't match, the entry belongs to a resize R hasn't replayed yet.
+ */
+function drainMatchingEntry(
+  queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
+  frameDims: { width: number; height: number } | null,
+): void {
+  if (!frameDims || queue.length === 0) return;
+  for (let i = 0; i < queue.length; i++) {
+    if (queue[i].plotIndex !== undefined) continue; // skip plotIndex entries
+    if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
+      queue.splice(i, 1);
+      return;
+    }
+  }
 }
 
 /**

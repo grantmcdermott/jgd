@@ -8,12 +8,8 @@
  * incorrectly tags the first real new-plot frame as resize:true.
  *
  * Expected behavior: new-plot frames should never be tagged as resize
- * responses.  The server should only push a pendingResizes entry when
- * the R session has an active plot (i.e., has previously sent at least
- * one frame).
- *
- * This test fails with the current code (stale entry bug) and should
- * pass after the fix.
+ * responses.  The newPage flag in R's frame messages tells the server
+ * to silently drain matching entries without tagging.
  */
 
 import { assertEquals } from "@std/assert";
@@ -48,22 +44,19 @@ Deno.test("initial resize before R frames — stale entry bug", async (t) => {
       // entry for this session is never consumed.
 
       // R draws plot 1 — a genuinely NEW plot, not a resize response.
+      // The newPage flag tells the server to drain the matching entry
+      // without tagging.
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1-new" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
 
       const frame1 = await browser.waitForType<FrameMessage>("frame");
 
-      // BUG: The stale pendingResizes entry tags this new-plot frame
-      // as resize:true.  From the browser's perspective this triggers
-      // replaceLatest instead of addPlot.  On an empty history the
-      // fallback to addPlot masks the issue, but the semantics are
-      // wrong and downstream timing races cause duplicate plots.
       assertEquals(
         frame1.resize,
         undefined,
-        "New-plot frame must NOT be tagged as resize response (stale entry bug)",
+        "New-plot frame must NOT be tagged as resize response",
       );
     });
 
@@ -72,7 +65,7 @@ Deno.test("initial resize before R frames — stale entry bug", async (t) => {
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2-new" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
 
       const frame2 = await browser.waitForType<FrameMessage>("frame");
       assertEquals(
@@ -132,7 +125,7 @@ Deno.test("two resizes before first frame — replay must be tagged", async (t) 
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1-new" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
 
       const frame1 = await browser.waitForType<FrameMessage>("frame");
       assertEquals(
@@ -186,7 +179,7 @@ Deno.test("resize after first frame — correctly tags replay", async (t) => {
     await rClient.sendFrame({
       ops: [{ op: "text", str: "plot1" }],
       device: { width: 800, height: 600 },
-    });
+    }, { newPage: true });
     const frame1 = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame1.resize, undefined, "First frame should not be tagged");
 
@@ -215,7 +208,7 @@ Deno.test("resize after first frame — correctly tags replay", async (t) => {
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2-new" }],
         device: { width: 640, height: 480 },
-      });
+      }, { newPage: true });
 
       const frame2 = await browser.waitForType<FrameMessage>("frame");
       assertEquals(

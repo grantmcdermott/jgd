@@ -8,20 +8,18 @@
  * These tests exercise the server's frame routing at the protocol level,
  * simulating message sequences that arise in real browser+R interactions.
  *
- * Key race conditions tested:
+ * The fix relies on two mechanisms:
  *
- * (A) R's cb_newPage check_incoming reads a pending resize and applies it
- *     to the new page's dimensions.  R never sends a separate replay frame.
- *     The new-plot frame matches the pendingResizes entry's dimensions and
- *     is incorrectly tagged resize:true → browser calls replaceLatest
- *     instead of addPlot.
+ * 1. R-side newPage flag: R's device includes "newPage":true in frames
+ *    that represent genuinely new plots (first complete flush after
+ *    cb_newPage).  The server uses this to skip FIFO/dimension matching
+ *    and silently drain any coincidentally-matching pending entry.
  *
- * (B) R's recv_metrics_response reads a pending resize during drawing but
- *     doesn't apply it until after the frame is flushed.  The new-plot
- *     frame arrives at OLD dimensions.  consumePendingResize falls back
- *     to FIFO and tags it as resize:true.  Later, R's poll_resize_impl
- *     processes the resize and sends a replay, but the entry was already
- *     consumed → replay is untagged → addPlot → duplicate.
+ * 2. Initial resize entry: The server now pushes a pendingResizes entry
+ *    for the initial browser resize (ws.onopen).  If R processes the
+ *    resize after the first plot exists, the replay frame gets tagged.
+ *    If R processes it before any plot (empty DL, no replay), the entry
+ *    is silently drained by the first newPage frame.
  */
 
 import { assertEquals } from "@std/assert";
@@ -54,7 +52,7 @@ Deno.test("two sequential new plots — both untagged", async (t) => {
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "Plot 1 must not be tagged as resize");
     });
@@ -63,7 +61,7 @@ Deno.test("two sequential new plots — both untagged", async (t) => {
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "Plot 2 must not be tagged as resize");
     });
@@ -92,7 +90,7 @@ Deno.test("deferred resize replay tagged, new plot after replay untagged", async
     await rClient.waitForWelcome();
 
     await t.step("initial + deferred resize before first frame", async () => {
-      // ws.onopen resize — forwarded to R, no pendingResizes entry.
+      // ws.onopen resize — forwarded to R, pendingResizes entry pushed.
       browser.sendResize(800, 600);
       const msg = await rClient.readMessage<ResizeMessage>();
       assertEquals(msg.type, "resize");
@@ -103,10 +101,11 @@ Deno.test("deferred resize replay tagged, new plot after replay untagged", async
 
     await t.step("plot 1 triggers deferred forwarding", async () => {
       // R draws plot 1 at the initial resize dimensions.
+      // newPage:true causes the initial entry to be silently drained.
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "Plot 1 must not be tagged");
 
@@ -128,7 +127,7 @@ Deno.test("deferred resize replay tagged, new plot after replay untagged", async
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2" }],
         device: { width: 802, height: 601 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "Plot 2 must be a new plot");
     });
@@ -162,7 +161,7 @@ Deno.test("resize between plots — replay tagged, new plot untagged", async (t)
     await rClient.sendFrame({
       ops: [{ op: "text", str: "plot1" }],
       device: { width: 800, height: 600 },
-    });
+    }, { newPage: true });
     await browser.waitForType<FrameMessage>("frame");
 
     await t.step("resize after plot 1", async () => {
@@ -184,7 +183,7 @@ Deno.test("resize between plots — replay tagged, new plot untagged", async (t)
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2" }],
         device: { width: 900, height: 700 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "Plot 2 must be a new plot");
     });
@@ -199,17 +198,14 @@ Deno.test("resize between plots — replay tagged, new plot untagged", async (t)
 
 // ---------------------------------------------------------------------------
 // Scenario 4 (Race A): R consumes resize in cb_newPage — new-plot frame at
-// resize dims steals the pendingResizes entry.
+// resize dims.
 //
 // Timeline:
 //   1. Browser sends resize → server pushes pendingResizes, sends to R
 //   2. R reads resize in cb_newPage's check_incoming (NOT poll_resize_impl)
-//   3. R draws new plot at resize dims → sends frame
-//   4. Server matches frame to pendingResizes entry → tags resize:true
-//   5. Browser calls replaceLatest instead of addPlot
-//
-// The server cannot distinguish this frame from a legitimate resize replay.
-// This test documents the known architectural limitation.
+//   3. R draws new plot at resize dims → sends frame with newPage:true
+//   4. Server sees newPage:true → drains matching entry silently (no tag)
+//   5. Browser calls addPlot ✓
 // ---------------------------------------------------------------------------
 
 Deno.test("race A: new plot at resize dims should not be tagged (cb_newPage consumed resize)", async (t) => {
@@ -229,7 +225,7 @@ Deno.test("race A: new plot at resize dims should not be tagged (cb_newPage cons
     await rClient.sendFrame({
       ops: [{ op: "text", str: "plot1" }],
       device: { width: 800, height: 600 },
-    });
+    }, { newPage: true });
     await browser.waitForType<FrameMessage>("frame");
 
     await t.step("resize sent to R", async () => {
@@ -241,14 +237,13 @@ Deno.test("race A: new plot at resize dims should not be tagged (cb_newPage cons
     await t.step("R sends new plot at resize dims (not a replay)", async () => {
       // R consumed the resize in cb_newPage's check_incoming and drew
       // the new plot at the resize dimensions.  No separate replay.
+      // The newPage flag tells the server this is a new plot.
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2-NEW" }],
         device: { width: 900, height: 700 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
 
-      // This frame is a NEW plot, but the server's dimension matching
-      // tags it as resize:true because it matches the pending entry.
       assertEquals(
         frame.resize,
         undefined,
@@ -266,23 +261,17 @@ Deno.test("race A: new plot at resize dims should not be tagged (cb_newPage cons
 
 // ---------------------------------------------------------------------------
 // Scenario 5 (Race B): R's recv_metrics_response consumes resize during
-// drawing.  New-plot frame arrives at OLD dims.  FIFO fallback tags it.
-// Actual replay arrives later with no entry → untagged → addPlot → duplicate.
+// drawing.  New-plot frame arrives at OLD dims with newPage:true.
 //
 // Timeline:
 //   1. Browser sends resize(900,700) → pendingResizes entry pushed
 //   2. R is drawing plot 2 with metrics.  recv_metrics_response reads the
 //      resize → pending_w/h set but not applied during drawing.
-//   3. R flushes plot 2 at OLD dims (800,600).  No dimension match →
-//      FIFO fallback consumes the pendingResizes entry → tagged resize:true.
-//      Browser calls replaceLatest (WRONG: this was a new plot!).
+//   3. R flushes plot 2 at OLD dims (800,600) with newPage:true.  Server
+//      sees newPage → no dimension/FIFO matching → entry preserved.
 //   4. R finishes, returns to prompt.  poll_resize_impl sees pending_w/h,
-//      replays plot 2 at 900x700 → frame.  pendingResizes is empty →
-//      NOT tagged → browser calls addPlot (WRONG: this was a resize replay).
-//
-// Result: The browser sees replaceLatest (step 3) then addPlot (step 4).
-// The new plot replaced plot 1, then the replay was added as a "new" plot.
-// This produces the observed [plot1-replaced, plot2-replay-as-new] history.
+//      replays plot 2 at 900x700 → frame (no newPage).  Server matches
+//      entry → tagged resize:true.  ✓
 // ---------------------------------------------------------------------------
 
 Deno.test("race B: new plot at old dims steals entry via FIFO fallback, replay untagged", async (t) => {
@@ -302,7 +291,7 @@ Deno.test("race B: new plot at old dims steals entry via FIFO fallback, replay u
     await rClient.sendFrame({
       ops: [{ op: "text", str: "plot1" }],
       device: { width: 800, height: 600 },
-    });
+    }, { newPage: true });
     await browser.waitForType<FrameMessage>("frame");
 
     await t.step("resize sent to R", async () => {
@@ -314,16 +303,13 @@ Deno.test("race B: new plot at old dims steals entry via FIFO fallback, replay u
     await t.step("new plot at old dims — should not be tagged", async () => {
       // R was drawing when the resize arrived.  recv_metrics_response
       // consumed the resize message but didn't apply the dimensions.
-      // The frame is flushed at the old dimensions.
+      // The frame is flushed at the old dimensions with newPage:true.
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
 
-      // BUG: FIFO fallback consumes the pendingResizes entry and tags
-      // this frame as resize:true.  The browser calls replaceLatest
-      // instead of addPlot.
       assertEquals(
         frame.resize,
         undefined,
@@ -333,20 +319,17 @@ Deno.test("race B: new plot at old dims steals entry via FIFO fallback, replay u
 
     await t.step("resize replay at new dims — should be tagged", async () => {
       // R returns to prompt, poll_resize_impl applies pending_w/h and
-      // replays the current plot at the new dimensions.
+      // replays the current plot at the new dimensions (no newPage flag).
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2-resized" }],
         device: { width: 900, height: 700 },
       });
       const frame = await browser.waitForType<FrameMessage>("frame");
 
-      // BUG: The entry was already consumed by the FIFO fallback in the
-      // previous step.  This replay has no entry → untagged → addPlot
-      // → duplicate plot in browser history.
       assertEquals(
         frame.resize,
         true,
-        "Resize replay must be tagged — entry was stolen by FIFO fallback",
+        "Resize replay must be tagged",
       );
     });
   } finally {
@@ -364,21 +347,17 @@ Deno.test("race B: new plot at old dims steals entry via FIFO fallback, replay u
 // This matches the user-reported symptom exactly:
 //   [plot1, plot1-copy, plot2] instead of [plot1, plot2]
 //
-// The "plot1-copy" is a resize replay of plot 1 that arrives AFTER plot 1
-// but is NOT tagged as resize:true because the initial resize had no
-// pendingResizes entry.
-//
 // Timeline:
-//   1. Browser sends initial resize(800,600) → server: initialResizeSent,
-//      no pendingResizes entry, sends to R.
+//   1. Browser sends initial resize(800,600) → server pushes
+//      pendingResizes entry, sends to R.
 //   2. R does NOT process the resize before the user creates plot 1
 //      (timing: user typed command before input handler fired).
-//   3. R draws plot 1 at default dims → frame.  Server: new plot. ✓
+//   3. R draws plot 1 at default dims with newPage:true → frame.
+//      Server: newPage → no dim match → entry preserved.  ✓
 //   4. R returns to prompt → input handler fires → poll_resize_impl
-//      reads resize(800,600) → replays plot 1 at 800x600 → frame.
-//   5. Server: pendingResizes is EMPTY (initial had no entry) →
-//      NO tag → browser calls addPlot → DUPLICATE!
-//   6. User creates plot 2 → frame → addPlot → total 3 entries.
+//      reads resize(800,600) → replays plot 1 at 800x600 → frame
+//      (no newPage).  Server matches entry → tagged resize:true.  ✓
+//   5. User creates plot 2 → frame with newPage:true → addPlot.  ✓
 // ---------------------------------------------------------------------------
 
 Deno.test("initial resize replay after first plot — must be tagged to avoid duplicate", async (t) => {
@@ -393,34 +372,34 @@ Deno.test("initial resize replay after first plot — must be tagged to avoid du
     await rClient.waitForWelcome();
 
     await t.step("initial resize and plot 1 at default dims", async () => {
-      // Browser sends initial resize — server sets initialResizeSent,
-      // does NOT push pendingResizes entry.
+      // Browser sends initial resize — server pushes pendingResizes
+      // entry and sends to R.
       browser.sendResize(800, 600);
       const msg = await rClient.readMessage<ResizeMessage>();
       assertEquals(msg.type, "resize");
 
       // R draws plot 1 at DEFAULT dimensions (the resize hasn't been
       // processed yet by R's input handler — user typed fast).
+      // newPage:true tells the server this is a new plot.  The pending
+      // entry (800,600) doesn't match (672,672) → entry preserved.
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1" }],
         device: { width: 672, height: 672 },
-      });
+      }, { newPage: true });
       const frame1 = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame1.resize, undefined, "Plot 1 is a new plot");
     });
 
     await t.step("R processes initial resize — replay must be tagged", async () => {
       // R's input handler fires, reads resize(800,600), replays plot 1
-      // at 800x600.  Since the initial resize had no pendingResizes
-      // entry, the server has no way to tag this frame.
+      // at 800x600.  The initial resize entry is now consumed and the
+      // frame is tagged resize:true.
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1-at-800" }],
         device: { width: 800, height: 600 },
       });
       const replay = await browser.waitForType<FrameMessage>("frame");
 
-      // BUG: No pendingResizes entry for the initial resize.
-      // The frame arrives untagged → addPlot → duplicate of plot 1.
       assertEquals(
         replay.resize,
         true,
@@ -432,7 +411,7 @@ Deno.test("initial resize replay after first plot — must be tagged to avoid du
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "Plot 2 must be a new plot");
     });
@@ -474,7 +453,7 @@ Deno.test("post-frame ResizeObserver resize — no interference with new plot", 
     await rClient.sendFrame({
       ops: [{ op: "text", str: "plot1" }],
       device: { width: 800, height: 600 },
-    });
+    }, { newPage: true });
     const frame1 = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame1.resize, undefined, "Plot 1 is new");
 
@@ -499,7 +478,7 @@ Deno.test("post-frame ResizeObserver resize — no interference with new plot", 
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2" }],
         device: { width: 798, height: 598 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "Plot 2 must be a new plot");
     });
@@ -534,7 +513,7 @@ Deno.test("multiple resizes then new plot — all replays tagged", async (t) => 
     await rClient.sendFrame({
       ops: [{ op: "text", str: "plot1" }],
       device: { width: 800, height: 600 },
-    });
+    }, { newPage: true });
     await browser.waitForType<FrameMessage>("frame");
 
     await t.step("two rapid resizes", async () => {
@@ -568,7 +547,7 @@ Deno.test("multiple resizes then new plot — all replays tagged", async (t) => 
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot2" }],
         device: { width: 1000, height: 800 },
-      });
+      }, { newPage: true });
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "New plot untagged");
     });

@@ -87,10 +87,13 @@ cJSON *gc_to_cjson(const pGEcontext gc) {
     return g;
 }
 
-char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incremental) {
+char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incremental,
+                           int new_page) {
     cJSON *frame = cJSON_CreateObject();
     cJSON_AddStringToObject(frame, "type", "frame");
     cJSON_AddBoolToObject(frame, "incremental", incremental);
+    if (new_page && !incremental)
+        cJSON_AddBoolToObject(frame, "newPage", 1);
 
     cJSON *plot = cJSON_AddObjectToObject(frame, "plot");
     cJSON_AddNumberToObject(plot, "version", 1);

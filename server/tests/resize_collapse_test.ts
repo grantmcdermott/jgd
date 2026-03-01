@@ -59,7 +59,7 @@ Deno.test("deferred resize entry survives collapse from later resize", async (t)
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1" }],
         device: { width: 800, height: 600 },
-      });
+      }, { newPage: true });
 
       const frame = await browser.waitForType<FrameMessage>("frame");
       assertEquals(frame.resize, undefined, "Plot 1 must not be tagged");

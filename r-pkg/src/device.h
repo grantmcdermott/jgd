@@ -28,6 +28,7 @@ typedef struct {
     int last_flushed_ops;     /* op_count at last flush */
     int hold_level;           /* >0 means display updates are held (holdflush) */
     int replaying;            /* guard against re-entry from GEplayDisplayList */
+    int new_page;             /* 1 after cb_newPage; cleared on first complete flush */
     double pending_w;         /* pending resize width in pixels, 0 = none */
     double pending_h;         /* pending resize height in pixels */
     int pending_plot_index;   /* plotIndex from resize msg, -1 = none */

@@ -29,12 +29,12 @@ Deno.test("E2E: resize triggers canvas re-render", async (t) => {
     await rClient.sendFrame({
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#3366cc" } }],
       device: { width: 400, height: 300, bg: "#ffffff" },
-    });
+    }, { newPage: true });
     await delay(300);
     await rClient.sendFrame({
       ops: [{ op: "circle", x: 200, y: 150, r: 50, gc: { fill: "#33cc66" } }],
       device: { width: 400, height: 300, bg: "#ffffff" },
-    });
+    }, { newPage: true });
     await delay(500);
 
     const dimsBefore = await canvasDimensions(page);
