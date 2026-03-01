@@ -44,7 +44,10 @@ Deno.test("one resize per frame — no stale queue entries", async (t) => {
     await browser.waitForType<FrameMessage>("frame");
 
     // Prime dedup state: send a resize at initial dims so the server
-    // records lastResize.  Consume the pending resize with a frame.
+    // records lastResizeW/H.  Without this, the first test resize at
+    // (640, 480) would be the session's first resize, bypassing dedup
+    // and mixing up initialResizeSent logic.  Consume the entry with a
+    // frame so the queue starts empty for the actual test step.
     browser.sendResize(800, 600);
     await rClient.readMessage<ResizeMessage>();
     await rClient.sendFrame(
@@ -57,6 +60,10 @@ Deno.test("one resize per frame — no stale queue entries", async (t) => {
       // 1. Normal resize (no plotIndex) — e.g. ws.onopen
       // 2. plotIndex resize — e.g. ResizeObserver after debounce
       browser.sendResize(640, 480);
+      // Small delay to ensure the first resize is forwarded to R before
+      // the plotIndex resize arrives.  The exact value isn't critical:
+      // both messages travel through the same event loop, but the delay
+      // guarantees they're processed in separate turns.
       await delay(50);
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
 

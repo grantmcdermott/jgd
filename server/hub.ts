@@ -286,6 +286,9 @@ export class Hub {
         this.broadcastToClients(data);
         // Forward any deferred resize now that R has an active plot.
         // Push a pendingResizes entry so the replay frame gets tagged.
+        // Note: if send() fails (broken pipe), the entry becomes orphaned,
+        // but a failed send means the session is dying and will be cleaned
+        // up shortly — no practical impact.
         if (session.deferredResize) {
           const deferred = session.deferredResize;
           session.deferredResize = null;

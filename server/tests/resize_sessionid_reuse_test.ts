@@ -84,7 +84,10 @@ Deno.test("sessionId reuse — server disambiguates retired sessionIds", async (
 
         let receivedPlotIndexResize = false;
         try {
-          const msg = await r2.readMessage<ResizeMessage>(2000);
+          // Short timeout to detect "no message" — the resize should be
+          // dropped, so we expect a timeout.  500ms is sufficient because
+          // the server routes synchronously; longer only slows the test.
+          const msg = await r2.readMessage<ResizeMessage>(500);
           if (msg.type === "resize" && msg.plotIndex !== undefined) {
             receivedPlotIndexResize = true;
           }

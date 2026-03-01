@@ -135,14 +135,17 @@ Deno.test("rapid resizes after first frame — all replays tagged", async (t) =>
     await browser.connect(server.wsUrl);
     await rClient.waitForWelcome();
 
-    // Prime with an initial frame so hasReceivedFrame=true.
+    // Prime with a minimal initial frame so hasReceivedFrame=true.
+    // Using 1x1 avoids collision with the test resize dimensions.
     await rClient.sendFrame({
       ops: [{ op: "text", str: "init" }],
       device: { width: 1, height: 1 },
     });
     await browser.waitForType<FrameMessage>("frame");
 
-    // Prime dedup state with a baseline resize.
+    // Prime dedup state with a baseline resize at the same 1x1 dims
+    // so lastResizeW/H are set and the test resizes won't be treated
+    // as the session's initial resize.
     browser.sendResize(1, 1);
     await rClient.readMessage<ResizeMessage>();
 
