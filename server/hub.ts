@@ -136,11 +136,14 @@ export class Hub {
     try {
       const parsed = JSON.parse(data);
       if (typeof parsed.width === "number" && typeof parsed.height === "number" &&
-          (parsed.width > 0 && parsed.height > 0)) {
+          Number.isFinite(parsed.width) && Number.isFinite(parsed.height) &&
+          parsed.width > 0 && parsed.height > 0) {
+        const pi = parsed.plotIndex;
         dims = {
           width: parsed.width,
           height: parsed.height,
-          plotIndex: typeof parsed.plotIndex === "number" ? parsed.plotIndex : undefined,
+          plotIndex: (typeof pi === "number" && Number.isFinite(pi) &&
+                      Number.isInteger(pi) && pi >= 0) ? pi : undefined,
           sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : undefined,
         };
       }
