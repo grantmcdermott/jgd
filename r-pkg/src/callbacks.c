@@ -276,9 +276,9 @@ static void mcache_store(unsigned int hash, double v1, double v2, double v3) {
  *
  * plotIndex resizes are routed to the single-entry buffer (same as
  * check_incoming) so they are not applied to the current page.
- * Similarly, if multiple plotIndex resizes arrive during the loop,
- * only the last is retained in the buffer (same last-writer-wins
- * convention as normal resizes). */
+ * If the buffer is already occupied, additional plotIndex resizes
+ * are skipped (same guard as check_incoming) to avoid desynchronizing
+ * the server's pendingResizes queue. */
 static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
     for (int attempts = 0; attempts < 5; attempts++) {
         int n = transport_recv_line(&st->transport, buf, bufsize, 500);
@@ -301,11 +301,16 @@ static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
                     w->valuedouble > 0 && h->valuedouble > 0) {
                     if (cJSON_IsNumber(pi)) {
                         /* plotIndex resize — buffer for poll_resize_impl,
-                         * same as check_incoming does. */
-                        st->has_buffered_resize = 1;
-                        st->buffered_w = w->valuedouble;
-                        st->buffered_h = h->valuedouble;
-                        st->buffered_plot_index = (int)pi->valuedouble;
+                         * same as check_incoming does.  If the buffer is
+                         * already occupied, skip: overwriting would drop a
+                         * resize the server already queued, desynchronizing
+                         * the pendingResizes queue. */
+                        if (!st->has_buffered_resize) {
+                            st->has_buffered_resize = 1;
+                            st->buffered_w = w->valuedouble;
+                            st->buffered_h = h->valuedouble;
+                            st->buffered_plot_index = (int)pi->valuedouble;
+                        }
                     } else {
                         st->pending_w = w->valuedouble;
                         st->pending_h = h->valuedouble;
