@@ -69,6 +69,13 @@ export class RSession {
     return p;
   }
 
+  /** Send a message to R, logging and swallowing send errors. */
+  trySend(data: string): void {
+    this.send(data).catch((e) => {
+      console.error(`failed to send to R session ${this.id}: ${e}`);
+    });
+  }
+
   /** Close the underlying connection. */
   close(): void {
     try {

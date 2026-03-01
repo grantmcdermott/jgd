@@ -26,3 +26,11 @@ Invisible \code{NULL}. The device is opened as a side effect.
 Opens a graphics device that streams plot operations as JSON to an external
 renderer (e.g. a VS Code extension) over a Unix domain socket.
 }
+\section{Debugging}{
+
+Set \code{options(jgd.debug = TRUE)} before opening the device to enable
+frame-level diagnostic output on stderr (via \code{REprintf}).  This logs
+details about \code{newPage}, \code{flush_frame}, and \code{poll_resize} events, which
+is useful for diagnosing resize/replay issues.
+}
+

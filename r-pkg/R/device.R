@@ -11,6 +11,11 @@
 #'   If `NULL` (default), use the `jgd.socket` R option, falling back to the `JGD_SOCKET`
 #'   environment variable. If `JGD_SOCKET` environment variable is also unset,
 #'   the device discovers the socket via the discovery file.
+#' @section Debugging:
+#' Set `options(jgd.debug = TRUE)` before opening the device to enable
+#' frame-level diagnostic output on stderr (via `REprintf`).  This logs
+#' details about `newPage`, `flush_frame`, and `poll_resize` events, which
+#' is useful for diagnosing resize/replay issues.
 #' @return Invisible `NULL`. The device is opened as a side effect.
 #' @export
 jgd = function(

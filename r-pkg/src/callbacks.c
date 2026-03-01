@@ -19,6 +19,18 @@ static jgd_state_t *get_state(pDevDesc dd) {
     return (jgd_state_t *)dd->deviceSpecific;
 }
 
+/** Capture a display list snapshot for historical plot resizing. */
+static void jgd_capture_snapshot(jgd_state_t *st) {
+    pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
+    SEXP snap = GEcreateSnapshot(gdd);
+    if (snap != R_NilValue) {
+        if (st->last_snapshot != R_NilValue)
+            R_ReleaseObject(st->last_snapshot);
+        R_PreserveObject(snap);
+        st->last_snapshot = snap;
+    }
+}
+
 void jgd_flush_frame(jgd_state_t *st, int incremental) {
     int np = (!incremental && st->new_page && !st->replaying) ? 1 : 0;
     if (st->debug_frames) {
@@ -497,14 +509,7 @@ static void cb_mode(int mode, pDevDesc dd) {
             /* Capture a snapshot after each complete frame for historical
              * plot resizing.  The display list is valid at this point. */
             if (!incr) {
-                pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
-                SEXP snap = GEcreateSnapshot(gdd);
-                if (snap != R_NilValue) {
-                    if (st->last_snapshot != R_NilValue)
-                        R_ReleaseObject(st->last_snapshot);
-                    R_PreserveObject(snap);
-                    st->last_snapshot = snap;
-                }
+                jgd_capture_snapshot(st);
             }
         }
     }
@@ -523,15 +528,7 @@ static int cb_holdflush(pDevDesc dd, int level) {
         if (st->page.op_count > st->last_flushed_ops) {
             jgd_flush_frame(st, 0);
             st->last_flushed_ops = st->page.op_count;
-            /* Capture snapshot after complete frame flush */
-            pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
-            SEXP snap = GEcreateSnapshot(gdd);
-            if (snap != R_NilValue) {
-                if (st->last_snapshot != R_NilValue)
-                    R_ReleaseObject(st->last_snapshot);
-                R_PreserveObject(snap);
-                st->last_snapshot = snap;
-            }
+            jgd_capture_snapshot(st);
         }
     }
     return old;

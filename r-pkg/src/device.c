@@ -283,8 +283,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
      * history (after eviction).  Both sides evict the same way (shift
      * from front, same max size), so plotIndex maps directly to our
      * snapshot_store index — no snapshot_base offset needed. */
-    int store_idx = pi;
-    if (store_idx >= 0 && store_idx < st->snapshot_count) {
+    if (pi >= 0 && pi < st->snapshot_count) {
         /* Historical plot resize: replay the snapshot at new dimensions,
          * flush its frame, then restore the current display list.
          *
@@ -292,7 +291,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * and replays it through device callbacks.  We use hold_level
          * to suppress intermediate flushes and replaying=1 to prevent
          * snapshot saving in cb_newPage during the replay. */
-        SEXP snap = VECTOR_ELT(st->snapshot_store, store_idx);
+        SEXP snap = VECTOR_ELT(st->snapshot_store, pi);
         SEXP current = PROTECT(GEcreateSnapshot(gdd));
 
         st->replaying = 1;

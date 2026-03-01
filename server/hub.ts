@@ -113,11 +113,7 @@ export class Hub {
   /** Broadcast a message string to all connected R sessions. */
   broadcastToR(data: string): void {
     for (const session of this.sessions.values()) {
-      session.send(data).catch((e) => {
-        console.error(
-          `failed to send to R session ${session.id}: ${e}`,
-        );
-      });
+      session.trySend(data);
     }
   }
 
@@ -184,11 +180,7 @@ export class Hub {
         height: dims!.height,
         plotIndex: dims!.plotIndex,
       });
-      session.send(forR).catch((e) => {
-        console.error(
-          `failed to send to R session ${session.id}: ${e}`,
-        );
-      });
+      session.trySend(forR);
       return;
     }
 
@@ -264,11 +256,7 @@ export class Hub {
         session.lastResizeW = dims.width;
         session.lastResizeH = dims.height;
       }
-      session.send(data).catch((e) => {
-        console.error(
-          `failed to send to R session ${session.id}: ${e}`,
-        );
-      });
+      session.trySend(data);
     }
   }
 
@@ -284,8 +272,6 @@ export class Hub {
         session.hasReceivedFrame = true;
         let data = line;
         const isNewPage = /"newPage"\s*:\s*true/.test(line);
-        const isIncremental = /"incremental"\s*:\s*true/.test(line);
-        let classification = isNewPage ? "newPage" : isIncremental ? "incremental" : "complete";
         // Tag resize-triggered frames so the browser can update in place.
         // Use dimension matching to handle R-side coalescing: when R
         // receives multiple resizes quickly, it may only replay the last
@@ -298,30 +284,41 @@ export class Hub {
         // new plot's dimensions (Race A: cb_newPage consumed the resize),
         // silently drain it so it doesn't contaminate later frames, but
         // do NOT tag the frame as a resize.
-        if (session.pendingResizes.length > 0) {
+        const hadPending = session.pendingResizes.length > 0;
+        let consumedEntry: { plotIndex?: number } | undefined;
+        let drainedPending = false;
+        if (hadPending) {
           const frameDims = extractDeviceDims(line);
           if (isNewPage) {
             // New plot: drain matching entry if present (Race A cleanup),
             // but never tag.  No FIFO fallback — a non-matching entry
             // belongs to a resize that R hasn't replayed yet.
             drainMatchingEntry(session.pendingResizes, frameDims);
-            classification = "newPage (drained pending)";
+            drainedPending = true;
           } else {
-            const entry = consumePendingResize(session.pendingResizes, frameDims);
-            if (entry) {
+            consumedEntry = consumePendingResize(session.pendingResizes, frameDims);
+            if (consumedEntry) {
               data = injectResizeFlag(data);
-              if (entry.plotIndex !== undefined) {
-                data = injectPlotIndex(data, entry.plotIndex);
+              if (consumedEntry.plotIndex !== undefined) {
+                data = injectPlotIndex(data, consumedEntry.plotIndex);
               }
-              classification = entry.plotIndex !== undefined
-                ? `resize (plotIndex=${entry.plotIndex})`
-                : "resize (consumed pending)";
-            } else {
-              classification = "UNTAGGED (no pending resize!)";
             }
           }
         }
         if (this.verbose) {
+          const isIncremental = /"incremental"\s*:\s*true/.test(line);
+          let classification: string;
+          if (drainedPending) {
+            classification = "newPage (drained pending)";
+          } else if (consumedEntry) {
+            classification = consumedEntry.plotIndex !== undefined
+              ? `resize (plotIndex=${consumedEntry.plotIndex})`
+              : "resize (consumed pending)";
+          } else if (hadPending && !isNewPage) {
+            classification = "UNTAGGED (no pending resize!)";
+          } else {
+            classification = isNewPage ? "newPage" : isIncremental ? "incremental" : "complete";
+          }
           console.error(
             `[hub] frame: ${classification}, pendingResizes=${session.pendingResizes.length}` +
             `, deferred=${!!session.deferredResize}, newPage=${isNewPage}` +
@@ -361,11 +358,7 @@ export class Hub {
               width: deferred.width,
               height: deferred.height,
             });
-            session.send(deferred.data).catch((e) => {
-              console.error(
-                `failed to send deferred resize to R session ${session.id}: ${e}`,
-              );
-            });
+            session.trySend(deferred.data);
             if (this.verbose) {
               console.error(
                 `[hub] sent deferred resize to R (${deferred.width}x${deferred.height})` +
@@ -427,11 +420,7 @@ export class Hub {
         ascent: 0,
         descent: 0,
       });
-      session.send(fallback).catch((e) => {
-        console.error(
-          `failed to send metrics fallback to R session ${session.id}: ${e}`,
-        );
-      });
+      session.trySend(fallback);
       return;
     }
 
@@ -457,11 +446,7 @@ export class Hub {
       });
       const target = this.sessions.get(currentSessionId);
       if (target) {
-        target.send(fallback).catch((e) => {
-          console.error(
-            `failed to send metrics fallback to R session ${currentSessionId}: ${e}`,
-          );
-        });
+        target.trySend(fallback);
       }
       if (this.verbose) {
         console.error(
@@ -497,11 +482,7 @@ export class Hub {
 
     const session = this.sessions.get(sessionId);
     if (session) {
-      session.send(line).catch((e) => {
-        console.error(
-          `failed to send metrics response to R session ${sessionId}: ${e}`,
-        );
-      });
+      session.trySend(line);
     }
   }
 
