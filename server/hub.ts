@@ -49,6 +49,14 @@ export class Hub {
   unregisterSession(id: string): void {
     this.sessions.delete(id);
     this.retiredSessionIds.add(id);
+    // Trim oldest entries to prevent unbounded growth on long-running servers.
+    if (this.retiredSessionIds.size > 1000) {
+      let toRemove = this.retiredSessionIds.size - 500;
+      for (const old of this.retiredSessionIds) {
+        if (toRemove-- <= 0) break;
+        this.retiredSessionIds.delete(old);
+      }
+    }
     // Clean up any pending metrics routing entries for this session
     for (const [reqId, sessId] of this.metricsRouting) {
       if (sessId === id) {
