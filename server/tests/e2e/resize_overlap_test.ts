@@ -166,15 +166,18 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
       })()`);
 
       // The ResizeObserver fires -> replayCurrentPlot() + debounced resize (300ms)
-      // Wait for the debounced resize message to reach R
+      // With plotIndex support, the browser sends plotIndex=0 when viewing plot 1 of 2.
+      // Wait for the debounced resize message to reach R.
       const msg = await readOfType<ResizeMessage>(
         rClient, "resize", (m) => m.width !== 800 || m.height !== 600,
       );
 
-      // R responds with resize frame
+      // R responds with the resized version of the viewed plot (plot 1 = red).
+      // In a real session, R replays the plot 0 snapshot which produces the
+      // same red content at new dimensions.
       await rClient.sendFrame({
-        ops: [{ op: "rect", x0: 0, y0: 0, x1: msg.width, y1: msg.height, gc: { fill: "#00ff00" } }],
-        device: { width: msg.width, height: msg.height, bg: "#00ff00" },
+        ops: [{ op: "rect", x0: 0, y0: 0, x1: msg.width, y1: msg.height, gc: { fill: "#ff0000" } }],
+        device: { width: msg.width, height: msg.height, bg: "#ff0000" },
       });
       await delay(500);
 
@@ -186,7 +189,7 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
       const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasRed, true, "canvas should still show plot 1 (red)");
       assertEquals(colors.hasBlue, false, "no ghost of plot 2 (blue)");
-      assertEquals(colors.hasGreen, false, "no leak of resize frame (green)");
+      assertEquals(colors.hasGreen, false, "no leak of unrelated resize frame (green)");
     });
 
     await t.step("sequential resizes — both tagged as resize", async () => {

@@ -339,11 +339,20 @@ export const assets: Record<string, { body: string; type: string }> = {
         clearTimeout(resizeTimer);
         resizeTimer = setTimeout(function() {
             if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
+                var msg = {
                     type: 'resize',
                     width: container.clientWidth,
                     height: container.clientHeight
-                }));
+                };
+                // Include plotIndex when viewing a historical (non-latest) plot
+                // so R re-renders the specific snapshot at the new dimensions.
+                var idx = history.currentIndex();
+                var cnt = history.count();
+                if (idx > 0 && idx < cnt) {
+                    msg.plotIndex = idx - 1;
+                    msg.sessionId = history.activeSessionId();
+                }
+                ws.send(JSON.stringify(msg));
             }
         }, 300);
     });
