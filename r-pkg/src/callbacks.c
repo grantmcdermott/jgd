@@ -259,7 +259,10 @@ static void mcache_store(unsigned int hash, double v1, double v2, double v3) {
  * any resizes that arrive after the metrics exchange completes.
  *
  * plotIndex resizes are routed to the single-entry buffer (same as
- * check_incoming) so they are not applied to the current page. */
+ * check_incoming) so they are not applied to the current page.
+ * Similarly, if multiple plotIndex resizes arrive during the loop,
+ * only the last is retained in the buffer (same last-writer-wins
+ * convention as normal resizes). */
 static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
     for (int attempts = 0; attempts < 5; attempts++) {
         int n = transport_recv_line(&st->transport, buf, bufsize, 500);

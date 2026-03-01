@@ -91,7 +91,7 @@ Deno.test("E2E: ResizeObserver sends plotIndex when viewing past plot", async (t
       // Wait for resize message to reach R
       const msg = await readOfType<ResizeMessage>(
         rClient, "resize", 5000,
-        (m: ResizeMessage) => m.width !== 500 && m.height !== 350,
+        (m: ResizeMessage) => m.width !== 500 || m.height !== 350,
       );
 
       // When viewing plot 1 of 2 (0-indexed: plotIndex=0), the resize

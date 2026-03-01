@@ -131,6 +131,11 @@ Deno.test({
           true,
           "First resize frame must be tagged resize:true",
         );
+        assertEquals(
+          frame3.newPage,
+          undefined,
+          "First resize frame must not have newPage",
+        );
 
         // Send another resize
         browser.sendResize(700, 500);
@@ -144,6 +149,11 @@ Deno.test({
           frame4.resize,
           true,
           "Second resize frame must also be tagged resize:true",
+        );
+        assertEquals(
+          frame4.newPage,
+          undefined,
+          "Second resize frame must not have newPage",
         );
       } finally {
         r.kill();
