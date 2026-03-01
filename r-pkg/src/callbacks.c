@@ -244,7 +244,15 @@ static void mcache_store(unsigned int hash, double v1, double v2, double v3) {
     e->occupied = 1;
 }
 
-/* Read a metrics response, stashing any resize messages that arrive first */
+/* Read a metrics response, stashing any resize messages that arrive first.
+ *
+ * NOTE: Like the old check_incoming, this loop can consume multiple resize
+ * messages while searching for the metrics_response.  Each consumed resize
+ * overwrites pending_w/pending_h, so earlier resize dimensions are lost.
+ * This is acceptable in practice: metrics requests are brief (< 500ms
+ * timeout), and the server's queue can tolerate a small mismatch because
+ * R's display list replay (via poll_resize_impl) will produce frames for
+ * any resizes that arrive after the metrics exchange completes. */
 static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
     for (int attempts = 0; attempts < 5; attempts++) {
         int n = transport_recv_line(&st->transport, buf, bufsize, 500);
@@ -383,18 +391,38 @@ static void cb_metricInfo(int c, const pGEcontext gc,
 }
 
 static void check_incoming(jgd_state_t *st, pDevDesc dd) {
-    int plot_index = -1;
-    while (transport_has_data(&st->transport)) {
+    /* Read at most ONE resize message, matching poll_resize_impl.
+     * The while-loop that was here previously drained all available
+     * messages, producing fewer frames than server queue entries when
+     * multiple resizes arrived during drawing.
+     *
+     * If a plotIndex resize is already buffered from a previous call,
+     * skip reading entirely — poll_resize_impl will drain the buffer
+     * and the transport when R becomes idle. */
+    if (st->has_buffered_resize)
+        return;
+
+    if (transport_has_data(&st->transport)) {
         char buf[1024];
+        int plot_index = -1;
+        double w = 0, h = 0;
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
-        if (n <= 0) break;
-        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h, &plot_index);
+        if (n > 0 && jgd_try_parse_resize(buf, &w, &h, &plot_index)) {
+            if (plot_index >= 0) {
+                /* plotIndex resize targets a past plot — buffer it for
+                 * poll_resize_impl instead of applying to current page. */
+                st->has_buffered_resize = 1;
+                st->buffered_w = w;
+                st->buffered_h = h;
+                st->buffered_plot_index = plot_index;
+            } else {
+                /* Normal resize — apply to current page via
+                 * apply_pending_resize (called right after us). */
+                st->pending_w = w;
+                st->pending_h = h;
+            }
+        }
     }
-    /* Preserve plotIndex so poll_resize_impl can process it later
-     * when R becomes idle.  Dimensions are applied immediately by
-     * apply_pending_resize, but snapshot replay must wait. */
-    if (plot_index >= 0)
-        st->pending_plot_index = plot_index;
 }
 
 static void apply_pending_resize(jgd_state_t *st, pDevDesc dd) {

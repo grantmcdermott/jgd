@@ -31,6 +31,14 @@ typedef struct {
     double pending_w;         /* pending resize width in pixels, 0 = none */
     double pending_h;         /* pending resize height in pixels */
     int pending_plot_index;   /* plotIndex from resize msg, -1 = none */
+    /* Single-entry buffer for a plotIndex resize read by check_incoming
+     * during drawing.  plotIndex resizes target past plots — their dims
+     * must NOT be applied to the current page.  poll_resize_impl drains
+     * this buffer before reading from the transport. */
+    int has_buffered_resize;
+    double buffered_w;
+    double buffered_h;
+    int buffered_plot_index;
     void *ge_dev;             /* pGEDevDesc — stable for device lifetime */
     SEXP snapshot_store;      /* VECSXP holding GEcreateSnapshot results */
     int snapshot_count;       /* number of stored snapshots */

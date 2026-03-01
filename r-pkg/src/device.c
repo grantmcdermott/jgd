@@ -228,14 +228,22 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
 /* Drain resize messages from the transport socket into pending_w/pending_h.
    Returns 1 if a resize was applied and the display list replayed, 0 otherwise. */
 static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
-    /* Read at most ONE resize message per call.  The caller invokes us
-     * repeatedly (via C_jgd_poll_resize or the R input handler), so each
-     * resize produces its own frame.  This keeps the server's per-session
-     * queue in sync — the server pushes one queue entry per resize sent
-     * and shifts one entry per frame received.  Reading all messages in a
-     * loop (coalescing) would produce fewer frames than queue entries,
-     * causing stale entries to mis-tag subsequent regular frames. */
-    if (transport_has_data(&st->transport)) {
+    /* Drain at most ONE resize into pending_w/pending_h per call.
+     * The caller invokes us repeatedly (via C_jgd_poll_resize or the R
+     * input handler), so each resize produces its own frame.  This keeps
+     * the server's per-session queue in sync — the server pushes one
+     * queue entry per resize sent and shifts one entry per frame received.
+     *
+     * check_incoming may have buffered a plotIndex resize that it read
+     * during drawing but could not process (plotIndex resizes require
+     * snapshot replay, which is only safe when R is idle).  Drain the
+     * buffer before reading from the transport. */
+    if (st->has_buffered_resize) {
+        st->pending_w = st->buffered_w;
+        st->pending_h = st->buffered_h;
+        st->pending_plot_index = st->buffered_plot_index;
+        st->has_buffered_resize = 0;
+    } else if (transport_has_data(&st->transport)) {
         char buf[1024];
         int plot_index = -1;
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
