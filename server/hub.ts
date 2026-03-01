@@ -497,13 +497,13 @@ function extractDeviceDims(line: string): { width: number; height: number } | nu
  *
  * plotIndex entries are consumed strictly FIFO (no coalescing).
  *
- * Normal entries use dimension matching to handle R-side coalescing: when R
- * receives multiple resize messages quickly, it processes only the last one
- * and sends a single replay frame.  We find the last normal entry whose
- * dimensions match the frame's device dimensions (searching up to the first
- * plotIndex boundary) and consume all normal entries up to and including it.
- * This drains entries for resizes that R coalesced while correctly preserving
- * entries for resizes that R will respond to individually.
+ * Normal entries use dimension matching:
+ * - If the first entry matches, consume it (FIFO — R is processing in order).
+ * - If the first entry does NOT match, R may have coalesced: search deeper
+ *   for the last matching entry and drain all entries up to it.
+ * - If dimensions are available but nothing matches, fall back to FIFO
+ *   (R may have rendered at adjusted dimensions due to device constraints).
+ * - If dimensions are unavailable (unparseable), fall back to FIFO.
  */
 function consumePendingResize(
   queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
@@ -516,10 +516,19 @@ function consumePendingResize(
     return queue.shift()!;
   }
 
-  // Normal entries: find the last match within the consecutive normal prefix.
   if (frameDims) {
+    // If the first entry matches, consume it directly (R is processing
+    // resizes in order, no coalescing).  This avoids over-consuming
+    // later entries with the same dimensions (A, B, A pattern).
+    if (queue[0].width === frameDims.width && queue[0].height === frameDims.height) {
+      return queue.shift()!;
+    }
+
+    // First entry doesn't match — R may have coalesced past it.  Find the
+    // last matching entry in the consecutive normal prefix and drain all
+    // entries up to and including it.
     let matchIdx = -1;
-    for (let i = 0; i < queue.length; i++) {
+    for (let i = 1; i < queue.length; i++) {
       if (queue[i].plotIndex !== undefined) break;
       if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
         matchIdx = i;
@@ -529,9 +538,13 @@ function consumePendingResize(
       const removed = queue.splice(0, matchIdx + 1);
       return removed[removed.length - 1];
     }
+
+    // No dimension match — R may have rendered at adjusted dimensions
+    // (e.g. device constraints).  Fall back to FIFO.
+    return queue.shift()!;
   }
 
-  // Fallback: consume the first entry (dimensions unknown or no match).
+  // Fallback: dimensions unavailable (unparseable frame) — consume FIFO.
   return queue.shift()!;
 }
 
