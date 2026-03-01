@@ -216,7 +216,7 @@ static cJSON *metrics_gc_cjson(const pGEcontext gc) {
     return g;
 }
 
-static int metrics_id_counter = 0;
+static unsigned int metrics_id_counter = 0;
 
 /* --- Simple metrics cache --- */
 #define MCACHE_SIZE 512
@@ -369,9 +369,9 @@ static void cb_metricInfo(int c, const pGEcontext gc,
         return;
     }
 
-    int cc = c < 0 ? -c : c;
+    unsigned int cc = c < 0 ? -(unsigned int)c : (unsigned int)c;
     char key[16];
-    snprintf(key, sizeof(key), "c%d", cc);
+    snprintf(key, sizeof(key), "c%u", cc);
     unsigned int h = mcache_hash(key, (int)strlen(key), gc);
     mcache_entry_t *cached = mcache_lookup(h);
     if (cached) {
