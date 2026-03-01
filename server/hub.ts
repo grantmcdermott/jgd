@@ -505,7 +505,7 @@ function extractDeviceDims(line: string): { width: number; height: number } | nu
  *   (R may have rendered at adjusted dimensions due to device constraints).
  * - If dimensions are unavailable (unparseable), fall back to FIFO.
  */
-function consumePendingResize(
+export function consumePendingResize(
   queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
   frameDims: { width: number; height: number } | null,
 ): { plotIndex?: number } | undefined {
