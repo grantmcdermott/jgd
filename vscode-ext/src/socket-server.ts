@@ -259,7 +259,7 @@ export class SocketServer {
         }
     }
 
-    broadcastResize(w: number, h: number, plotIndex?: number, sessionId?: string) {
+    private broadcastResize(w: number, h: number, plotIndex?: number, sessionId?: string) {
         // plotIndex resizes require sessionId for routing.
         // Route to the target session only; drop if the session is dead.
         if (plotIndex !== undefined) {
