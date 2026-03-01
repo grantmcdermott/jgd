@@ -6,9 +6,15 @@
 import { assertEquals } from "@std/assert";
 import { consumePendingResize } from "../hub.ts";
 
-// Helper to build a normal entry.
+// Helper to build a normal entry (explicit plotIndex: undefined).
 function normal(w: number, h: number) {
   return { plotIndex: undefined, width: w, height: h };
+}
+
+// Helper to build a normal entry with plotIndex omitted (as production
+// code may push entries without the field).
+function normalOmitted(w: number, h: number) {
+  return { width: w, height: h };
 }
 
 // Helper to build a plotIndex entry.
@@ -142,4 +148,39 @@ Deno.test("coalescing search stops at plotIndex boundary", () => {
   assertEquals(entry?.plotIndex, undefined);
   assertEquals(queue.length, 2);
   assertEquals(queue[0].plotIndex, 0, "plotIndex entry should remain");
+});
+
+// ---------------------------------------------------------------------------
+// Coalescing with duplicate dims deeper in queue ("last match" matters)
+// ---------------------------------------------------------------------------
+
+Deno.test("coalescing: duplicate dims in non-first position — last match wins", () => {
+  // A, B, C, B pattern — R coalesces to last B.
+  const queue = [normal(800, 600), normal(900, 700), normal(1024, 768), normal(900, 700)];
+
+  // First entry (800x600) doesn't match → coalescing path.
+  // Last match for 900x700 is at index 3 → drain all four entries.
+  const entry = consumePendingResize(queue, { width: 900, height: 700 });
+  assertEquals(entry?.plotIndex, undefined);
+  assertEquals(queue.length, 0, "all four entries should be drained");
+});
+
+Deno.test("coalescing: first match at index 1, later match at index 3 — drains through index 3", () => {
+  const queue = [normal(800, 600), normal(640, 480), normal(900, 700), normal(640, 480)];
+
+  const entry = consumePendingResize(queue, { width: 640, height: 480 });
+  assertEquals(entry?.plotIndex, undefined);
+  assertEquals(queue.length, 0, "should drain through the last 640x480 at index 3");
+});
+
+// ---------------------------------------------------------------------------
+// Entries with plotIndex field omitted (vs explicit undefined)
+// ---------------------------------------------------------------------------
+
+Deno.test("entry with plotIndex omitted treated as normal entry", () => {
+  const queue = [normalOmitted(800, 600), normal(900, 700)];
+  const entry = consumePendingResize(queue, { width: 800, height: 600 });
+  assertEquals(entry?.plotIndex, undefined);
+  assertEquals(queue.length, 1);
+  assertEquals(queue[0].width, 900);
 });

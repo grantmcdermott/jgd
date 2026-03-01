@@ -520,6 +520,14 @@ export function consumePendingResize(
     // If the first entry matches, consume it directly (R is processing
     // resizes in order, no coalescing).  This avoids over-consuming
     // later entries with the same dimensions (A, B, A pattern).
+    //
+    // Known limitation: if R receives A, B, A and coalesces all three
+    // into a single frame at A's dims, we consume only the first entry
+    // and the remaining B + A become orphaned.  This is inherently
+    // ambiguous (we can't distinguish "processed first individually"
+    // from "coalesced to matching dims") and unlikely because the dedup
+    // guard prevents consecutive identical dims — A, B, A requires
+    // three genuinely distinct events queued before R processes any.
     if (queue[0].width === frameDims.width && queue[0].height === frameDims.height) {
       return queue.shift()!;
     }
