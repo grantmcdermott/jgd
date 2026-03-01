@@ -9,8 +9,10 @@ Deno.test("discovery file lifecycle", async (t) => {
   // POSIX uses TMPDIR; Windows uses TEMP/TMP.
   const origTmpDir = Deno.env.get("TMPDIR");
   const origTemp = Deno.env.get("TEMP");
+  const origTmp = Deno.env.get("TMP");
   Deno.env.set("TMPDIR", tmpDir);
   Deno.env.set("TEMP", tmpDir);
+  Deno.env.set("TMP", tmpDir);
 
   try {
     await t.step("removeDiscovery skips file owned by another PID", async () => {
@@ -75,6 +77,11 @@ Deno.test("discovery file lifecycle", async (t) => {
       Deno.env.set("TEMP", origTemp);
     } else {
       Deno.env.delete("TEMP");
+    }
+    if (origTmp !== undefined) {
+      Deno.env.set("TMP", origTmp);
+    } else {
+      Deno.env.delete("TMP");
     }
     try {
       await Deno.remove(tmpDir, { recursive: true });
