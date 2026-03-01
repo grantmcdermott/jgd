@@ -183,15 +183,22 @@ export class Hub {
           continue;
         }
       }
-      // Collapse: remove any previous normal resize entries from the queue.
-      // Multiple normal resizes in flight are redundant (only the latest
-      // matters), and keeping stale entries would mis-tag subsequent frames.
-      // plotIndex entries are preserved to maintain correct ordering.
-      session.pendingResizes = session.pendingResizes.filter(
-        (e) => e.plotIndex !== undefined,
-      );
-      if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
-      session.pendingResizes.push({ plotIndex: undefined });
+      // Only push a pendingResizes entry when R has already sent at least
+      // one frame.  Before the first frame, R's display list is empty so
+      // GEplayDisplayList is a no-op — R won't send a frame back, and the
+      // stale entry would incorrectly tag the first real new-plot frame as
+      // resize:true.
+      if (session.hasReceivedFrame) {
+        // Collapse: remove any previous normal resize entries from the queue.
+        // Multiple normal resizes in flight are redundant (only the latest
+        // matters), and keeping stale entries would mis-tag subsequent frames.
+        // plotIndex entries are preserved to maintain correct ordering.
+        session.pendingResizes = session.pendingResizes.filter(
+          (e) => e.plotIndex !== undefined,
+        );
+        if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
+        session.pendingResizes.push({ plotIndex: undefined });
+      }
       if (dims) {
         session.lastResizeW = dims.width;
         session.lastResizeH = dims.height;
@@ -213,6 +220,7 @@ export class Hub {
 
     switch (type) {
       case "frame": {
+        session.hasReceivedFrame = true;
         let data = line;
         // Tag resize-triggered frames so the browser can update in place.
         // Shift from the queue so each frame gets the correct entry even

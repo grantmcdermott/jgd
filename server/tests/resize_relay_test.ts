@@ -15,7 +15,15 @@ Deno.test("Browser→R resize relay", async (t) => {
     await rClient.connect(server.socketPath);
     await browser.connect(server.wsUrl);
 
-    // Wait for WebSocket registration
+    // Send an initial frame so the session is marked as having received
+    // a frame (hasReceivedFrame=true).  Without this, resize messages
+    // won't push pendingResizes entries (stale-entry fix).
+    await rClient.sendFrame(
+      { ops: [{ op: "text", str: "init" }], device: { width: 1, height: 1 } },
+    );
+    await browser.waitForType<FrameMessage>("frame");
+
+    // Prime dedup state with an initial resize
     browser.sendResize(1, 1);
     await rClient.readMessage<ResizeMessage>();
 

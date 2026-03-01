@@ -30,6 +30,8 @@ export class RSession {
   pendingResizes: Array<{ plotIndex?: number }> = [];
   lastResizeW = 0;
   lastResizeH = 0;
+  /** True after the first "frame" message has been received from R. */
+  hasReceivedFrame = false;
   /** True when the server remapped this session's ID (retired ID dedup). */
   remappedSessionId = false;
   private conn: RConn;
