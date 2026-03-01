@@ -44,8 +44,7 @@ Deno.test("plotIndex resize — session isolation after reconnect", async (t) =>
         await r2.sendFrame(
           { ops: [{ op: "circle" }, { op: "text", str: "plot2" }], device: { width: 800, height: 600 } },
         );
-        const frame2 = await browser.waitForType<FrameMessage>("frame");
-        const session2Id = frame2.plot.sessionId;
+        await browser.waitForType<FrameMessage>("frame");
 
         // Prime dedup state for the new session
         browser.sendResize(800, 600);
