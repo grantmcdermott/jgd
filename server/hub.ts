@@ -183,12 +183,31 @@ export class Hub {
           continue;
         }
       }
-      // Only push a pendingResizes entry when R has already sent at least
-      // one frame.  Before the first frame, R's display list is empty so
-      // GEplayDisplayList is a no-op — R won't send a frame back, and the
-      // stale entry would incorrectly tag the first real new-plot frame as
-      // resize:true.
-      if (session.hasReceivedFrame) {
+
+      if (!session.hasReceivedFrame) {
+        // Before R has sent any frame, limit what we forward to avoid the
+        // stashed-resize bug: recv_metrics_response can pick up resize
+        // messages during text-metric waits and stash them in pending_w/h.
+        // The resulting replay frame has no pendingResizes entry, so it
+        // arrives untagged → browser calls addPlot → duplicate plot.
+        if (!session.initialResizeSent) {
+          // Allow the very first resize (ws.onopen) through so R's device
+          // gets the correct initial dimensions.  Don't push pendingResizes:
+          // R's display list is empty, GEplayDisplayList is a no-op, and
+          // R won't send a frame back.
+          session.initialResizeSent = true;
+        } else {
+          // Defer subsequent resizes.  The latest deferred resize will be
+          // forwarded after the first frame arrives (see handleRMessage).
+          session.deferredResize = data;
+          if (dims) {
+            session.lastResizeW = dims.width;
+            session.lastResizeH = dims.height;
+          }
+          continue;
+        }
+      } else {
+        // R has sent at least one frame — normal resize path.
         // Collapse: remove any previous normal resize entries from the queue.
         // Multiple normal resizes in flight are redundant (only the latest
         // matters), and keeping stale entries would mis-tag subsequent frames.
@@ -199,6 +218,7 @@ export class Hub {
         if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
         session.pendingResizes.push({ plotIndex: undefined });
       }
+
       if (dims) {
         session.lastResizeW = dims.width;
         session.lastResizeH = dims.height;
@@ -248,6 +268,18 @@ export class Hub {
           }
         }
         this.broadcastToClients(data);
+        // Forward any deferred resize now that R has an active plot.
+        // Push a pendingResizes entry so the replay frame gets tagged.
+        if (session.deferredResize) {
+          const deferred = session.deferredResize;
+          session.deferredResize = null;
+          session.pendingResizes.push({ plotIndex: undefined });
+          session.send(deferred).catch((e) => {
+            console.error(
+              `failed to send deferred resize to R session ${session.id}: ${e}`,
+            );
+          });
+        }
         if (this.verbose) {
           console.error(
             `frame from R session ${session.id} (${data.length} bytes)`,

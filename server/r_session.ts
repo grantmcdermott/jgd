@@ -32,6 +32,17 @@ export class RSession {
   lastResizeH = 0;
   /** True after the first "frame" message has been received from R. */
   hasReceivedFrame = false;
+  /** Whether the initial (ws.onopen) resize has been forwarded to R. */
+  initialResizeSent = false;
+  /**
+   * Deferred resize data (full JSON string).  Resizes that arrive after the
+   * initial one but before R's first frame are stored here instead of being
+   * forwarded.  This prevents recv_metrics_response from stashing the
+   * resize during text-metric waits, which would produce an untagged replay
+   * frame (duplicate plot bug).  The deferred resize is forwarded after the
+   * first frame arrives (see Hub.handleRMessage).
+   */
+  deferredResize: string | null = null;
   /** True when the server remapped this session's ID (retired ID dedup). */
   remappedSessionId = false;
   private conn: RConn;

@@ -119,18 +119,19 @@ Deno.test("two resizes before first frame — replay must be tagged", async (t) 
       assertEquals(msg.type, "resize");
     });
 
-    await t.step("second resize (ResizeObserver, different dims) before any frame", async () => {
+    await t.step("second resize (ResizeObserver, different dims) is deferred", async () => {
+      // With the fix, the server defers this resize instead of forwarding
+      // it to R.  This prevents recv_metrics_response from stashing it
+      // during text-metric waits (which would produce an untagged replay).
       browser.sendResize(900, 700);
-      const msg = await rClient.readMessage<ResizeMessage>();
-      assertEquals(msg.type, "resize");
-      assertEquals(msg.width, 900);
+      // R does NOT receive the resize yet — it's held by the server.
     });
 
-    await t.step("first frame (new plot) must NOT be tagged", async () => {
-      // R draws plot 1 — new plot, not a resize response.
+    await t.step("first frame triggers deferred resize forwarding", async () => {
+      // R draws plot 1 at the initial resize dimensions.
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1-new" }],
-        device: { width: 900, height: 700 },
+        device: { width: 800, height: 600 },
       });
 
       const frame1 = await browser.waitForType<FrameMessage>("frame");
@@ -139,11 +140,16 @@ Deno.test("two resizes before first frame — replay must be tagged", async (t) 
         undefined,
         "New-plot frame must not be tagged as resize response",
       );
+
+      // After the first frame, the server forwards the deferred resize to R.
+      const deferredMsg = await rClient.readMessage<ResizeMessage>();
+      assertEquals(deferredMsg.type, "resize");
+      assertEquals(deferredMsg.width, 900);
+      assertEquals(deferredMsg.height, 700);
     });
 
-    await t.step("second frame (stashed resize replay) MUST be tagged resize:true", async () => {
-      // R processes the stashed resize (from recv_metrics_response) and
-      // replays the current plot at the new dimensions.
+    await t.step("replay frame from deferred resize MUST be tagged resize:true", async () => {
+      // R replays the current plot at the deferred resize dimensions.
       await rClient.sendFrame({
         ops: [{ op: "text", str: "plot1-resized" }],
         device: { width: 900, height: 700 },
@@ -153,7 +159,7 @@ Deno.test("two resizes before first frame — replay must be tagged", async (t) 
       assertEquals(
         frame2.resize,
         true,
-        "Replay frame from stashed resize must be tagged resize:true (otherwise browser creates duplicate plot)",
+        "Replay frame from deferred resize must be tagged resize:true",
       );
     });
   } finally {
