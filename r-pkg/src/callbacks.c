@@ -21,6 +21,12 @@ static jgd_state_t *get_state(pDevDesc dd) {
 
 void jgd_flush_frame(jgd_state_t *st, int incremental) {
     int np = (!incremental && st->new_page && !st->replaying) ? 1 : 0;
+    if (st->debug_frames) {
+        REprintf("[jgd] flush_frame: incr=%d new_page=%d replaying=%d np=%d "
+                 "ops=%d last_flushed=%d page_count=%d\n",
+                 incremental, st->new_page, st->replaying, np,
+                 st->page.op_count, st->last_flushed_ops, st->page_count);
+    }
     char *json = page_serialize_frame(&st->page, st->session_id, incremental, np);
     if (json) {
         transport_send(&st->transport, json, strlen(json));
@@ -37,7 +43,17 @@ static void cb_deactivate(const pDevDesc dd) { (void)dd; }
 static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
 
+    if (st->debug_frames) {
+        REprintf("[jgd] cb_newPage: page_count=%d ops=%d last_flushed=%d "
+                 "replaying=%d new_page=%d\n",
+                 st->page_count, st->page.op_count, st->last_flushed_ops,
+                 st->replaying, st->new_page);
+    }
+
     if (st->page_count > 0 && st->page.op_count > st->last_flushed_ops && !st->replaying) {
+        if (st->debug_frames)
+            REprintf("[jgd] cb_newPage: flushing %d unflushed ops\n",
+                     st->page.op_count - st->last_flushed_ops);
         jgd_flush_frame(st, 0);
     }
 

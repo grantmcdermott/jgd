@@ -107,6 +107,11 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     st->snapshot_store = Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS);
     R_PreserveObject(st->snapshot_store);
     st->last_snapshot = R_NilValue;
+    /* Check options(jgd.debug = TRUE) for frame-level debug output */
+    {
+        SEXP dbg = Rf_GetOption1(Rf_install("jgd.debug"));
+        st->debug_frames = (dbg != R_NilValue && Rf_asLogical(dbg) == TRUE) ? 1 : 0;
+    }
     /* Each device instance gets a unique sessionId so the browser can
      * separate plot histories across dev.off()/jgd() cycles within the
      * same R process.  PID alone is not sufficient — multiple devices
@@ -308,6 +313,10 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
     } else {
         /* Current plot resize (normal path) */
 
+        if (st->debug_frames)
+            REprintf("[jgd] poll_resize: current plot replay at %.0fx%.0f\n",
+                     st->width * st->dpi, st->height * st->dpi);
+
         /* Replay the display list at new dimensions.
          * All intermediate flushes (cb_holdflush, cb_mode) are suppressed while
          * replaying=1 so that we emit exactly one complete frame afterwards.
@@ -331,6 +340,10 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * the flag would have been the first draw after an empty display list,
          * which correctly replaces the "latest" blank state. */
         if (st->page.op_count > st->last_flushed_ops) {
+            if (st->debug_frames)
+                REprintf("[jgd] poll_resize: flushing replay frame "
+                         "(ops=%d, last_flushed=%d)\n",
+                         st->page.op_count, st->last_flushed_ops);
             jgd_flush_frame(st, 0);
             st->last_flushed_ops = st->page.op_count;
         }

@@ -57,6 +57,7 @@ typedef struct {
 #else
     void *input_handler;      /* InputHandler* for R event-loop resize polling */
 #endif
+    int debug_frames;         /* 1 to log frame details to stderr */
 } jgd_state_t;
 
 /* Flush the current frame over the transport. */

@@ -176,6 +176,10 @@ export class Hub {
       return;
     }
 
+    console.error(
+      `[hub] resize from browser: ${dims?.width}x${dims?.height}` +
+      (hasPlotIndex ? ` plotIndex=${dims?.plotIndex}` : ""),
+    );
     // Normal resize — broadcast to all sessions with dedup.
     for (const session of this.sessions.values()) {
       if (dims) {
@@ -262,6 +266,8 @@ export class Hub {
         session.hasReceivedFrame = true;
         let data = line;
         const isNewPage = line.includes('"newPage":true');
+        const isIncremental = line.includes('"incremental":true');
+        let classification = isNewPage ? "newPage" : isIncremental ? "incremental" : "complete";
         // Tag resize-triggered frames so the browser can update in place.
         // Use dimension matching to handle R-side coalescing: when R
         // receives multiple resizes quickly, it may only replay the last
@@ -281,6 +287,7 @@ export class Hub {
             // but never tag.  No FIFO fallback — a non-matching entry
             // belongs to a resize that R hasn't replayed yet.
             drainMatchingEntry(session.pendingResizes, frameDims);
+            classification = "newPage (drained pending)";
           } else {
             const entry = consumePendingResize(session.pendingResizes, frameDims);
             if (entry) {
@@ -288,9 +295,19 @@ export class Hub {
               if (entry.plotIndex !== undefined) {
                 data = injectPlotIndex(data, entry.plotIndex);
               }
+              classification = entry.plotIndex !== undefined
+                ? `resize (plotIndex=${entry.plotIndex})`
+                : "resize (consumed pending)";
+            } else {
+              classification = "UNTAGGED (no pending resize!)";
             }
           }
         }
+        console.error(
+          `[hub] frame: ${classification}, pendingResizes=${session.pendingResizes.length}` +
+          `, deferred=${!!session.deferredResize}, newPage=${isNewPage}` +
+          `, incremental=${isIncremental}`,
+        );
         // Ensure the frame carries the server-assigned sessionId.
         if (session.id) {
           if (data.includes('"sessionId"')) {
@@ -325,6 +342,10 @@ export class Hub {
               `failed to send deferred resize to R session ${session.id}: ${e}`,
             );
           });
+          console.error(
+            `[hub] sent deferred resize to R (${deferred.width}x${deferred.height})` +
+            `, pendingResizes now=${session.pendingResizes.length}`,
+          );
         }
         if (this.verbose) {
           console.error(
