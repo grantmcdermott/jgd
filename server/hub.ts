@@ -336,23 +336,26 @@ export class Hub {
         if (session.deferredResize) {
           const deferred = session.deferredResize;
           session.deferredResize = null;
+          // Skip both enqueue and send when the cap is hit, matching
+          // the normal and plotIndex resize paths.  Sending without an
+          // entry would cause the replay frame to arrive UNTAGGED.
           if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
             session.pendingResizes.push({
               plotIndex: undefined,
               width: deferred.width,
               height: deferred.height,
             });
-          }
-          session.send(deferred.data).catch((e) => {
-            console.error(
-              `failed to send deferred resize to R session ${session.id}: ${e}`,
-            );
-          });
-          if (this.verbose) {
-            console.error(
-              `[hub] sent deferred resize to R (${deferred.width}x${deferred.height})` +
-              `, pendingResizes now=${session.pendingResizes.length}`,
-            );
+            session.send(deferred.data).catch((e) => {
+              console.error(
+                `failed to send deferred resize to R session ${session.id}: ${e}`,
+              );
+            });
+            if (this.verbose) {
+              console.error(
+                `[hub] sent deferred resize to R (${deferred.width}x${deferred.height})` +
+                `, pendingResizes now=${session.pendingResizes.length}`,
+              );
+            }
           }
         }
         if (this.verbose) {
