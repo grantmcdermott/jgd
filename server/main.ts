@@ -1,5 +1,5 @@
 import { parseArgs } from "jsr:@std/cli@1/parse-args";
-import { join, resolve } from "jsr:@std/path@1";
+import { dirname, join, resolve } from "jsr:@std/path@1";
 import { Hub } from "./hub.ts";
 import { RSession } from "./r_session.ts";
 import { writeDiscovery, removeDiscovery } from "./discovery.ts";
@@ -106,6 +106,7 @@ async function main(): Promise<void> {
     }
     socketPath = socketUri.unix(unixPath);
     await cleanStaleSocket(unixPath);
+    await Deno.mkdir(dirname(unixPath), { recursive: true }).catch(() => {});
     rListener = Deno.listen({ transport: "unix", path: unixPath });
     hub.transport = "unix";
   }
