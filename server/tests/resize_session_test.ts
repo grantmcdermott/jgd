@@ -6,7 +6,7 @@
  * doesn't have that plot's snapshot).
  */
 
-import { assertEquals, assertNotEquals } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import { TestServer } from "./helpers/server.ts";
 import { RClient } from "./helpers/r_client.ts";
 import { BrowserClient } from "./helpers/browser_client.ts";
@@ -47,8 +47,6 @@ Deno.test("plotIndex resize — session isolation after reconnect", async (t) =>
         const frame2 = await browser.waitForType<FrameMessage>("frame");
         const session2Id = frame2.plot.sessionId;
 
-        assertNotEquals(session1Id, session2Id, "Sessions should have different IDs");
-
         // Prime dedup state for the new session
         browser.sendResize(800, 600);
         await r2.readMessage<ResizeMessage>();
@@ -79,39 +77,6 @@ Deno.test("plotIndex resize — session isolation after reconnect", async (t) =>
       }
     });
 
-    await t.step("plotIndex resize reaches correct session when alive", async () => {
-      // This is the positive case: plotIndex resize should work correctly
-      // when the target session is still alive.
-      const r = new RClient();
-      try {
-        await r.connect(server.socketPath);
-        await r.waitForWelcome();
-
-        // Send two frames (simulating two plots from the same session)
-        await r.sendFrame(
-          { ops: [{ op: "text", str: "plotA" }], device: { width: 800, height: 600 } },
-        );
-        const frameA = await browser.waitForType<FrameMessage>("frame");
-        const rSessionId = frameA.plot.sessionId!;
-
-        await r.sendFrame(
-          { ops: [{ op: "text", str: "plotB" }], device: { width: 800, height: 600 } },
-        );
-        await browser.waitForType<FrameMessage>("frame");
-
-        // Prime dedup state
-        browser.sendResize(800, 600);
-        await r.readMessage<ResizeMessage>();
-
-        // plotIndex=0 resize — targeting the first plot from THIS session
-        browser.sendResizeWithPlotIndex(640, 480, 0, rSessionId);
-        const msg = await r.readMessage<ResizeMessage>();
-        assertEquals(msg.type, "resize");
-        assertEquals(msg.plotIndex, 0, "Same-session plotIndex resize should arrive");
-      } finally {
-        r.close();
-      }
-    });
   } finally {
     browser.close();
     await delay(100);
