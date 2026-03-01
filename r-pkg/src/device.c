@@ -101,6 +101,7 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     st->page_count = 0;
     st->drawing = 0;
     st->pending_plot_index = -1;
+    st->buffered_plot_index = -1;
     st->snapshot_count = 0;
     st->snapshot_base = 0;
     st->snapshot_store = Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS);

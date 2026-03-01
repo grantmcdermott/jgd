@@ -246,13 +246,16 @@ static void mcache_store(unsigned int hash, double v1, double v2, double v3) {
 
 /* Read a metrics response, stashing any resize messages that arrive first.
  *
- * NOTE: Like the old check_incoming, this loop can consume multiple resize
- * messages while searching for the metrics_response.  Each consumed resize
- * overwrites pending_w/pending_h, so earlier resize dimensions are lost.
+ * NOTE: This loop can consume multiple normal resize messages while
+ * searching for the metrics_response.  Each consumed normal resize
+ * overwrites pending_w/pending_h, so earlier dimensions are lost.
  * This is acceptable in practice: metrics requests are brief (< 500ms
  * timeout), and the server's queue can tolerate a small mismatch because
  * R's display list replay (via poll_resize_impl) will produce frames for
- * any resizes that arrive after the metrics exchange completes. */
+ * any resizes that arrive after the metrics exchange completes.
+ *
+ * plotIndex resizes are routed to the single-entry buffer (same as
+ * check_incoming) so they are not applied to the current page. */
 static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
     for (int attempts = 0; attempts < 5; attempts++) {
         int n = transport_recv_line(&st->transport, buf, bufsize, 500);
@@ -270,15 +273,21 @@ static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
             if (strcmp(type->valuestring, "resize") == 0) {
                 cJSON *w = cJSON_GetObjectItem(msg, "width");
                 cJSON *h = cJSON_GetObjectItem(msg, "height");
+                cJSON *pi = cJSON_GetObjectItem(msg, "plotIndex");
                 if (cJSON_IsNumber(w) && cJSON_IsNumber(h) &&
                     w->valuedouble > 0 && h->valuedouble > 0) {
-                    st->pending_w = w->valuedouble;
-                    st->pending_h = h->valuedouble;
+                    if (cJSON_IsNumber(pi)) {
+                        /* plotIndex resize — buffer for poll_resize_impl,
+                         * same as check_incoming does. */
+                        st->has_buffered_resize = 1;
+                        st->buffered_w = w->valuedouble;
+                        st->buffered_h = h->valuedouble;
+                        st->buffered_plot_index = (int)pi->valuedouble;
+                    } else {
+                        st->pending_w = w->valuedouble;
+                        st->pending_h = h->valuedouble;
+                    }
                 }
-                /* Preserve plotIndex for poll_resize_impl */
-                cJSON *pi = cJSON_GetObjectItem(msg, "plotIndex");
-                if (cJSON_IsNumber(pi))
-                    st->pending_plot_index = (int)pi->valuedouble;
             }
         }
         cJSON_Delete(msg);
@@ -397,8 +406,10 @@ static void check_incoming(jgd_state_t *st, pDevDesc dd) {
      * multiple resizes arrived during drawing.
      *
      * If a plotIndex resize is already buffered from a previous call,
-     * skip reading entirely — poll_resize_impl will drain the buffer
-     * and the transport when R becomes idle. */
+     * skip reading entirely — even normal resizes are deferred.  The
+     * buffer is single-entry, so we cannot overwrite it.  Drawing is
+     * typically fast, and poll_resize_impl will drain both the buffer
+     * and any pending transport messages once R becomes idle. */
     if (st->has_buffered_resize)
         return;
 
