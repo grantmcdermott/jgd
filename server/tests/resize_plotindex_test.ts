@@ -68,21 +68,31 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
       assertEquals(msg.plotIndex, 0);
     });
 
-    await t.step("plotIndex resize does NOT update dedup state", async () => {
+    await t.step("plotIndex resize updates dedup state", async () => {
       // Consume the frame from previous step
       await rClient.sendFrame(
         { ops: [{ op: "rect" }], device: { width: 1024, height: 768 } },
       );
       await browser.waitForType<FrameMessage>("frame");
 
-      // Send a normal resize with the same dims as the dedup state (1024x768)
-      // This should be DROPPED because plotIndex resize didn't update lastResize
-      // Follow with a different size to verify
-      browser.sendResize(1024, 768); // should be dropped (dedup)
+      // Current dedup state: 1024x768.
+      // Send a plotIndex resize with DIFFERENT dimensions — this should
+      // update lastResizeW/H to 500x400.
+      browser.sendResizeWithPlotIndex(500, 400, 0, sessionId);
+      await rClient.readMessage<ResizeMessage>();
+      await rClient.sendFrame(
+        { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      );
+      await browser.waitForType<FrameMessage>("frame");
+
+      // Dedup state is now 500x400 (updated by the plotIndex resize).
+      // A normal resize at 500x400 should be DEDUPED.
+      // Follow with a different size to verify.
+      browser.sendResize(500, 400); // should be dropped (dedup from plotIndex)
       browser.sendResize(640, 480);  // should arrive
 
       const msg = await rClient.readMessage<ResizeMessage>();
-      assertEquals(msg.width, 640, "1024x768 should be deduped; 640x480 should arrive");
+      assertEquals(msg.width, 640, "500x400 should be deduped; 640x480 should arrive");
       assertEquals(msg.height, 480);
     });
 
@@ -95,7 +105,7 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
 
       // Current dedup state is 640x480 from previous step.
       // Send a plotIndex resize with different dimensions — this bypasses
-      // dedup and does NOT update lastResizeW/H.
+      // dedup and updates lastResizeW/H to 500x400.
       browser.sendResizeWithPlotIndex(500, 400, 0, sessionId);
       const plotIndexMsg = await rClient.readMessage<ResizeMessage>();
       assertEquals(plotIndexMsg.plotIndex, 0);
@@ -124,10 +134,9 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
       assertEquals(frame.plotIndex, undefined, "Should NOT have plotIndex");
     });
 
-    await t.step("normal resize after plotIndex resize is not deduped even with same dims", async () => {
+    await t.step("normal resize after plotIndex resize is not deduped even with same pre-plotIndex dims", async () => {
       // Current dedup state is 750x550 from previous step.
-      // Send a plotIndex resize — this changes R's device dimensions
-      // but should also invalidate the dedup state.
+      // Send a plotIndex resize — this updates dedup state to 600x400.
       browser.sendResizeWithPlotIndex(600, 400, 1, sessionId);
       const plotIndexMsg = await rClient.readMessage<ResizeMessage>();
       assertEquals(plotIndexMsg.plotIndex, 1);
@@ -139,12 +148,12 @@ Deno.test("plotIndex resize — pass-through and frame tagging", async (t) => {
       await browser.waitForType<FrameMessage>("frame");
 
       // Now send a normal resize with the SAME dims as pre-plotIndex (750x550).
-      // R's device is actually at 600x400 now due to the plotIndex resize,
-      // so this 750x550 resize MUST be forwarded, not deduped.
+      // Dedup state is 600x400 (updated by plotIndex resize), so 750x550
+      // differs and MUST be forwarded.
       browser.sendResize(750, 550);
 
       const msg = await rClient.readMessage<ResizeMessage>();
-      assertEquals(msg.width, 750, "750x550 should be forwarded after plotIndex resize invalidated dedup");
+      assertEquals(msg.width, 750, "750x550 should be forwarded (dedup state is 600x400 from plotIndex)");
       assertEquals(msg.height, 550);
     });
   } finally {
