@@ -576,6 +576,7 @@ static void cb_raster(unsigned int *raster, int w, int h,
                       double rot, Rboolean interpolate,
                       const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
+    if (w <= 0 || h <= 0) return;
 
     size_t npix = (size_t)w * (size_t)h;
     unsigned char *rgba = (unsigned char *)malloc(npix * 4);

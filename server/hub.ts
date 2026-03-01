@@ -1,4 +1,5 @@
 import type { RSession } from "./r_session.ts";
+import { extractType } from "./types.ts";
 
 /**
  * Maximum number of pending resize entries per session.  Under normal
@@ -135,7 +136,7 @@ export class Hub {
     try {
       const parsed = JSON.parse(data);
       if (typeof parsed.width === "number" && typeof parsed.height === "number" &&
-          (parsed.width > 0 || parsed.height > 0)) {
+          (parsed.width > 0 && parsed.height > 0)) {
         dims = {
           width: parsed.width,
           height: parsed.height,
@@ -267,8 +268,8 @@ export class Hub {
       case "frame": {
         session.hasReceivedFrame = true;
         let data = line;
-        const isNewPage = line.includes('"newPage":true');
-        const isIncremental = line.includes('"incremental":true');
+        const isNewPage = /"newPage"\s*:\s*true/.test(line);
+        const isIncremental = /"incremental"\s*:\s*true/.test(line);
         let classification = isNewPage ? "newPage" : isIncremental ? "incremental" : "complete";
         // Tag resize-triggered frames so the browser can update in place.
         // Use dimension matching to handle R-side coalescing: when R
@@ -521,15 +522,6 @@ export class Hub {
     }
     this.sessions.clear();
   }
-}
-
-/**
- * Extract the "type" field from a JSON line without full parse.
- * Falls back to empty string on malformed input.
- */
-function extractType(line: string): string {
-  const m = line.match(/"type"\s*:\s*"([^"]+)"/);
-  return m ? m[1] : "";
 }
 
 /**
