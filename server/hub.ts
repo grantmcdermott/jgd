@@ -321,7 +321,7 @@ export class Hub {
             if (session.remappedSessionId) {
               data = data.replace(
                 /"sessionId"\s*:\s*"[^"]*"/,
-                `"sessionId":${JSON.stringify(session.id)}`,
+                () => `"sessionId":${JSON.stringify(session.id)}`,
               );
             }
           } else {
