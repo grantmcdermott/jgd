@@ -73,7 +73,8 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     page_init(&st->page, w_px, h_px, st->dpi, gc->fill);
     st->page_count++;
     st->last_flushed_ops = 0;
-    st->new_page = 1;
+    if (!st->replaying)
+        st->new_page = 1;
 }
 
 static void cb_close(pDevDesc dd) {
