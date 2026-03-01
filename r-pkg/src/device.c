@@ -103,7 +103,6 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     st->pending_plot_index = -1;
     st->buffered_plot_index = -1;
     st->snapshot_count = 0;
-    st->snapshot_base = 0;
     st->snapshot_store = Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS);
     R_PreserveObject(st->snapshot_store);
     st->last_snapshot = R_NilValue;
@@ -276,7 +275,11 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
     int pi = st->pending_plot_index;
     st->pending_plot_index = -1;
 
-    int store_idx = pi - st->snapshot_base;
+    /* plotIndex from the browser is 0-based into the current retained
+     * history (after eviction).  Both sides evict the same way (shift
+     * from front, same max size), so plotIndex maps directly to our
+     * snapshot_store index — no snapshot_base offset needed. */
+    int store_idx = pi;
     if (store_idx >= 0 && store_idx < st->snapshot_count) {
         /* Historical plot resize: replay the snapshot at new dimensions,
          * flush its frame, then restore the current display list.

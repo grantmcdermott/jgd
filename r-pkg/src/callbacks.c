@@ -67,7 +67,6 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
                                VECTOR_ELT(st->snapshot_store, i + 1));
             SET_VECTOR_ELT(st->snapshot_store, JGD_MAX_SNAPSHOTS - 1,
                            st->last_snapshot);
-            st->snapshot_base++;
         } else {
             SET_VECTOR_ELT(st->snapshot_store, st->snapshot_count,
                            st->last_snapshot);

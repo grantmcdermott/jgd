@@ -43,7 +43,6 @@ typedef struct {
     void *ge_dev;             /* pGEDevDesc — stable for device lifetime */
     SEXP snapshot_store;      /* VECSXP holding GEcreateSnapshot results */
     int snapshot_count;       /* number of stored snapshots */
-    int snapshot_base;        /* number of evicted snapshots for index mapping */
     SEXP last_snapshot;       /* most recent complete-page snapshot, or R_NilValue */
     char server_name[128];
     int protocol_version;
