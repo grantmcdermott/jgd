@@ -143,6 +143,8 @@ export class Hub {
     } | null = null;
     try {
       const parsed = JSON.parse(data);
+      // Both dimensions must be positive for a valid resize (AND, not OR).
+      // Zero-width or zero-height viewports are meaningless.
       if (typeof parsed.width === "number" && typeof parsed.height === "number" &&
           Number.isFinite(parsed.width) && Number.isFinite(parsed.height) &&
           parsed.width > 0 && parsed.height > 0) {
@@ -171,8 +173,10 @@ export class Hub {
         width: dims!.width,
         height: dims!.height,
       });
-      session.lastResizeW = dims!.width;
-      session.lastResizeH = dims!.height;
+      // Do NOT update lastResizeW/H here — plotIndex resizes target a
+      // specific historical plot, not the device viewport.  Updating the
+      // dedup state would cause a subsequent normal resize to the same
+      // dimensions to be silently suppressed.
       // Strip sessionId before forwarding to R (R doesn't need it)
       const forR = JSON.stringify({
         type: "resize",

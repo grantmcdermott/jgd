@@ -268,8 +268,8 @@ export class SocketServer {
             if (!session) return;
             if (session.pendingResizes.length >= MAX_PENDING_RESIZES) return;
             session.pendingResizes.push({ plotIndex });
-            session.lastResizeW = w;
-            session.lastResizeH = h;
+            // Do NOT update lastResizeW/H here — plotIndex resizes target a
+            // specific historical plot, not the device viewport.
             const data = JSON.stringify({ type: 'resize', width: w, height: h, plotIndex }) + '\n';
             session.socket.write(data);
             return;

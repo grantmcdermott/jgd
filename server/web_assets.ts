@@ -139,6 +139,7 @@ export const assets: Record<string, { body: string; type: string }> = {
             return this.addPlot(sessionId, plot);
         }
         session.plots[session.plots.length - 1] = plot;
+        this._activeSessionId = sessionId;
         // Don't change currentIndex — user stays on their historical view
     };
 
