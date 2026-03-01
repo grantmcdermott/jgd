@@ -154,7 +154,11 @@ export class Hub {
       const session = this.sessions.get(dims!.sessionId);
       if (!session) return; // target session is dead
       if (session.pendingResizes.length >= MAX_PENDING_RESIZES) return;
-      session.pendingResizes.push({ plotIndex: dims!.plotIndex });
+      session.pendingResizes.push({
+        plotIndex: dims!.plotIndex,
+        width: dims!.width,
+        height: dims!.height,
+      });
       session.lastResizeW = dims!.width;
       session.lastResizeH = dims!.height;
       // Strip sessionId before forwarding to R (R doesn't need it)
@@ -199,7 +203,11 @@ export class Hub {
         } else {
           // Defer subsequent resizes.  The latest deferred resize will be
           // forwarded after the first frame arrives (see handleRMessage).
-          session.deferredResize = data;
+          session.deferredResize = {
+            data,
+            width: dims?.width ?? 0,
+            height: dims?.height ?? 0,
+          };
           if (dims) {
             session.lastResizeW = dims.width;
             session.lastResizeH = dims.height;
@@ -208,15 +216,17 @@ export class Hub {
         }
       } else {
         // R has sent at least one frame — normal resize path.
-        // Collapse: remove any previous normal resize entries from the queue.
-        // Multiple normal resizes in flight are redundant (only the latest
-        // matters), and keeping stale entries would mis-tag subsequent frames.
-        // plotIndex entries are preserved to maintain correct ordering.
-        session.pendingResizes = session.pendingResizes.filter(
-          (e) => e.plotIndex !== undefined,
-        );
+        // Each forwarded resize gets its own pendingResizes entry because R
+        // will send a replay frame for each.  Do NOT collapse (remove) earlier
+        // entries: R has already received those resizes and the corresponding
+        // replay frames need matching entries to be tagged resize:true.
+        // MAX_PENDING_RESIZES caps unbounded growth from misbehaving clients.
         if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
-        session.pendingResizes.push({ plotIndex: undefined });
+        session.pendingResizes.push({
+          plotIndex: undefined,
+          width: dims?.width,
+          height: dims?.height,
+        });
       }
 
       if (dims) {
@@ -243,13 +253,19 @@ export class Hub {
         session.hasReceivedFrame = true;
         let data = line;
         // Tag resize-triggered frames so the browser can update in place.
-        // Shift from the queue so each frame gets the correct entry even
-        // when multiple resizes are in flight (fixes state race condition).
+        // Use dimension matching to handle R-side coalescing: when R
+        // receives multiple resizes quickly, it may only replay the last
+        // one.  By matching the frame's device dimensions against queued
+        // entries, we consume the correct entry (and any earlier entries
+        // that R coalesced into it).
         if (session.pendingResizes.length > 0) {
-          const entry = session.pendingResizes.shift()!;
-          data = injectResizeFlag(data);
-          if (entry.plotIndex !== undefined) {
-            data = injectPlotIndex(data, entry.plotIndex);
+          const frameDims = extractDeviceDims(line);
+          const entry = consumePendingResize(session.pendingResizes, frameDims);
+          if (entry) {
+            data = injectResizeFlag(data);
+            if (entry.plotIndex !== undefined) {
+              data = injectPlotIndex(data, entry.plotIndex);
+            }
           }
         }
         // Ensure the frame carries the server-assigned sessionId.
@@ -273,8 +289,12 @@ export class Hub {
         if (session.deferredResize) {
           const deferred = session.deferredResize;
           session.deferredResize = null;
-          session.pendingResizes.push({ plotIndex: undefined });
-          session.send(deferred).catch((e) => {
+          session.pendingResizes.push({
+            plotIndex: undefined,
+            width: deferred.width,
+            height: deferred.height,
+          });
+          session.send(deferred.data).catch((e) => {
             console.error(
               `failed to send deferred resize to R session ${session.id}: ${e}`,
             );
@@ -452,6 +472,64 @@ export class Hub {
 function extractType(line: string): string {
   const m = line.match(/"type"\s*:\s*"([^"]+)"/);
   return m ? m[1] : "";
+}
+
+/**
+ * Extract device dimensions from a frame JSON line.
+ * Returns null if dimensions cannot be extracted.
+ */
+function extractDeviceDims(line: string): { width: number; height: number } | null {
+  try {
+    const msg = JSON.parse(line);
+    const dev = msg?.plot?.device;
+    if (dev && typeof dev.width === "number" && typeof dev.height === "number") {
+      return { width: dev.width, height: dev.height };
+    }
+  } catch { /* ignore */ }
+  return null;
+}
+
+/**
+ * Consume the appropriate pending resize entry for a frame.
+ *
+ * plotIndex entries are consumed strictly FIFO (no coalescing).
+ *
+ * Normal entries use dimension matching to handle R-side coalescing: when R
+ * receives multiple resize messages quickly, it processes only the last one
+ * and sends a single replay frame.  We find the last normal entry whose
+ * dimensions match the frame's device dimensions (searching up to the first
+ * plotIndex boundary) and consume all normal entries up to and including it.
+ * This drains entries for resizes that R coalesced while correctly preserving
+ * entries for resizes that R will respond to individually.
+ */
+function consumePendingResize(
+  queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
+  frameDims: { width: number; height: number } | null,
+): { plotIndex?: number } | undefined {
+  if (queue.length === 0) return undefined;
+
+  // plotIndex entries: always consume strictly FIFO.
+  if (queue[0].plotIndex !== undefined) {
+    return queue.shift()!;
+  }
+
+  // Normal entries: find the last match within the consecutive normal prefix.
+  if (frameDims) {
+    let matchIdx = -1;
+    for (let i = 0; i < queue.length; i++) {
+      if (queue[i].plotIndex !== undefined) break;
+      if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
+        matchIdx = i;
+      }
+    }
+    if (matchIdx >= 0) {
+      const removed = queue.splice(0, matchIdx + 1);
+      return removed[removed.length - 1];
+    }
+  }
+
+  // Fallback: consume the first entry (dimensions unknown or no match).
+  return queue.shift()!;
 }
 
 /**
