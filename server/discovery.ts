@@ -75,10 +75,16 @@ export async function writeDiscovery(
  *  still belong to this process (another instance may have overwritten). */
 export async function removeDiscovery(paths: string[]): Promise<void> {
   for (const p of paths) {
+    let info: DiscoveryInfo;
     try {
       const raw = await Deno.readTextFile(p);
-      const info: DiscoveryInfo = JSON.parse(raw);
-      if (info.pid !== Deno.pid) continue;
+      info = JSON.parse(raw);
+    } catch {
+      // File missing, unreadable, or corrupt JSON — skip
+      continue;
+    }
+    if (info.pid !== Deno.pid) continue;
+    try {
       await Deno.remove(p);
     } catch (e) {
       if (!(e instanceof Deno.errors.NotFound)) {
