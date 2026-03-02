@@ -103,8 +103,9 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     st->pending_plot_index = -1;
     st->buffered_plot_index = -1;
     st->snapshot_count = 0;
-    st->snapshot_store = Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS);
+    st->snapshot_store = PROTECT(Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS));
     R_PreserveObject(st->snapshot_store);
+    UNPROTECT(1);
     st->last_snapshot = R_NilValue;
     /* Check options(jgd.debug = TRUE) for frame-level debug output */
     {

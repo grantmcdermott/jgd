@@ -7,8 +7,9 @@
     "@astral/astral": "jsr:@astral/astral@^0.5"
   },
   "tasks": {
-    // --allow-net and --allow-run are unrestricted: E2E tests launch
-    // Rscript/R processes and Astral downloads Chromium from the internet.
+    // --allow-run and --allow-net are unrestricted: E2E tests spawn R,
+    // Rscript, and deno subprocesses, and Astral launches a Chromium binary
+    // from a versioned cache path that cannot be allow-listed statically.
     "test": "deno test --allow-net --allow-read --allow-write --allow-env --allow-run .",
     "bench": "deno run --allow-all bench/run.ts"
   }

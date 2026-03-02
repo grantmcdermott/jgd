@@ -24,10 +24,12 @@ static void jgd_capture_snapshot(jgd_state_t *st) {
     pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
     SEXP snap = GEcreateSnapshot(gdd);
     if (snap != R_NilValue) {
+        PROTECT(snap);
         if (st->last_snapshot != R_NilValue)
             R_ReleaseObject(st->last_snapshot);
         R_PreserveObject(snap);
         st->last_snapshot = snap;
+        UNPROTECT(1);
     }
 }
 
