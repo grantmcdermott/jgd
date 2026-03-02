@@ -35,10 +35,9 @@ Deno.test("E2E: resize triggers canvas re-render", async (t) => {
       ops: [{ op: "circle", x: 200, y: 150, r: 50, gc: { fill: "#33cc66" } }],
       device: { width: 400, height: 300, bg: "#ffffff" },
     }, { newPage: true });
-    await waitForPlotInfo(page, "2 / 2");
+    const countBefore = await waitForPlotInfo(page, "2 / 2");
 
     const dimsBefore = await canvasDimensions(page);
-    const countBefore = "2 / 2";
 
     await t.step("resize message reaches R", async () => {
       // Send resize with unique dimensions so we can identify it

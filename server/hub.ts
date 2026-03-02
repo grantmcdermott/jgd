@@ -272,7 +272,7 @@ export class Hub {
       case "frame": {
         session.hasReceivedFrame = true;
         let data = line;
-        const isNewPage = extractNewPage(line);
+        const { isNewPage, dims: frameDims } = extractFrameMeta(line);
         // Tag resize-triggered frames so the browser can update in place.
         // Use dimension matching to handle R-side coalescing: when R
         // receives multiple resizes quickly, it may only replay the last
@@ -289,7 +289,6 @@ export class Hub {
         let consumedEntry: { plotIndex?: number } | undefined;
         let drainedPending = false;
         if (hadPending) {
-          const frameDims = extractDeviceDims(line);
           if (isNewPage) {
             // New plot: drain matching entry if present (Race A cleanup),
             // but never tag.  No FIFO fallback — a non-matching entry
@@ -521,33 +520,30 @@ export class Hub {
   }
 }
 
-/**
- * Extract the top-level newPage field from a frame JSON line.
- * Uses JSON.parse (not regex) to avoid false positives from string payloads
- * that happen to contain the substring "newPage":true.
- */
-function extractNewPage(line: string): boolean {
-  try {
-    const msg = JSON.parse(line);
-    return msg?.newPage === true;
-  } catch {
-    return false;
-  }
+/** Metadata extracted from a single JSON.parse of a frame line. */
+interface FrameMeta {
+  isNewPage: boolean;
+  dims: { width: number; height: number } | null;
 }
 
 /**
- * Extract device dimensions from a frame JSON line.
- * Returns null if dimensions cannot be extracted.
+ * Extract frame metadata (newPage flag and device dimensions) from a
+ * frame JSON line in a single JSON.parse call.  Uses parsed fields
+ * (not regex) to avoid false positives from string payloads.
  */
-function extractDeviceDims(line: string): { width: number; height: number } | null {
+function extractFrameMeta(line: string): FrameMeta {
   try {
     const msg = JSON.parse(line);
+    const isNewPage = msg?.newPage === true;
+    let dims: { width: number; height: number } | null = null;
     const dev = msg?.plot?.device;
     if (dev && typeof dev.width === "number" && typeof dev.height === "number") {
-      return { width: dev.width, height: dev.height };
+      dims = { width: dev.width, height: dev.height };
     }
-  } catch { /* ignore */ }
-  return null;
+    return { isNewPage, dims };
+  } catch {
+    return { isNewPage: false, dims: null };
+  }
 }
 
 /**

@@ -52,7 +52,6 @@ Deno.test("E2E: resize after deleting latest plot must not replace remaining plo
     await waitForPlotInfo(page, "2 / 2");
 
     await t.step("setup: at plot 2/2, canvas is blue", async () => {
-
       const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasBlue, true, "plot 2 should show blue");
       assertEquals(colors.hasRed, false, "plot 2 should not show red");
