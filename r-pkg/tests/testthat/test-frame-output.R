@@ -231,7 +231,7 @@ test_that("frame device metadata matches snapshot", {
 
   frame = extract_frames(msgs)[[1]]
   # sessionId contains a process ID that varies — check format separately
-  expect_match(frame$plot$sessionId, "^r-[0-9]+$")
+  expect_match(frame$plot$sessionId, "^r-[0-9]+-[0-9]+$")
   expect_json_snapshot(list(
     version = frame$plot$version,
     device = frame$plot$device

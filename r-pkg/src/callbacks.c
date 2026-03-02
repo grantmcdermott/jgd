@@ -8,6 +8,7 @@
 
 #include <R.h>
 #include <Rinternals.h>
+#include <R_ext/GraphicsEngine.h>
 #include <string.h>
 #include <stdlib.h>
 
@@ -18,11 +19,31 @@ static jgd_state_t *get_state(pDevDesc dd) {
     return (jgd_state_t *)dd->deviceSpecific;
 }
 
+/** Capture a display list snapshot for historical plot resizing. */
+static void jgd_capture_snapshot(jgd_state_t *st) {
+    pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
+    SEXP snap = GEcreateSnapshot(gdd);
+    if (snap != R_NilValue) {
+        if (st->last_snapshot != R_NilValue)
+            R_ReleaseObject(st->last_snapshot);
+        R_PreserveObject(snap);
+        st->last_snapshot = snap;
+    }
+}
+
 void jgd_flush_frame(jgd_state_t *st, int incremental) {
-    char *json = page_serialize_frame(&st->page, st->session_id, incremental);
+    int np = (!incremental && st->new_page && !st->replaying) ? 1 : 0;
+    if (st->debug_frames) {
+        REprintf("[jgd] flush_frame: incr=%d new_page=%d replaying=%d np=%d "
+                 "ops=%d last_flushed=%d page_count=%d\n",
+                 incremental, st->new_page, st->replaying, np,
+                 st->page.op_count, st->last_flushed_ops, st->page_count);
+    }
+    char *json = page_serialize_frame(&st->page, st->session_id, incremental, np);
     if (json) {
         transport_send(&st->transport, json, strlen(json));
         free(json);
+        if (np) st->new_page = 0;
     }
 }
 
@@ -34,8 +55,37 @@ static void cb_deactivate(const pDevDesc dd) { (void)dd; }
 static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
 
+    if (st->debug_frames) {
+        REprintf("[jgd] cb_newPage: page_count=%d ops=%d last_flushed=%d "
+                 "replaying=%d new_page=%d\n",
+                 st->page_count, st->page.op_count, st->last_flushed_ops,
+                 st->replaying, st->new_page);
+    }
+
     if (st->page_count > 0 && st->page.op_count > st->last_flushed_ops && !st->replaying) {
+        if (st->debug_frames)
+            REprintf("[jgd] cb_newPage: flushing %d unflushed ops\n",
+                     st->page.op_count - st->last_flushed_ops);
         jgd_flush_frame(st, 0);
+    }
+
+    /* Move the last_snapshot (captured when the complete frame was flushed)
+     * into the snapshot store.  R clears the display list before calling
+     * newPage, so GEcreateSnapshot here would capture an empty DL. */
+    if (st->page_count > 0 && !st->replaying && st->last_snapshot != R_NilValue) {
+        if (st->snapshot_count >= JGD_MAX_SNAPSHOTS) {
+            for (int i = 0; i < JGD_MAX_SNAPSHOTS - 1; i++)
+                SET_VECTOR_ELT(st->snapshot_store, i,
+                               VECTOR_ELT(st->snapshot_store, i + 1));
+            SET_VECTOR_ELT(st->snapshot_store, JGD_MAX_SNAPSHOTS - 1,
+                           st->last_snapshot);
+        } else {
+            SET_VECTOR_ELT(st->snapshot_store, st->snapshot_count,
+                           st->last_snapshot);
+            st->snapshot_count++;
+        }
+        R_ReleaseObject(st->last_snapshot);
+        st->last_snapshot = R_NilValue;
     }
 
     if (st->page_count > 0) {
@@ -50,6 +100,8 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     page_init(&st->page, w_px, h_px, st->dpi, gc->fill);
     st->page_count++;
     st->last_flushed_ops = 0;
+    if (!st->replaying)
+        st->new_page = 1;
 }
 
 static void cb_close(pDevDesc dd) {
@@ -68,6 +120,9 @@ static void cb_close(pDevDesc dd) {
 
     page_free(&st->page);
     transport_close(&st->transport);
+    if (st->last_snapshot != R_NilValue)
+        R_ReleaseObject(st->last_snapshot);
+    R_ReleaseObject(st->snapshot_store);
     free(st);
     dd->deviceSpecific = NULL;
 }
@@ -173,7 +228,7 @@ static cJSON *metrics_gc_cjson(const pGEcontext gc) {
     return g;
 }
 
-static int metrics_id_counter = 0;
+static unsigned int metrics_id_counter = 0;
 
 /* --- Simple metrics cache --- */
 #define MCACHE_SIZE 512
@@ -191,11 +246,13 @@ static unsigned int mcache_hash(const char *str, int len, const pGEcontext gc) {
     for (int i = 0; i < len; i++)
         h = ((h << 5) + h) ^ (unsigned char)str[i];
     h = ((h << 5) + h) ^ gc->fontface;
-    /* hash the font size bits */
+    /* hash all 8 bytes of the font size double */
     double sz = gc->cex * gc->ps;
-    unsigned int sz_bits;
-    memcpy(&sz_bits, &sz, sizeof(sz_bits));
-    h = ((h << 5) + h) ^ sz_bits;
+    unsigned int sz_lo, sz_hi;
+    memcpy(&sz_lo, &sz, sizeof(sz_lo));
+    memcpy(&sz_hi, (char *)&sz + sizeof(sz_lo), sizeof(sz_hi));
+    h = ((h << 5) + h) ^ sz_lo;
+    h = ((h << 5) + h) ^ sz_hi;
     const char *fam = gc->fontfamily;
     while (*fam) h = ((h << 5) + h) ^ (unsigned char)*fam++;
     return h;
@@ -220,7 +277,22 @@ static void mcache_store(unsigned int hash, double v1, double v2, double v3) {
     e->occupied = 1;
 }
 
-/* Read a metrics response, stashing any resize messages that arrive first */
+/* Read a metrics response, stashing any resize messages that arrive first.
+ *
+ * NOTE: This loop can consume multiple normal resize messages while
+ * searching for the metrics_response.  Each consumed normal resize
+ * overwrites pending_w/pending_h, so earlier dimensions are lost.
+ * This is acceptable in practice: metrics requests are brief (< 500ms
+ * timeout), and the server's queue can tolerate a small mismatch because
+ * R's display list replay (via poll_resize_impl) will produce frames for
+ * any resizes that arrive after the metrics exchange completes.
+ *
+ * plotIndex resizes are routed to the single-entry buffer (same as
+ * check_incoming) so they are not applied to the current page.
+ * Unlike check_incoming, we always overwrite the buffer with the
+ * latest plotIndex resize because the message has already been read
+ * off the transport — dropping it would desynchronize the server's
+ * pendingResizes queue (which already enqueued an entry). */
 static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
     for (int attempts = 0; attempts < 5; attempts++) {
         int n = transport_recv_line(&st->transport, buf, bufsize, 500);
@@ -238,10 +310,29 @@ static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
             if (strcmp(type->valuestring, "resize") == 0) {
                 cJSON *w = cJSON_GetObjectItem(msg, "width");
                 cJSON *h = cJSON_GetObjectItem(msg, "height");
+                cJSON *pi = cJSON_GetObjectItem(msg, "plotIndex");
                 if (cJSON_IsNumber(w) && cJSON_IsNumber(h) &&
                     w->valuedouble > 0 && h->valuedouble > 0) {
-                    st->pending_w = w->valuedouble;
-                    st->pending_h = h->valuedouble;
+                    if (cJSON_IsNumber(pi)) {
+                        /* plotIndex resize — buffer for poll_resize_impl,
+                         * same as check_incoming does.  Unlike check_incoming
+                         * (which skips reading when a buffer exists), we must
+                         * overwrite here because the message is already
+                         * consumed from the transport. */
+                        if (st->has_buffered_resize && st->debug_frames)
+                            REprintf("[jgd] recv_metrics_response: "
+                                     "overwriting buffered resize "
+                                     "(pi=%d -> %d)\n",
+                                     st->buffered_plot_index,
+                                     (int)pi->valuedouble);
+                        st->has_buffered_resize = 1;
+                        st->buffered_w = w->valuedouble;
+                        st->buffered_h = h->valuedouble;
+                        st->buffered_plot_index = (int)pi->valuedouble;
+                    } else {
+                        st->pending_w = w->valuedouble;
+                        st->pending_h = h->valuedouble;
+                    }
                 }
             }
         }
@@ -299,9 +390,9 @@ static void cb_metricInfo(int c, const pGEcontext gc,
         return;
     }
 
-    int cc = c < 0 ? -c : c;
+    unsigned int cc = c < 0 ? -(unsigned int)c : (unsigned int)c;
     char key[16];
-    snprintf(key, sizeof(key), "c%d", cc);
+    snprintf(key, sizeof(key), "c%u", cc);
     unsigned int h = mcache_hash(key, (int)strlen(key), gc);
     mcache_entry_t *cached = mcache_lookup(h);
     if (cached) {
@@ -355,11 +446,39 @@ static void cb_metricInfo(int c, const pGEcontext gc,
 }
 
 static void check_incoming(jgd_state_t *st, pDevDesc dd) {
-    while (transport_has_data(&st->transport)) {
+    /* Read at most ONE resize message, matching poll_resize_impl.
+     * The while-loop that was here previously drained all available
+     * messages, producing fewer frames than server queue entries when
+     * multiple resizes arrived during drawing.
+     *
+     * If a plotIndex resize is already buffered from a previous call,
+     * skip reading entirely — even normal resizes are deferred.  The
+     * buffer is single-entry, so we cannot overwrite it.  Drawing is
+     * typically fast, and poll_resize_impl will drain both the buffer
+     * and any pending transport messages once R becomes idle. */
+    if (st->has_buffered_resize)
+        return;
+
+    if (transport_has_data(&st->transport)) {
         char buf[1024];
+        int plot_index = -1;
+        double w = 0, h = 0;
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
-        if (n <= 0) break;
-        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h);
+        if (n > 0 && jgd_try_parse_resize(buf, &w, &h, &plot_index)) {
+            if (plot_index >= 0) {
+                /* plotIndex resize targets a past plot — buffer it for
+                 * poll_resize_impl instead of applying to current page. */
+                st->has_buffered_resize = 1;
+                st->buffered_w = w;
+                st->buffered_h = h;
+                st->buffered_plot_index = plot_index;
+            } else {
+                /* Normal resize — apply to current page via
+                 * apply_pending_resize (called right after us). */
+                st->pending_w = w;
+                st->pending_h = h;
+            }
+        }
     }
 }
 
@@ -387,13 +506,18 @@ static void cb_mode(int mode, pDevDesc dd) {
          * (plot, hist, …) bracket drawing with dev.hold/dev.flush, so
          * cb_holdflush handles the single flush at the end.  Without hold
          * (e.g. interactive lines()/points()), we flush immediately. */
-        if (st->hold_level == 0 && st->page.op_count > st->last_flushed_ops) {
+        if (!st->replaying && st->hold_level == 0 && st->page.op_count > st->last_flushed_ops) {
             /* First flush on a new page must be a complete frame so the
              * browser creates a new plot entry (addPlot) rather than
              * appending to the previous plot. */
             int incr = (st->last_flushed_ops > 0) ? 1 : 0;
             jgd_flush_frame(st, incr);
             st->last_flushed_ops = st->page.op_count;
+            /* Capture a snapshot after each complete frame for historical
+             * plot resizing.  The display list is valid at this point. */
+            if (!incr) {
+                jgd_capture_snapshot(st);
+            }
         }
     }
 }
@@ -411,6 +535,7 @@ static int cb_holdflush(pDevDesc dd, int level) {
         if (st->page.op_count > st->last_flushed_ops) {
             jgd_flush_frame(st, 0);
             st->last_flushed_ops = st->page.op_count;
+            jgd_capture_snapshot(st);
         }
     }
     return old;
@@ -455,6 +580,7 @@ static void cb_raster(unsigned int *raster, int w, int h,
                       double rot, Rboolean interpolate,
                       const pGEcontext gc, pDevDesc dd) {
     jgd_state_t *st = get_state(dd);
+    if (w <= 0 || h <= 0) return;
 
     size_t npix = (size_t)w * (size_t)h;
     unsigned char *rgba = (unsigned char *)malloc(npix * 4);

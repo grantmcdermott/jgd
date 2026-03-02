@@ -1,35 +1,16 @@
 import { assertEquals } from "@std/assert";
-import { TestServer } from "./helpers/server.ts";
-import { RClient } from "./helpers/r_client.ts";
-import { BrowserClient } from "./helpers/browser_client.ts";
-import { delay } from "@std/async";
+import { withTestHarness } from "./helpers/harness.ts";
 import type { CloseMessage, ResizeMessage } from "./helpers/types.ts";
 
-Deno.test("close message relay", async (t) => {
-  const server = new TestServer();
-  const rClient = new RClient();
-  const browser = new BrowserClient();
+Deno.test("close message relay", withTestHarness(async (t, { rClient, browser }) => {
+  // Wait for registration
+  browser.sendResize(1, 1);
+  await rClient.readMessage<ResizeMessage>();
 
-  try {
-    await server.start();
-    await rClient.connect(server.socketPath);
-    await browser.connect(server.wsUrl);
+  await t.step("R close message reaches browser", async () => {
+    await rClient.sendClose();
 
-    // Wait for registration
-    browser.sendResize(1, 1);
-    await rClient.readMessage<ResizeMessage>();
-
-    await t.step("R close message reaches browser", async () => {
-      await rClient.sendClose();
-
-      const msg = await browser.waitForType<CloseMessage>("close");
-      assertEquals(msg.type, "close");
-    });
-  } finally {
-    browser.close();
-    rClient.close();
-    await delay(100);
-    await server.shutdown();
-    server.cleanup();
-  }
-});
+    const msg = await browser.waitForType<CloseMessage>("close");
+    assertEquals(msg.type, "close");
+  });
+}));

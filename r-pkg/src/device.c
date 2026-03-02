@@ -100,7 +100,26 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     st->dpi = dpi;
     st->page_count = 0;
     st->drawing = 0;
-    snprintf(st->session_id, sizeof(st->session_id), "r-%d", (int)getpid());
+    st->pending_plot_index = -1;
+    st->buffered_plot_index = -1;
+    st->snapshot_count = 0;
+    st->snapshot_store = Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS);
+    R_PreserveObject(st->snapshot_store);
+    st->last_snapshot = R_NilValue;
+    /* Check options(jgd.debug = TRUE) for frame-level debug output */
+    {
+        SEXP dbg = Rf_GetOption1(Rf_install("jgd.debug"));
+        st->debug_frames = (dbg != R_NilValue && Rf_asLogical(dbg) == TRUE) ? 1 : 0;
+    }
+    /* Each device instance gets a unique sessionId so the browser can
+     * separate plot histories across dev.off()/jgd() cycles within the
+     * same R process.  PID alone is not sufficient — multiple devices
+     * from the same process would collide. */
+    {
+        static int device_counter = 0;
+        snprintf(st->session_id, sizeof(st->session_id),
+                 "r-%d-%d", (int)getpid(), ++device_counter);
+    }
 
     transport_init(&st->transport);
 
@@ -109,6 +128,7 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
         const char *sock = CHAR(STRING_ELT(s_socket, 0));
         if (sock && sock[0]) {
             if (strlen(sock) >= sizeof(st->transport.socket_path)) {
+                R_ReleaseObject(st->snapshot_store);
                 free(st);
                 Rf_error("jgd: socket path too long (max %zu characters)",
                          sizeof(st->transport.socket_path) - 1);
@@ -131,6 +151,9 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
 
     pDevDesc dd = (pDevDesc)calloc(1, sizeof(DevDesc));
     if (!dd) {
+        transport_close(&st->transport);
+        page_free(&st->page);
+        R_ReleaseObject(st->snapshot_store);
         free(st);
         Rf_error("jgd: failed to allocate DevDesc");
     }
@@ -214,12 +237,30 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
 /* Drain resize messages from the transport socket into pending_w/pending_h.
    Returns 1 if a resize was applied and the display list replayed, 0 otherwise. */
 static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
-    /* Read all available resize messages */
-    while (transport_has_data(&st->transport)) {
+    /* Drain at most ONE resize into pending_w/pending_h per call.
+     * The caller invokes us repeatedly (via C_jgd_poll_resize or the R
+     * input handler), so each resize produces its own frame.  This keeps
+     * the server's per-session queue in sync — the server pushes one
+     * queue entry per resize sent and shifts one entry per frame received.
+     *
+     * check_incoming may have buffered a plotIndex resize that it read
+     * during drawing but could not process (plotIndex resizes require
+     * snapshot replay, which is only safe when R is idle).  Drain the
+     * buffer before reading from the transport. */
+    if (st->has_buffered_resize) {
+        st->pending_w = st->buffered_w;
+        st->pending_h = st->buffered_h;
+        st->pending_plot_index = st->buffered_plot_index;
+        st->has_buffered_resize = 0;
+    } else if (transport_has_data(&st->transport)) {
         char buf[1024];
+        int plot_index = -1;
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), 0);
-        if (n <= 0) break;
-        jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h);
+        if (n > 0) {
+            jgd_try_parse_resize(buf, &st->pending_w, &st->pending_h, &plot_index);
+            if (plot_index >= 0)
+                st->pending_plot_index = plot_index;
+        }
     }
 
     if (st->pending_w <= 0 || st->pending_h <= 0)
@@ -235,31 +276,79 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
     st->pending_w = 0;
     st->pending_h = 0;
 
-    /* Replay the display list at new dimensions.
-     * All intermediate flushes (cb_holdflush, cb_mode) are suppressed while
-     * replaying=1 so that we emit exactly one complete frame afterwards.
-     * This prevents the browser from receiving untagged incremental frames
-     * that would be misrouted (appendOps to the wrong history slot). */
-    st->replaying = 1;
-    GEplayDisplayList(gdd);
-    st->replaying = 0;
+    int pi = st->pending_plot_index;
+    st->pending_plot_index = -1;
 
-    /* Send the complete replayed frame as a single flush.  The server will
-     * tag this frame with resize:true so the browser does replaceLatest
-     * instead of addPlot.
-     *
-     * When the display list is empty (no plots drawn yet), GEplayDisplayList
-     * is a no-op: cb_newPage never fires, so the page is NOT re-initialized
-     * and op_count == last_flushed_ops.  We intentionally skip the flush in
-     * that case — sending the stale page would emit incorrect old data.
-     * The server's resizePending flag stays armed and will tag the next real
-     * frame.  This is safe: replaceLatest on an empty browser session falls
-     * through to addPlot, and on a non-empty session the plot that consumed
-     * the flag would have been the first draw after an empty display list,
-     * which correctly replaces the "latest" blank state. */
-    if (st->page.op_count > st->last_flushed_ops) {
-        jgd_flush_frame(st, 0);
+    /* plotIndex from the browser is 0-based into the current retained
+     * history (after eviction).  Both sides evict the same way (shift
+     * from front, same max size), so plotIndex maps directly to our
+     * snapshot_store index — no snapshot_base offset needed. */
+    if (pi >= 0 && pi < st->snapshot_count) {
+        /* Historical plot resize: replay the snapshot at new dimensions,
+         * flush its frame, then restore the current display list.
+         *
+         * GEplaySnapshot restores the display list from the snapshot
+         * and replays it through device callbacks.  replaying=1 suppresses
+         * intermediate flushes (cb_mode) and snapshot saving (cb_newPage)
+         * during the replay. */
+        SEXP snap = VECTOR_ELT(st->snapshot_store, pi);
+        SEXP current = PROTECT(GEcreateSnapshot(gdd));
+
+        st->replaying = 1;
+        GEplaySnapshot(snap, gdd);
+        st->replaying = 0;
+
+        if (st->page.op_count > st->last_flushed_ops) {
+            jgd_flush_frame(st, 0);
+            st->last_flushed_ops = st->page.op_count;
+        }
+
+        /* Restore the current plot state */
+        st->replaying = 1;
+        GEplaySnapshot(current, gdd);
+        st->replaying = 0;
+
+        /* Suppress re-flushing the restored current plot */
         st->last_flushed_ops = st->page.op_count;
+
+        UNPROTECT(1);
+    } else {
+        /* Current plot resize (normal path) */
+
+        if (st->debug_frames)
+            REprintf("[jgd] poll_resize: current plot replay at %.0fx%.0f\n",
+                     st->width * st->dpi, st->height * st->dpi);
+
+        /* Replay the display list at new dimensions.
+         * All intermediate flushes (cb_holdflush, cb_mode) are suppressed while
+         * replaying=1 so that we emit exactly one complete frame afterwards.
+         * This prevents the browser from receiving untagged incremental frames
+         * that would be misrouted (appendOps to the wrong history slot). */
+        st->replaying = 1;
+        GEplayDisplayList(gdd);
+        st->replaying = 0;
+
+        /* Send the complete replayed frame as a single flush.  The server will
+         * tag this frame with resize:true so the browser does replaceLatest
+         * instead of addPlot.
+         *
+         * When the display list is empty (no plots drawn yet), GEplayDisplayList
+         * is a no-op: cb_newPage never fires, so the page is NOT re-initialized
+         * and op_count == last_flushed_ops.  We intentionally skip the flush in
+         * that case — sending the stale page would emit incorrect old data.
+         * The server's resizePending flag stays armed and will tag the next real
+         * frame.  This is safe: replaceLatest on an empty browser session falls
+         * through to addPlot, and on a non-empty session the plot that consumed
+         * the flag would have been the first draw after an empty display list,
+         * which correctly replaces the "latest" blank state. */
+        if (st->page.op_count > st->last_flushed_ops) {
+            if (st->debug_frames)
+                REprintf("[jgd] poll_resize: flushing replay frame "
+                         "(ops=%d, last_flushed=%d)\n",
+                         st->page.op_count, st->last_flushed_ops);
+            jgd_flush_frame(st, 0);
+            st->last_flushed_ops = st->page.op_count;
+        }
     }
 
     return 1;
@@ -425,7 +514,7 @@ void jgd_remove_input_handler(jgd_state_t *st) {
 
 /* ---- Shared resize message parser ---- */
 
-int jgd_try_parse_resize(const char *buf, double *w, double *h) {
+int jgd_try_parse_resize(const char *buf, double *w, double *h, int *plot_index) {
     cJSON *msg = cJSON_Parse(buf);
     if (!msg) return 0;
     cJSON *type = cJSON_GetObjectItem(msg, "type");
@@ -441,6 +530,10 @@ int jgd_try_parse_resize(const char *buf, double *w, double *h) {
         *w = wj->valuedouble;
         *h = hj->valuedouble;
         ok = 1;
+    }
+    if (plot_index) {
+        cJSON *pi = cJSON_GetObjectItem(msg, "plotIndex");
+        *plot_index = cJSON_IsNumber(pi) ? (int)pi->valuedouble : -1;
     }
     cJSON_Delete(msg);
     return ok;

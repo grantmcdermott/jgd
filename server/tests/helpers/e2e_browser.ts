@@ -1,5 +1,6 @@
 import { launch } from "@astral/astral";
 import type { Browser, Page } from "@astral/astral";
+import { delay } from "@std/async";
 import type { RClient } from "./r_client.ts";
 import type { ServerMessage } from "./types.ts";
 
@@ -56,6 +57,26 @@ export async function plotInfoText(page: Page): Promise<string> {
     var el = document.getElementById('plot-info');
     return el ? el.textContent : '';
   })()`) as string;
+}
+
+/** Poll until plotInfo shows expected count or throw on timeout. */
+export async function waitForPlotCount(
+  page: Page,
+  expectedCount: number,
+  timeoutMs: number,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  let info = "";
+  while (Date.now() < deadline) {
+    info = await plotInfoText(page);
+    const count = parseInt(info.split("/")[1]?.trim() ?? "0");
+    if (count >= expectedCount) return info;
+    await delay(200);
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for plot count ${expectedCount}, ` +
+    `last plotInfo: "${info}"`,
+  );
 }
 
 /** Sample pixel colors from the canvas and detect presence of R/G/B/Y fills. */

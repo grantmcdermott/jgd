@@ -8,13 +8,17 @@ export interface FrameMessage {
     device: Record<string, unknown>;
   };
   incremental?: boolean;
+  newPage?: boolean;
   resize?: boolean;
+  plotIndex?: number;
 }
 
 export interface ResizeMessage {
   type: "resize";
   width: number;
   height: number;
+  plotIndex?: number;
+  sessionId?: string;
 }
 
 export interface MetricsRequestMessage {

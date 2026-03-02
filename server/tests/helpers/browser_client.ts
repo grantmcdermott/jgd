@@ -89,6 +89,13 @@ export class BrowserClient {
     this.send(msg);
   }
 
+  /** Send a resize message with a plotIndex for historical plot resizing. */
+  sendResizeWithPlotIndex(width: number, height: number, plotIndex: number, sessionId?: string): void {
+    const msg: Record<string, unknown> = { type: "resize", width, height, plotIndex };
+    if (sessionId !== undefined) msg.sessionId = sessionId;
+    this.send(msg);
+  }
+
   /** Send a metrics response. */
   sendMetricsResponse(
     id: number,

@@ -34,6 +34,9 @@ export interface ResizeMessage {
   type: "resize";
   width: number;
   height: number;
+  plotIndex?: number;
+  /** Session that owns the target plot (for plotIndex routing). */
+  sessionId?: string;
 }
 
 /** Device close message from R. */
@@ -60,3 +63,12 @@ export type RMessage =
 export type BrowserMessage =
   | ResizeMessage
   | MetricsResponseMessage;
+
+/**
+ * Extract the "type" field from a JSON string without full parse.
+ * Falls back to empty string on malformed input.
+ */
+export function extractType(line: string): string {
+  const m = line.match(/"type"\s*:\s*"([^"]+)"/);
+  return m ? m[1] : "";
+}

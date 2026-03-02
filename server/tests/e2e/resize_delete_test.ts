@@ -41,14 +41,14 @@ Deno.test("E2E: resize after deleting latest plot must not replace remaining plo
     await rClient.sendFrame({
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#ff0000" } }],
       device: { width: 400, height: 300, bg: "#ff0000" },
-    });
+    }, { newPage: true });
     await delay(500);
 
     // Frame 2: entirely BLUE (simulates hist(rnorm(100)))
     await rClient.sendFrame({
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#0000ff" } }],
       device: { width: 400, height: 300, bg: "#0000ff" },
-    });
+    }, { newPage: true });
     await delay(500);
 
     await t.step("setup: at plot 2/2, canvas is blue", async () => {

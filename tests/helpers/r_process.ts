@@ -72,6 +72,32 @@ export async function runR(
   }
 }
 
+/**
+ * Start a background R process.  Returns handles to read output and kill it.
+ * Unlike runR(), the process stays alive until explicitly killed.
+ */
+export function startR(
+  rCode: string,
+  serverSocketPath: string,
+): { process: Deno.ChildProcess; kill: () => void } {
+  const socketAddr = toRSocketAddress(serverSocketPath);
+  const fullCode = `options(jgd.socket = "${socketAddr}"); library(jgd); ${rCode}`;
+
+  const cmd = new Deno.Command("Rscript", {
+    args: ["-e", fullCode],
+    stdout: "piped",
+    stderr: "piped",
+  });
+
+  const process = cmd.spawn();
+  return {
+    process,
+    kill() {
+      try { process.kill("SIGKILL"); } catch { /* already exited */ }
+    },
+  };
+}
+
 /** Check if Rscript is available and the jgd package is installed. */
 export async function checkRAvailable(): Promise<boolean> {
   try {

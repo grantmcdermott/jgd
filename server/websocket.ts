@@ -1,4 +1,5 @@
 import type { Hub, BrowserClient } from "./hub.ts";
+import { extractType } from "./types.ts";
 
 /**
  * Upgrade an HTTP request to a WebSocket connection and register
@@ -74,10 +75,4 @@ class WebSocketClient implements BrowserClient {
         break;
     }
   }
-}
-
-/** Extract the "type" field from a JSON string without full parse. */
-function extractType(data: string): string {
-  const m = data.match(/"type"\s*:\s*"([^"]+)"/);
-  return m ? m[1] : "";
 }

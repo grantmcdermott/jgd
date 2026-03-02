@@ -71,9 +71,19 @@ export async function writeDiscovery(
   return written;
 }
 
-/** Remove all discovery files written during startup. */
+/** Remove discovery files written during startup, but only if they
+ *  still belong to this process (another instance may have overwritten). */
 export async function removeDiscovery(paths: string[]): Promise<void> {
   for (const p of paths) {
+    let info: DiscoveryInfo;
+    try {
+      const raw = await Deno.readTextFile(p);
+      info = JSON.parse(raw);
+    } catch {
+      // File missing, unreadable, or corrupt JSON — skip
+      continue;
+    }
+    if (typeof info !== "object" || info === null || info.pid !== Deno.pid) continue;
     try {
       await Deno.remove(p);
     } catch (e) {

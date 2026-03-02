@@ -73,6 +73,19 @@ export class AutoMetricsBrowserClient {
     this.#inner.sendResize(width, height);
   }
 
+  /** Send a resize message with plotIndex for historical plot resizing. */
+  sendResizeWithPlotIndex(width: number, height: number, plotIndex: number, sessionId?: string): void {
+    this.#inner.sendResizeWithPlotIndex(width, height, plotIndex, sessionId);
+  }
+
+  /** Wait for a message matching a predicate (delegates to inner BrowserClient). */
+  waitForMessage<T extends ServerMessage = ServerMessage>(
+    predicate: (msg: ServerMessage) => boolean,
+    timeoutMs = 10_000,
+  ): Promise<T> {
+    return this.#inner.waitForMessage<T>(predicate, timeoutMs);
+  }
+
   /** Close the connection and stop the metrics loop. */
   close(): void {
     this.#stopped = true;

@@ -43,7 +43,7 @@ Deno.test("E2E: canvas renders a plot from R", async (t) => {
           gc: { fill: "#ff0000", col: "#000000", lwd: 2 },
         }],
         device: { width: 400, height: 300, bg: "#ffffff" },
-      });
+      }, { newPage: true });
 
       // Wait for render (requestAnimationFrame + WebSocket round trip)
       await delay(500);
@@ -65,7 +65,7 @@ Deno.test("E2E: canvas renders a plot from R", async (t) => {
           gc: { fill: "#0000ff", col: "#000000", lwd: 1 },
         }],
         device: { width: 400, height: 300, bg: "#ffffff" },
-      });
+      }, { newPage: true });
 
       await delay(500);
 

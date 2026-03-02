@@ -17,6 +17,7 @@ export class TestServer {
   #process: Deno.ChildProcess | null = null;
   #stdout: ReadableStream<string> | null = null;
   #stderrDone: Promise<void> | null = null;
+  #stderrBuf: string[] = [];
 
   constructor(opts?: { tcp?: boolean }) {
     this.tmpDir = Deno.makeTempDirSync({ prefix: "jgd-test-" });
@@ -30,8 +31,24 @@ export class TestServer {
       : socketUri.unix(rawPath);
   }
 
-  /** Start the server and wait for it to be ready. */
+  /** Start the server and wait for it to be ready (retries once on failure). */
   async start(): Promise<void> {
+    try {
+      await this.#tryStart();
+    } catch {
+      // Retry once after a brief pause — transient failures (e.g. resource
+      // contention when many tests spawn servers in parallel) are resolved
+      // by a single retry.
+      await this.#killProcess();
+      this.httpPort = 0;
+      this.pid = 0;
+      this.#stderrBuf.length = 0;
+      await new Promise((r) => setTimeout(r, 250));
+      await this.#tryStart();
+    }
+  }
+
+  async #tryStart(): Promise<void> {
     const binEnv = Deno.env.get("JGD_TEST_SERVER_BIN");
     let bin: string;
     let prefixArgs: string[];
@@ -76,11 +93,14 @@ export class TestServer {
 
     this.#process = cmd.spawn();
 
-    // Drain stderr in the background (avoid blocking)
+    // Drain stderr in the background, always capturing for diagnostics
+    const stderrBuf = this.#stderrBuf;
+    const decoder = new TextDecoder();
     this.#stderrDone = this.#process.stderr
       .pipeTo(
         new WritableStream({
           write(chunk) {
+            stderrBuf.push(decoder.decode(chunk));
             if (Deno.env.get("JGD_TEST_VERBOSE")) {
               Deno.stderr.writeSync(chunk);
             }
@@ -100,7 +120,13 @@ export class TestServer {
       while (!timeout.aborted) {
         const { value, done } = await reader.read();
         if (done) {
-          throw new Error("Server exited before becoming ready");
+          // Wait briefly for stderr to flush so we can include it
+          await this.#stderrDone?.catch(() => {});
+          const stderr = this.#stderrBuf.join("").trim();
+          throw new Error(
+            "Server exited before becoming ready" +
+              (stderr ? `\nstderr:\n${stderr}` : ""),
+          );
         }
         buffer += value;
         const lines = buffer.split("\n");
@@ -200,6 +226,15 @@ export class TestServer {
       clearTimeout(timeoutId);
       await this.#cleanupStreams();
     }
+  }
+
+  /** Kill the current process and clean up streams (used for retry). */
+  async #killProcess(): Promise<void> {
+    if (!this.#process) return;
+    try { this.#process.kill("SIGKILL"); } catch { /* already exited */ }
+    try { await this.#process.status; } catch { /* ignore */ }
+    await this.#cleanupStreams();
+    this.#process = null;
   }
 
   /** Cancel stdout and wait for stderr pipe to finish. */
