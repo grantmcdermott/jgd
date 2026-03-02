@@ -22,6 +22,17 @@ interface RSession {
     pendingResizes: Array<{ plotIndex?: number; width?: number; height?: number }>;
     lastResizeW: number;
     lastResizeH: number;
+    /** True after the first "frame" message has been received from R. */
+    hasReceivedFrame: boolean;
+    /** Whether the initial (welcome) resize has been forwarded to R. */
+    initialResizeSent: boolean;
+    /**
+     * Deferred resize.  Resizes that arrive after the initial one but before
+     * R's first frame are stored here instead of being forwarded.  This
+     * prevents recv_metrics_response from stashing the resize during
+     * text-metric waits, which would produce an untagged replay frame.
+     */
+    deferredResize: { width: number; height: number } | null;
 }
 
 /**
@@ -157,7 +168,7 @@ export class SocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
-        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, pendingResizes: [], lastResizeW: 0, lastResizeH: 0 };
+        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, pendingResizes: [], lastResizeW: 0, lastResizeH: 0, hasReceivedFrame: false, initialResizeSent: false, deferredResize: null };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
 
@@ -186,6 +197,7 @@ export class SocketServer {
                         session.pendingResizes.push({ plotIndex: undefined, width: dims.width, height: dims.height });
                         session.lastResizeW = dims.width;
                         session.lastResizeH = dims.height;
+                        session.initialResizeSent = true;
                         socket.write(JSON.stringify({ type: 'resize', width: dims.width, height: dims.height }) + '\n');
                     }
                 }
@@ -213,12 +225,27 @@ export class SocketServer {
                 case 'frame':
                     if (msg.plot) {
                         msg.plot.sessionId = session.id;
-                        // Shift from the queue so each frame gets the correct entry
-                        const entry = session.pendingResizes.length > 0
-                            ? session.pendingResizes.shift()!
-                            : undefined;
-                        const isResize = entry !== undefined;
-                        const plotIndex = entry?.plotIndex;
+                        session.hasReceivedFrame = true;
+
+                        const isNewPage = !!msg.newPage;
+                        const frameDims = msg.plot.device
+                            ? { width: msg.plot.device.width, height: msg.plot.device.height }
+                            : null;
+
+                        // Consume or drain pending resize entries using dimension matching.
+                        // newPage frames drain without tagging (Race A cleanup);
+                        // non-newPage frames consume and tag as resize.
+                        let consumedEntry: { plotIndex?: number } | undefined;
+                        if (session.pendingResizes.length > 0) {
+                            if (isNewPage) {
+                                drainMatchingEntry(session.pendingResizes, frameDims);
+                            } else {
+                                consumedEntry = consumePendingResize(session.pendingResizes, frameDims);
+                            }
+                        }
+
+                        const isResize = consumedEntry !== undefined;
+                        const plotIndex = consumedEntry?.plotIndex;
                         let accepted = true;
                         if (isResize && plotIndex !== undefined) {
                             accepted = this.history.replaceAtIndex(session.id, plotIndex, msg.plot);
@@ -230,6 +257,22 @@ export class SocketServer {
                             this.history.addPlot(session.id, msg.plot);
                         }
                         if (accepted) this.webviewProvider.showPlot(msg.plot);
+
+                        // Forward deferred resize now that R has an active plot.
+                        if (session.deferredResize) {
+                            const deferred = session.deferredResize;
+                            session.deferredResize = null;
+                            if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
+                                session.pendingResizes.push({
+                                    plotIndex: undefined,
+                                    width: deferred.width,
+                                    height: deferred.height,
+                                });
+                                session.socket.write(
+                                    JSON.stringify({ type: 'resize', width: deferred.width, height: deferred.height }) + '\n'
+                                );
+                            }
+                        }
                     }
                     break;
 
@@ -287,11 +330,104 @@ export class SocketServer {
         const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
             if (session.lastResizeW === w && session.lastResizeH === h) continue;
-            if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
-            session.pendingResizes.push({ plotIndex: undefined, width: w, height: h });
+
+            if (!session.hasReceivedFrame) {
+                // Before R has sent any frame, limit what we forward to avoid
+                // the stashed-resize bug (recv_metrics_response picks up resize
+                // during text-metric waits → untagged replay → duplicate plot).
+                if (!session.initialResizeSent) {
+                    // Allow the very first resize through so R gets the correct
+                    // initial dimensions.
+                    session.initialResizeSent = true;
+                    session.pendingResizes.push({ plotIndex: undefined, width: w, height: h });
+                } else {
+                    // Defer subsequent resizes until after the first frame.
+                    session.deferredResize = { width: w, height: h };
+                    session.lastResizeW = w;
+                    session.lastResizeH = h;
+                    continue;
+                }
+            } else {
+                if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
+                session.pendingResizes.push({ plotIndex: undefined, width: w, height: h });
+            }
+
             session.lastResizeW = w;
             session.lastResizeH = h;
             session.socket.write(data);
         }
     }
+}
+
+/**
+ * Consume the appropriate pending resize entry for a frame.
+ *
+ * - plotIndex entries: strict FIFO (no coalescing).
+ * - Normal entries: first-match FIFO when the head entry's dimensions match,
+ *   otherwise deep-search for the last matching entry and drain up to it
+ *   (handles R-side coalescing).  Falls back to FIFO when no match is found
+ *   or dimensions are unavailable.
+ */
+export function consumePendingResize(
+  queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
+  frameDims: { width: number; height: number } | null,
+): { plotIndex?: number } | undefined {
+  if (queue.length === 0) return undefined;
+
+  // plotIndex entries: always consume strictly FIFO.
+  if (queue[0].plotIndex !== undefined) {
+    return queue.shift()!;
+  }
+
+  // Without frame dimensions, fall back to FIFO.
+  if (!frameDims) return queue.shift()!;
+
+  // If the first entry matches, consume it directly (R is processing
+  // resizes in order, no coalescing).
+  if (queue[0].width === frameDims.width && queue[0].height === frameDims.height) {
+    return queue.shift()!;
+  }
+
+  // First entry doesn't match — R may have coalesced past it.  Find the
+  // last matching entry in the consecutive normal prefix and drain all
+  // entries up to and including it.
+  let matchIdx = -1;
+  for (let i = 1; i < queue.length; i++) {
+    if (queue[i].plotIndex !== undefined) break;
+    if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
+      matchIdx = i;
+    }
+  }
+  if (matchIdx >= 0) {
+    const removed = queue.splice(0, matchIdx + 1);
+    return removed[removed.length - 1];
+  }
+
+  // No dimension match — fall back to FIFO.
+  return queue.shift()!;
+}
+
+/**
+ * Drain a pending resize entry whose dimensions match the given frame.
+ *
+ * Used for newPage frames: when R consumes a resize in cb_newPage (Race A),
+ * the new plot's dimensions coincidentally match the entry.  We remove the
+ * orphaned entry so it doesn't contaminate later frames, but we do NOT tag
+ * the frame — it's a new plot, not a replay.
+ *
+ * Only removes the first matching entry.  No FIFO fallback: if dims don't
+ * match, the entry belongs to a resize R hasn't replayed yet.
+ */
+function drainMatchingEntry(
+  queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
+  frameDims: { width: number; height: number } | null,
+): void {
+  if (!frameDims || queue.length === 0) return;
+  for (let i = 0; i < queue.length; i++) {
+    if (queue[i].plotIndex !== undefined) continue; // skip plotIndex entries
+    if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
+      queue.splice(i, 1);
+      return;
+    }
+  }
 }
