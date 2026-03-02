@@ -7,6 +7,8 @@
     "@astral/astral": "jsr:@astral/astral@^0.5"
   },
   "tasks": {
+    // --allow-net and --allow-run are unrestricted: E2E tests launch
+    // Rscript/R processes and Astral downloads Chromium from the internet.
     "test": "deno test --allow-net --allow-read --allow-write --allow-env --allow-run .",
     "bench": "deno run --allow-all bench/run.ts"
   }

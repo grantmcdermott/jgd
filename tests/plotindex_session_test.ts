@@ -79,18 +79,11 @@ Deno.test({
         // Include session1Id so the server routes to the correct (dead) session.
         browser.sendResizeWithPlotIndex(640, 480, 0, session1Id);
 
-        // Bug: The server broadcasts this resize to session 2, which renders
-        // its own current plot (plot 2) at new dimensions.  The server tags
-        // the response frame with plotIndex:0, so the browser replaces plot 1
-        // in its history with plot 2's content — session confusion.
-        //
-        // Expected correct behavior: the resize frame (if any) should either
-        // (a) not arrive at all (session 1 is dead, no one to render plot 1), or
-        // (b) contain plot 1's content (impossible since session 1 is dead).
-        //
-        // We check: if a frame arrives tagged plotIndex:0, its content must
-        // match plot 1 (not plot 2).  Since session 1 is dead, this assertion
-        // should fail, demonstrating the session confusion bug.
+        // The server routes the plotIndex resize to session 1 only (via
+        // sessionId).  Since session 1 is dead, the resize is silently
+        // dropped — no frame should arrive.  This prevents session confusion
+        // where session 2 would render its own plot at new dimensions and
+        // the server would tag it as plotIndex=0, corrupting history.
 
         let resizeFrame: FrameMessage | null = null;
         try {

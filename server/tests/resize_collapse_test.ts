@@ -1,29 +1,26 @@
 /**
- * Reproduction test for the resize collapse bug (trigd-1uj.6).
+ * Regression tests for the resize queue integrity fix.
  *
- * Root cause: broadcastResizeToR's collapse logic removes ALL normal
- * (non-plotIndex) pendingResizes entries when a new resize arrives.
- * But R has already received the previous resize(s) and WILL send a
- * replay frame for each.  When the entry for an in-flight resize is
- * removed, the corresponding replay frame arrives without a
- * pendingResizes entry → untagged → browser calls addPlot → duplicate
- * plot in history.
+ * These tests guard against a previous bug where broadcastResizeToR's
+ * collapse logic removed ALL normal (non-plotIndex) pendingResizes
+ * entries when a new resize arrived.  Since R had already received the
+ * previous resize(s), it would send a replay frame for each — but
+ * without a matching pendingResizes entry, the frame arrived untagged
+ * and the browser called addPlot, creating duplicate plots.
+ *
+ * The fix ensures each forwarded resize keeps its own pendingResizes
+ * entry (no collapsing), so every replay frame is correctly tagged.
  *
  * Two scenarios are tested:
  *
  * 1. Deferred resize + post-frame resize: the deferred resize entry
  *    is pushed when the first frame triggers forwarding.  A subsequent
- *    resize from the browser (e.g. ResizeObserver after render)
- *    collapses the deferred entry.  R's replay for the deferred resize
- *    steals the new entry, leaving the second replay untagged.
+ *    resize from the browser (e.g. ResizeObserver after render) must
+ *    NOT remove the deferred entry — both replay frames must be tagged.
  *
  * 2. Rapid resizes after first frame: two resizes with different
- *    dimensions arrive in quick succession.  The second collapses the
- *    first's entry.  R's first replay steals the second's entry,
- *    leaving the second replay untagged.
- *
- * Both tests currently FAIL because the collapse logic does not
- * account for in-flight resize responses.
+ *    dimensions arrive in quick succession.  Both entries must survive
+ *    so both replay frames are tagged correctly.
  */
 
 import { assertEquals } from "@std/assert";
@@ -54,11 +51,11 @@ Deno.test("deferred resize entry survives collapse from later resize", withTestH
     assertEquals(frame.resize, undefined, "Plot 1 must not be tagged");
   });
 
-  await t.step("post-render resize collapses deferred entry", async () => {
+  await t.step("post-render resize does not collapse deferred entry", async () => {
     // After the browser renders plot 1, ResizeObserver fires with
-    // slightly different dimensions (e.g. scrollbar appeared).  The
-    // server's collapse logic removes the deferred resize's
-    // pendingResizes entry and pushes a new one for this resize.
+    // slightly different dimensions (e.g. scrollbar appeared).  Both
+    // the deferred resize's entry and this new entry must coexist in
+    // pendingResizes so each replay frame is correctly tagged.
     browser.sendResize(901, 701);
 
     // R reads both pending resize messages in order.
@@ -85,14 +82,13 @@ Deno.test("deferred resize entry survives collapse from later resize", withTestH
     });
     const replay2 = await browser.waitForType<FrameMessage>("frame");
 
-    // BUG: The collapse logic removed the deferred resize's entry,
-    // so the first replay consumed the post-render resize's entry.
-    // This second replay has no entry → untagged → browser treats
-    // it as a new plot → duplicate.
+    // Regression: if entries were collapsed, the first replay would
+    // consume the post-render entry and this second replay would
+    // arrive untagged → addPlot → duplicate plot.
     assertEquals(
       replay2.resize,
       true,
-      "Post-render replay must be tagged — collapse ate the deferred entry",
+      "Post-render replay must be tagged",
     );
   });
 
@@ -127,8 +123,7 @@ Deno.test("rapid resizes after first frame — all replays tagged", withTestHarn
     // First resize — pushed as a pendingResizes entry.
     browser.sendResize(800, 600);
 
-    // Second resize — collapse removes first's entry, pushes new.
-    // Both are forwarded to R.
+    // Second resize — both entries must be kept (no collapsing).
     browser.sendResize(900, 700);
 
     const msg1 = await rClient.readMessage<ResizeMessage>();
@@ -154,13 +149,13 @@ Deno.test("rapid resizes after first frame — all replays tagged", withTestHarn
     });
     const replay2 = await browser.waitForType<FrameMessage>("frame");
 
-    // BUG: The collapse removed the first resize's entry.  R's
-    // first replay consumed the second's entry.  The second replay
-    // has no entry → untagged → addPlot → duplicate plot.
+    // Regression: if entries were collapsed, the first replay would
+    // consume the second's entry and this replay would arrive
+    // untagged → addPlot → duplicate plot.
     assertEquals(
       replay2.resize,
       true,
-      "Second replay must be tagged — collapse ate the first entry",
+      "Second replay must be tagged",
     );
   });
 

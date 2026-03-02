@@ -328,7 +328,7 @@ export class Hub {
         }
         // Ensure the frame carries the server-assigned sessionId.
         if (session.id) {
-          if (data.includes('"sessionId"')) {
+          if (/"sessionId"\s*:/.test(data)) {
             // Only replace when the server remapped the session ID
             // (retired ID dedup).  Otherwise preserve R's explicit sessionId.
             if (session.remappedSessionId) {
