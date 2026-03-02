@@ -16,7 +16,7 @@
 import { assertEquals } from "@std/assert";
 import { TestServer } from "../helpers/server.ts";
 import { RClient } from "../helpers/r_client.ts";
-import { E2EBrowser, plotInfoText } from "../helpers/e2e_browser.ts";
+import { E2EBrowser, plotInfoText, waitForPlotInfo } from "../helpers/e2e_browser.ts";
 import { delay } from "@std/async";
 import type { ResizeMessage } from "../helpers/types.ts";
 
@@ -39,10 +39,7 @@ Deno.test("E2E: two newPage frames must show 2/2 in toolbar (no duplication)", a
         ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#ff0000" } }],
         device: { width: 400, height: 300, bg: "#ff0000" },
       }, { newPage: true });
-      await delay(500);
-
-      const info = await plotInfoText(page);
-      assertEquals(info, "1 / 1", "After plot 1, toolbar should show 1 / 1");
+      await waitForPlotInfo(page, "1 / 1");
     });
 
     await t.step("send plot 2 (blue) — must not duplicate plot 1", async () => {
@@ -50,15 +47,7 @@ Deno.test("E2E: two newPage frames must show 2/2 in toolbar (no duplication)", a
         ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#0000ff" } }],
         device: { width: 400, height: 300, bg: "#0000ff" },
       }, { newPage: true });
-      await delay(500);
-
-      const info = await plotInfoText(page);
-      assertEquals(
-        info,
-        "2 / 2",
-        "After plot 2, toolbar should show 2 / 2 — " +
-          `got "${info}" (duplication bug: previous plot was copied)`,
-      );
+      await waitForPlotInfo(page, "2 / 2");
     });
 
     await t.step("send plot 3 (green) — must not duplicate plot 2", async () => {
@@ -66,15 +55,7 @@ Deno.test("E2E: two newPage frames must show 2/2 in toolbar (no duplication)", a
         ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#00ff00" } }],
         device: { width: 400, height: 300, bg: "#00ff00" },
       }, { newPage: true });
-      await delay(500);
-
-      const info = await plotInfoText(page);
-      assertEquals(
-        info,
-        "3 / 3",
-        "After plot 3, toolbar should show 3 / 3 — " +
-          `got "${info}" (duplication bug: previous plot was copied)`,
-      );
+      await waitForPlotInfo(page, "3 / 3");
     });
 
   } finally {
@@ -105,10 +86,7 @@ Deno.test("E2E: resize between plots must not create ghost entries", async (t) =
         ops: [{ op: "rect", x0: 0, y0: 0, x1: initResize.width, y1: initResize.height, gc: { fill: "#ff0000" } }],
         device: { width: initResize.width, height: initResize.height, bg: "#ff0000" },
       }, { newPage: true });
-      await delay(500);
-
-      const info = await plotInfoText(page);
-      assertEquals(info, "1 / 1");
+      await waitForPlotInfo(page, "1 / 1");
     });
 
     await t.step("resize after plot 1 — replay must not add entry", async () => {
@@ -139,15 +117,7 @@ Deno.test("E2E: resize between plots must not create ghost entries", async (t) =
         ops: [{ op: "rect", x0: 0, y0: 0, x1: 500, y1: 350, gc: { fill: "#0000ff" } }],
         device: { width: 500, height: 350, bg: "#0000ff" },
       }, { newPage: true });
-      await delay(500);
-
-      const info = await plotInfoText(page);
-      assertEquals(
-        info,
-        "2 / 2",
-        "After plot 2, toolbar should show 2 / 2 — " +
-          `got "${info}" (resize ghost or duplication bug)`,
-      );
+      await waitForPlotInfo(page, "2 / 2");
     });
 
     await t.step("plot 3 after plot 2 — no accumulated ghosts", async () => {
@@ -155,15 +125,7 @@ Deno.test("E2E: resize between plots must not create ghost entries", async (t) =
         ops: [{ op: "rect", x0: 0, y0: 0, x1: 500, y1: 350, gc: { fill: "#00ff00" } }],
         device: { width: 500, height: 350, bg: "#00ff00" },
       }, { newPage: true });
-      await delay(500);
-
-      const info = await plotInfoText(page);
-      assertEquals(
-        info,
-        "3 / 3",
-        "After plot 3, toolbar should show 3 / 3 — " +
-          `got "${info}" (accumulated ghost entries)`,
-      );
+      await waitForPlotInfo(page, "3 / 3");
     });
 
   } finally {

@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { TestServer } from "../helpers/server.ts";
 import { RClient } from "../helpers/r_client.ts";
 import { BrowserClient } from "../helpers/browser_client.ts";
-import { E2EBrowser, readOfType, sampleCanvasColors } from "../helpers/e2e_browser.ts";
+import { E2EBrowser, readOfType, sampleCanvasColors, waitForPlotInfo } from "../helpers/e2e_browser.ts";
 import { delay } from "@std/async";
 import type { ResizeMessage } from "../helpers/types.ts";
 
@@ -42,20 +42,16 @@ Deno.test("E2E: resize after deleting latest plot must not replace remaining plo
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#ff0000" } }],
       device: { width: 400, height: 300, bg: "#ff0000" },
     }, { newPage: true });
-    await delay(500);
+    await waitForPlotInfo(page, "1 / 1");
 
     // Frame 2: entirely BLUE (simulates hist(rnorm(100)))
     await rClient.sendFrame({
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#0000ff" } }],
       device: { width: 400, height: 300, bg: "#0000ff" },
     }, { newPage: true });
-    await delay(500);
+    await waitForPlotInfo(page, "2 / 2");
 
     await t.step("setup: at plot 2/2, canvas is blue", async () => {
-      const info = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
-      assertEquals(info, "2 / 2");
 
       const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasBlue, true, "plot 2 should show blue");
@@ -64,12 +60,7 @@ Deno.test("E2E: resize after deleting latest plot must not replace remaining plo
 
     await t.step("delete current (blue) plot, canvas shows red", async () => {
       await page.evaluate(`document.getElementById('btn-delete').click()`);
-      await delay(300);
-
-      const info = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
-      assertEquals(info, "1 / 1", "should have 1 plot remaining after delete");
+      await waitForPlotInfo(page, "1 / 1");
 
       const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasRed, true, "remaining plot should be red");

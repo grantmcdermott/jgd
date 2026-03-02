@@ -59,6 +59,25 @@ export async function plotInfoText(page: Page): Promise<string> {
   })()`) as string;
 }
 
+/** Poll until plotInfo matches expected text exactly, or throw on timeout. */
+export async function waitForPlotInfo(
+  page: Page,
+  expected: string,
+  timeoutMs = 3000,
+): Promise<string> {
+  const deadline = Date.now() + timeoutMs;
+  let info = "";
+  while (Date.now() < deadline) {
+    info = await plotInfoText(page);
+    if (info === expected) return info;
+    await delay(100);
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for plotInfo "${expected}", ` +
+    `last: "${info}"`,
+  );
+}
+
 /** Poll until plotInfo shows expected count or throw on timeout. */
 export async function waitForPlotCount(
   page: Page,

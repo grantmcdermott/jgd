@@ -18,7 +18,7 @@
 import { assertEquals, assertNotEquals } from "@std/assert";
 import { TestServer } from "../helpers/server.ts";
 import { RClient } from "../helpers/r_client.ts";
-import { E2EBrowser, plotInfoText, readOfType } from "../helpers/e2e_browser.ts";
+import { E2EBrowser, plotInfoText, readOfType, waitForPlotInfo } from "../helpers/e2e_browser.ts";
 import { delay } from "@std/async";
 import type { ResizeMessage } from "../helpers/types.ts";
 
@@ -41,16 +41,13 @@ Deno.test("E2E: ResizeObserver sends plotIndex when viewing past plot", async (t
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#ff0000" } }],
       device: { width: 400, height: 300, bg: "#ff0000" },
     }, { newPage: true });
-    await delay(500);
+    await waitForPlotInfo(page, "1 / 1");
 
     await rClient.sendFrame({
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#0000ff" } }],
       device: { width: 400, height: 300, bg: "#0000ff" },
     }, { newPage: true });
-    await delay(500);
-
-    const info = await plotInfoText(page);
-    assertEquals(info, "2 / 2");
+    await waitForPlotInfo(page, "2 / 2");
 
     await t.step("resize at latest plot sends NO plotIndex", async () => {
       // Trigger ResizeObserver by changing container size
@@ -74,10 +71,7 @@ Deno.test("E2E: ResizeObserver sends plotIndex when viewing past plot", async (t
 
     await t.step("navigate to plot 1", async () => {
       await page.evaluate(`document.getElementById('btn-prev').click()`);
-      await delay(300);
-
-      const plotInfo = await plotInfoText(page);
-      assertEquals(plotInfo, "1 / 2");
+      await waitForPlotInfo(page, "1 / 2");
     });
 
     await t.step("resize at past plot sends plotIndex", async () => {

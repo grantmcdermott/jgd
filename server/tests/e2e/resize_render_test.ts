@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { TestServer } from "../helpers/server.ts";
 import { RClient } from "../helpers/r_client.ts";
 import { BrowserClient } from "../helpers/browser_client.ts";
-import { E2EBrowser, canvasHasContent, canvasDimensions, readOfType } from "../helpers/e2e_browser.ts";
+import { E2EBrowser, canvasHasContent, canvasDimensions, readOfType, waitForPlotInfo } from "../helpers/e2e_browser.ts";
 import { delay } from "@std/async";
 import type { ResizeMessage } from "../helpers/types.ts";
 
@@ -30,18 +30,15 @@ Deno.test("E2E: resize triggers canvas re-render", async (t) => {
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#3366cc" } }],
       device: { width: 400, height: 300, bg: "#ffffff" },
     }, { newPage: true });
-    await delay(300);
+    await waitForPlotInfo(page, "1 / 1");
     await rClient.sendFrame({
       ops: [{ op: "circle", x: 200, y: 150, r: 50, gc: { fill: "#33cc66" } }],
       device: { width: 400, height: 300, bg: "#ffffff" },
     }, { newPage: true });
-    await delay(500);
+    await waitForPlotInfo(page, "2 / 2");
 
     const dimsBefore = await canvasDimensions(page);
-    const countBefore = await page.evaluate(
-      `document.getElementById('plot-info').textContent`,
-    ) as string;
-    assertEquals(countBefore, "2 / 2");
+    const countBefore = "2 / 2";
 
     await t.step("resize message reaches R", async () => {
       // Send resize with unique dimensions so we can identify it
@@ -83,12 +80,7 @@ Deno.test("E2E: resize triggers canvas re-render", async (t) => {
     await t.step("resize preserves user position in history", async () => {
       // Navigate back to plot 1 of 2
       await page.evaluate(`document.getElementById('btn-prev').click()`);
-      await delay(200);
-
-      const infoBefore = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
-      assertEquals(infoBefore, "1 / 2");
+      await waitForPlotInfo(page, "1 / 2");
 
       // Trigger another resize + frame cycle
       resizeSender.sendResize(800, 600);

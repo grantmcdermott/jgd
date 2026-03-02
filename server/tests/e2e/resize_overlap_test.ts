@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { TestServer } from "../helpers/server.ts";
 import { RClient } from "../helpers/r_client.ts";
 import { BrowserClient } from "../helpers/browser_client.ts";
-import { E2EBrowser, readOfType, sampleCanvasColors } from "../helpers/e2e_browser.ts";
+import { E2EBrowser, readOfType, sampleCanvasColors, waitForPlotInfo } from "../helpers/e2e_browser.ts";
 import { delay } from "@std/async";
 import type { ResizeMessage } from "../helpers/types.ts";
 
@@ -32,20 +32,16 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#ff0000" } }],
       device: { width: 400, height: 300, bg: "#ff0000" },
     }, { newPage: true });
-    await delay(500);
+    await waitForPlotInfo(page, "1 / 1");
 
     // Frame 2: entirely BLUE (#0000ff)
     await rClient.sendFrame({
       ops: [{ op: "rect", x0: 0, y0: 0, x1: 400, y1: 300, gc: { fill: "#0000ff" } }],
       device: { width: 400, height: 300, bg: "#0000ff" },
     }, { newPage: true });
-    await delay(500);
+    await waitForPlotInfo(page, "2 / 2");
 
     await t.step("setup: at plot 2/2, canvas is blue", async () => {
-      const info = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
-      assertEquals(info, "2 / 2");
 
       const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasBlue, true, "plot 2 should show blue");
@@ -54,12 +50,7 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
 
     await t.step("navigate to plot 1, canvas is red", async () => {
       await page.evaluate(`document.getElementById('btn-prev').click()`);
-      await delay(300);
-
-      const info = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
-      assertEquals(info, "1 / 2");
+      await waitForPlotInfo(page, "1 / 2");
 
       const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasRed, true, "plot 1 should show red");
@@ -104,13 +95,8 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
       // corrupts the historical plot when currentIndex != latest.
 
       // Ensure we're on plot 1
-      const infoPre = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
-      if (infoPre !== "1 / 2") {
-        await page.evaluate(`document.getElementById('btn-prev').click()`);
-        await delay(300);
-      }
+      await page.evaluate(`document.getElementById('btn-prev').click()`);
+      await waitForPlotInfo(page, "1 / 2");
 
       // Send resize
       resizeSender.sendResize(850, 650);
@@ -149,14 +135,9 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
     });
 
     await t.step("real ResizeObserver resize — no ghost/overlap", async () => {
-      // Navigate back to plot 1 (might already be there)
-      const infoPre = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
-      if (infoPre !== "1 / 2") {
-        await page.evaluate(`document.getElementById('btn-prev').click()`);
-        await delay(300);
-      }
+      // Navigate back to plot 1
+      await page.evaluate(`document.getElementById('btn-prev').click()`);
+      await waitForPlotInfo(page, "1 / 2");
 
       // Change container size via JS to trigger the actual ResizeObserver
       await page.evaluate(`(function() {
@@ -195,17 +176,10 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
     await t.step("sequential resizes — both tagged as resize", async () => {
       // Two resizes in sequence (R responds between them).
       // Both frames should be tagged resize:true -> replaceLatest.
-      const infoPre = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
-      if (infoPre !== "1 / 2") {
-        await page.evaluate(`document.getElementById('btn-prev').click()`);
-        await delay(300);
-      }
+      await page.evaluate(`document.getElementById('btn-prev').click()`);
+      await waitForPlotInfo(page, "1 / 2");
 
-      const infoBefore = await page.evaluate(
-        `document.getElementById('plot-info').textContent`,
-      ) as string;
+      const infoBefore = "1 / 2";
 
       // First resize
       resizeSender.sendResize(900, 700);
