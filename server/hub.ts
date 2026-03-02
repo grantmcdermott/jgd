@@ -272,7 +272,7 @@ export class Hub {
       case "frame": {
         session.hasReceivedFrame = true;
         let data = line;
-        const isNewPage = /"newPage"\s*:\s*true/.test(line);
+        const isNewPage = extractNewPage(line);
         // Tag resize-triggered frames so the browser can update in place.
         // Use dimension matching to handle R-side coalescing: when R
         // receives multiple resizes quickly, it may only replay the last
@@ -518,6 +518,20 @@ export class Hub {
       } catch { /* ignore */ }
     }
     this.sessions.clear();
+  }
+}
+
+/**
+ * Extract the top-level newPage field from a frame JSON line.
+ * Uses JSON.parse (not regex) to avoid false positives from string payloads
+ * that happen to contain the substring "newPage":true.
+ */
+function extractNewPage(line: string): boolean {
+  try {
+    const msg = JSON.parse(line);
+    return msg?.newPage === true;
+  } catch {
+    return false;
   }
 }
 

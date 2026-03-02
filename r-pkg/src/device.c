@@ -304,10 +304,15 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
             st->last_flushed_ops = st->page.op_count;
         }
 
-        /* Restore the current plot state */
-        st->replaying = 1;
-        GEplaySnapshot(current, gdd);
-        st->replaying = 0;
+        /* Restore the current plot state.  GEcreateSnapshot can return
+         * R_NilValue if the display list is empty (e.g. right after
+         * dev.off/jgd cycle).  Skip restore in that case — the historical
+         * replay already left the device in a valid state. */
+        if (current != R_NilValue) {
+            st->replaying = 1;
+            GEplaySnapshot(current, gdd);
+            st->replaying = 0;
+        }
 
         /* Suppress re-flushing the restored current plot */
         st->last_flushed_ops = st->page.op_count;
