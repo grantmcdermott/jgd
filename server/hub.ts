@@ -296,51 +296,25 @@ export class Hub {
         // When the frame has newPage:true, this is a genuinely new plot —
         // not a resize replay.  If a pending entry happens to match the
         // new plot's dimensions (Race A: cb_newPage consumed the resize),
-        // drain it so it doesn't contaminate later frames, but do NOT
-        // tag the frame as a resize.  The drained entry is stored on the
-        // session as drainedEntry so that if R actually stashed the resize
-        // via recv_metrics_response (Race C), the next replay frame can
-        // reclaim it and be correctly tagged.
-        //
-        // Retrieve and discard any reclaimable entry from a previous
-        // newPage drain.  If the current frame is a non-newPage replay
-        // at matching dimensions, this entry will be consumed instead of
-        // being lost.
-        const reclaimableEntry = session.drainedEntry;
-        session.drainedEntry = null;
-
-        const hadPending = session.pendingResizes.length > 0 ||
-                           reclaimableEntry != null;
+        // silently drain it so it doesn't contaminate later frames, but
+        // do NOT tag the frame as a resize.
+        const hadPending = session.pendingResizes.length > 0;
         let consumedEntry: { plotIndex?: number } | undefined;
         let drainedPending = false;
-        if (isNewPage) {
-          if (session.pendingResizes.length > 0) {
+        if (hadPending) {
+          if (isNewPage) {
             // New plot: drain matching entry if present (Race A cleanup),
-            // but never tag.  Store the drained entry so Race C replays
-            // can reclaim it.  No FIFO fallback — a non-matching entry
+            // but never tag.  No FIFO fallback — a non-matching entry
             // belongs to a resize that R hasn't replayed yet.
-            const drained = drainMatchingEntry(session.pendingResizes, frameDims);
-            if (drained) {
-              session.drainedEntry = drained;
-              drainedPending = true;
-            }
-          }
-        } else {
-          // Non-newPage frame.  First check if a drained entry from the
-          // previous newPage can be reclaimed (Race C: recv_metrics_response
-          // stashed a resize, the newPage drained the entry, and this is
-          // the replay frame).
-          if (reclaimableEntry && frameDims &&
-              reclaimableEntry.width === frameDims.width &&
-              reclaimableEntry.height === frameDims.height) {
-            consumedEntry = reclaimableEntry;
-          } else if (session.pendingResizes.length > 0) {
+            drainMatchingEntry(session.pendingResizes, frameDims);
+            drainedPending = true;
+          } else {
             consumedEntry = consumePendingResize(session.pendingResizes, frameDims);
-          }
-          if (consumedEntry) {
-            data = injectResizeFlag(data);
-            if (consumedEntry.plotIndex !== undefined) {
-              data = injectPlotIndex(data, consumedEntry.plotIndex);
+            if (consumedEntry) {
+              data = injectResizeFlag(data);
+              if (consumedEntry.plotIndex !== undefined) {
+                data = injectPlotIndex(data, consumedEntry.plotIndex);
+              }
             }
           }
         }
@@ -644,25 +618,21 @@ export function consumePendingResize(
  * We remove the orphaned entry so it doesn't contaminate later frames,
  * but we do NOT tag the frame — it's a new plot, not a replay.
  *
- * Returns the drained entry (if any) so the caller can store it as a
- * reclaimable entry for Race C (recv_metrics_response stashed the
- * resize → the next replay frame needs the entry back).
- *
  * Only removes the first matching entry.  No FIFO fallback: if dims
  * don't match, the entry belongs to a resize R hasn't replayed yet.
  */
 function drainMatchingEntry(
   queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
   frameDims: { width: number; height: number } | null,
-): { plotIndex?: number; width?: number; height?: number } | undefined {
-  if (!frameDims || queue.length === 0) return undefined;
+): void {
+  if (!frameDims || queue.length === 0) return;
   for (let i = 0; i < queue.length; i++) {
     if (queue[i].plotIndex !== undefined) continue; // skip plotIndex entries
     if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
-      return queue.splice(i, 1)[0];
+      queue.splice(i, 1);
+      return;
     }
   }
-  return undefined;
 }
 
 /**

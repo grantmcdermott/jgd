@@ -49,7 +49,7 @@ import type {
 //   9. Browser calls addPlot → DUPLICATE
 // ---------------------------------------------------------------------------
 
-Deno.test("plotIndex→normal same-dims → stashed during metrics → correctly tagged", withTestHarness(async (t, { rClient, browser }) => {
+Deno.test("BUG: plotIndex→normal same-dims → stashed during metrics → duplicate", withTestHarness(async (t, { rClient, browser }) => {
   // Prime: establish session and initial frame
   browser.sendResize(1, 1);
   await rClient.readMessage<ResizeMessage>();
@@ -244,7 +244,7 @@ Deno.test("plotIndex→normal different-dims → stashed during metrics → corr
 // can occur.
 // ---------------------------------------------------------------------------
 
-Deno.test("deferred resize stashed during metrics → correctly tagged", withTestHarness(async (t, { rClient, browser }) => {
+Deno.test("BUG: deferred resize stashed during metrics → duplicate", withTestHarness(async (t, { rClient, browser }) => {
   // Step 1: Initial resize (ws.onopen equivalent)
   browser.sendResize(800, 600);
   const initialResize = await rClient.readMessage<ResizeMessage>();

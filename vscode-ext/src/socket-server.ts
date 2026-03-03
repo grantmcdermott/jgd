@@ -39,13 +39,6 @@ interface RSession {
      * text-metric waits, which would produce an untagged replay frame.
      */
     deferredResize: { width: number; height: number } | null;
-    /**
-     * Entry drained from pendingResizes by a newPage frame (Race A cleanup).
-     * Kept for one frame so that if R stashed the resize via
-     * recv_metrics_response (Race C), the subsequent replay frame can
-     * reclaim the entry and be correctly tagged as a resize response.
-     */
-    drainedEntry: { plotIndex?: number; width?: number; height?: number } | null;
 }
 
 /**
@@ -185,7 +178,7 @@ export class SocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
-        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, pendingResizes: [], lastResizeW: 0, lastResizeH: 0, lastResizeHadPlotIndex: false, hasReceivedFrame: false, initialResizeSent: false, deferredResize: null, drainedEntry: null };
+        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, pendingResizes: [], lastResizeW: 0, lastResizeH: 0, lastResizeHadPlotIndex: false, hasReceivedFrame: false, initialResizeSent: false, deferredResize: null };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
 
@@ -252,29 +245,11 @@ export class SocketServer {
                         // Consume or drain pending resize entries using dimension matching.
                         // newPage frames drain without tagging (Race A cleanup);
                         // non-newPage frames consume and tag as resize.
-                        //
-                        // Retrieve and clear any reclaimable entry from a previous
-                        // newPage drain.  If this frame is a replay at matching dims
-                        // (Race C: recv_metrics_response stashed a resize), the
-                        // entry is reclaimed and the frame is tagged resize:true.
-                        const reclaimableEntry = session.drainedEntry;
-                        session.drainedEntry = null;
-
                         let consumedEntry: { plotIndex?: number } | undefined;
-                        if (isNewPage) {
-                            if (session.pendingResizes.length > 0) {
-                                const drained = drainMatchingEntry(session.pendingResizes, frameDims);
-                                if (drained) {
-                                    session.drainedEntry = drained;
-                                }
-                            }
-                        } else {
-                            // Check reclaimable entry first (Race C replay)
-                            if (reclaimableEntry && frameDims &&
-                                reclaimableEntry.width === frameDims.width &&
-                                reclaimableEntry.height === frameDims.height) {
-                                consumedEntry = reclaimableEntry;
-                            } else if (session.pendingResizes.length > 0) {
+                        if (session.pendingResizes.length > 0) {
+                            if (isNewPage) {
+                                drainMatchingEntry(session.pendingResizes, frameDims);
+                            } else {
                                 consumedEntry = consumePendingResize(session.pendingResizes, frameDims);
                             }
                         }
@@ -454,11 +429,8 @@ export function consumePendingResize(
  *
  * Used for newPage frames: when R consumes a resize in cb_newPage (Race A),
  * the new plot's dimensions coincidentally match the entry.  We remove the
- * orphaned entry so it doesn't contaminate later frames, but do NOT tag
+ * orphaned entry so it doesn't contaminate later frames, but we do NOT tag
  * the frame — it's a new plot, not a replay.
- *
- * Returns the drained entry so the caller can store it as a reclaimable
- * entry for Race C (recv_metrics_response stashed the resize).
  *
  * Only removes the first matching entry.  No FIFO fallback: if dims don't
  * match, the entry belongs to a resize R hasn't replayed yet.
@@ -466,13 +438,13 @@ export function consumePendingResize(
 function drainMatchingEntry(
   queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
   frameDims: { width: number; height: number } | null,
-): { plotIndex?: number; width?: number; height?: number } | undefined {
-  if (!frameDims || queue.length === 0) return undefined;
+): void {
+  if (!frameDims || queue.length === 0) return;
   for (let i = 0; i < queue.length; i++) {
     if (queue[i].plotIndex !== undefined) continue; // skip plotIndex entries
     if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
-      return queue.splice(i, 1)[0];
+      queue.splice(i, 1);
+      return;
     }
   }
-  return undefined;
 }
