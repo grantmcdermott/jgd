@@ -118,8 +118,8 @@ Deno.test("plotIndex→normal same-dims → stashed during metrics → replay ta
 
     // R finishes drawing plot 2 → frame (newPage:true, 800x600)
     // This is the critical frame: its dimensions match the pending resize
-    // entry.  If drainMatchingEntry removes the entry, the subsequent
-    // replay frame will be untagged.
+    // entry.  Without the resizeReplay protocol, the server would drain
+    // the entry here and the subsequent replay frame would be untagged.
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "faceted-ggplot2" }], device: { width: 800, height: 600 } },
       { newPage: true },
@@ -205,7 +205,8 @@ Deno.test("plotIndex→normal same-dims → stashed during metrics → replay ta
     await rClient.readMessage<MetricsResponseMessage>();
 
     // R finishes drawing at 500x400 (same dims as resize).
-    // drainMatchingEntry would drain the {500,400} entry if dims match.
+    // Without the resizeReplay protocol, the server would drain the
+    // {500,400} entry here if dims match.
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "plot2" }], device: { width: 500, height: 400 } },
       { newPage: true },

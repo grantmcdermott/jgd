@@ -80,11 +80,11 @@ Deno.test("plotIndex FIFO: R responds to first of two plotIndex resizes", withTe
     // After the first plotIndex resize was consumed, the second
     // plotIndex entry (pi=1 at 600x450) remains in the queue.
     // A normal new-plot frame should NOT be mistagged with it
-    // because newPage frames drain matching entries silently
-    // (no tagging) via drainMatchingEntry.
+    // because newPage frames without resizeConsumed preserve pending
+    // entries for subsequent resizeReplay frames.
     //
     // If dims don't match, the entry is simply left in the queue
-    // for future dimension-matching.
+    // for future consumption.
     await rClient.sendFrame(
       { ops: [{ op: "rect", fill: "green" }], device: { width: 400, height: 300 } },
       { newPage: true },

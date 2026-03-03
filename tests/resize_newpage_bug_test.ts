@@ -5,9 +5,9 @@
  * GEplayDisplayList replay (replaying=1).  After replay, poll_resize_impl
  * clears replaying and calls jgd_flush_frame which sees new_page=1 and
  * emits "newPage":true in the frame JSON.  The server then calls
- * drainMatchingEntry (for newPage frames) instead of consumePendingResize,
- * leaving the frame untagged.  The browser treats the untagged frame as a
- * new plot (addPlot) instead of a resize replacement (replaceLatest).
+ * the server's newPage handler instead of consuming a pendingResizes entry
+ * and tagging the frame.  The browser treats the untagged frame as a new
+ * plot (addPlot) instead of a resize replacement (replaceLatest).
  *
  * This test verifies:
  *  1. A normal resize after a single plot produces a frame with resize:true.
