@@ -4,7 +4,7 @@
  */
 
 import { assertEquals } from "@std/assert";
-import { consumePendingResize } from "../hub.ts";
+import { consumePendingResize, drainConsumedResize } from "../hub.ts";
 
 // Helper to build a normal entry (explicit plotIndex: undefined).
 function normal(w: number, h: number) {
@@ -183,4 +183,73 @@ Deno.test("entry with plotIndex omitted treated as normal entry", () => {
   assertEquals(entry?.plotIndex, undefined);
   assertEquals(queue.length, 1);
   assertEquals(queue[0].width, 900);
+});
+
+// ===========================================================================
+// drainConsumedResize — dimension-match-only drain (no FIFO fallback)
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Empty queue / null frameDims — no-op
+// ---------------------------------------------------------------------------
+
+Deno.test("drainConsumedResize: empty queue is a no-op", () => {
+  const queue: Array<{ plotIndex?: number; width?: number; height?: number }> = [];
+  drainConsumedResize(queue, { width: 800, height: 600 });
+  assertEquals(queue.length, 0);
+});
+
+Deno.test("drainConsumedResize: null frameDims is a no-op", () => {
+  const queue = [normal(800, 600)];
+  drainConsumedResize(queue, null);
+  assertEquals(queue.length, 1, "queue unchanged when frameDims is null");
+});
+
+// ---------------------------------------------------------------------------
+// Dimension match — drains matching entry
+// ---------------------------------------------------------------------------
+
+Deno.test("drainConsumedResize: drains matching entry", () => {
+  const queue = [normal(800, 600), normal(900, 700)];
+  drainConsumedResize(queue, { width: 800, height: 600 });
+  assertEquals(queue.length, 1);
+  assertEquals(queue[0].width, 900);
+});
+
+Deno.test("drainConsumedResize: drains first matching entry when multiple match", () => {
+  const queue = [normal(800, 600), normal(900, 700), normal(800, 600)];
+  drainConsumedResize(queue, { width: 800, height: 600 });
+  assertEquals(queue.length, 2);
+  assertEquals(queue[0].width, 900);
+  assertEquals(queue[1].width, 800, "second 800x600 entry should remain");
+});
+
+// ---------------------------------------------------------------------------
+// No dimension match — queue unchanged (no FIFO fallback)
+// ---------------------------------------------------------------------------
+
+Deno.test("drainConsumedResize: no match leaves queue unchanged", () => {
+  const queue = [normal(800, 600), normal(900, 700)];
+  drainConsumedResize(queue, { width: 1024, height: 768 });
+  assertEquals(queue.length, 2, "queue must not be modified when no dims match");
+  assertEquals(queue[0].width, 800);
+  assertEquals(queue[1].width, 900);
+});
+
+// ---------------------------------------------------------------------------
+// plotIndex entries are skipped
+// ---------------------------------------------------------------------------
+
+Deno.test("drainConsumedResize: skips plotIndex entries even if dims match", () => {
+  const queue = [indexed(0, 800, 600), normal(900, 700)];
+  drainConsumedResize(queue, { width: 800, height: 600 });
+  assertEquals(queue.length, 2, "plotIndex entry must not be drained");
+  assertEquals(queue[0].plotIndex, 0);
+});
+
+Deno.test("drainConsumedResize: finds normal entry after plotIndex entries", () => {
+  const queue = [indexed(0, 800, 600), normal(800, 600)];
+  drainConsumedResize(queue, { width: 800, height: 600 });
+  assertEquals(queue.length, 1);
+  assertEquals(queue[0].plotIndex, 0, "plotIndex entry should remain");
 });
