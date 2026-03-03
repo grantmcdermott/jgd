@@ -88,12 +88,16 @@ cJSON *gc_to_cjson(const pGEcontext gc) {
 }
 
 char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incremental,
-                           int new_page) {
+                           int new_page, int resize_replay, int resize_consumed) {
     cJSON *frame = cJSON_CreateObject();
     cJSON_AddStringToObject(frame, "type", "frame");
     cJSON_AddBoolToObject(frame, "incremental", incremental);
     if (new_page && !incremental)
         cJSON_AddBoolToObject(frame, "newPage", 1);
+    if (resize_replay)
+        cJSON_AddBoolToObject(frame, "resizeReplay", 1);
+    if (resize_consumed)
+        cJSON_AddBoolToObject(frame, "resizeConsumed", 1);
 
     cJSON *plot = cJSON_AddObjectToObject(frame, "plot");
     cJSON_AddNumberToObject(plot, "version", 1);

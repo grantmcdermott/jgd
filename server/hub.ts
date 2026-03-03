@@ -285,48 +285,59 @@ export class Hub {
       case "frame": {
         session.hasReceivedFrame = true;
         let data = line;
-        const { isNewPage, dims: frameDims } = extractFrameMeta(line);
+        const { isNewPage, isResizeReplay, isResizeConsumed, dims: frameDims } =
+          extractFrameMeta(line);
         // Tag resize-triggered frames so the browser can update in place.
-        // Use dimension matching to handle R-side coalescing: when R
-        // receives multiple resizes quickly, it may only replay the last
-        // one.  By matching the frame's device dimensions against queued
-        // entries, we consume the correct entry (and any earlier entries
-        // that R coalesced into it).
         //
-        // When the frame has newPage:true, this is a genuinely new plot —
-        // not a resize replay.  If a pending entry happens to match the
-        // new plot's dimensions (Race A: cb_newPage consumed the resize),
-        // silently drain it so it doesn't contaminate later frames, but
-        // do NOT tag the frame as a resize.
+        // R sends two flags to make resize handling unambiguous:
+        //   resizeReplay:true  — frame from poll_resize_impl (display list replay)
+        //   resizeConsumed:true — cb_newPage consumed a pending resize
+        //
+        // When resizeReplay is present, consume the matching pendingResizes
+        // entry and tag the frame with resize:true (and optionally plotIndex).
+        //
+        // When resizeConsumed is present on a newPage frame, drain the
+        // matching entry without tagging (Race A: the resize was absorbed
+        // into the new page's dimensions, no separate replay follows).
+        //
+        // newPage without resizeConsumed: the pending entry belongs to a
+        // resize that R will replay later (stash scenario) — do not drain.
+        //
+        // Legacy fallback: non-newPage frames without resizeReplay still
+        // consume entries for backward compatibility with old R clients.
         const hadPending = session.pendingResizes.length > 0;
         let consumedEntry: { plotIndex?: number } | undefined;
-        let drainedPending = false;
         if (hadPending) {
-          if (isNewPage) {
-            // New plot: drain matching entry if present (Race A cleanup),
-            // but never tag.  No FIFO fallback — a non-matching entry
-            // belongs to a resize that R hasn't replayed yet.
-            drainMatchingEntry(session.pendingResizes, frameDims);
-            drainedPending = true;
-          } else {
+          if (isResizeReplay) {
             consumedEntry = consumePendingResize(session.pendingResizes, frameDims);
-            if (consumedEntry) {
-              data = injectResizeFlag(data);
-              if (consumedEntry.plotIndex !== undefined) {
-                data = injectPlotIndex(data, consumedEntry.plotIndex);
-              }
+          } else if (isResizeConsumed) {
+            // Race A: cb_newPage consumed the resize.  Drain the entry
+            // without tagging — this is a new plot, not a replay.
+            consumePendingResize(session.pendingResizes, frameDims);
+          } else if (!isNewPage) {
+            // Legacy: non-newPage, non-resizeReplay frame.  For old R
+            // clients that don't send resizeReplay, this preserves the
+            // existing consume-and-tag behavior.
+            consumedEntry = consumePendingResize(session.pendingResizes, frameDims);
+          }
+          // newPage without resizeConsumed: no action — the entry
+          // survives for the subsequent resizeReplay frame.
+          if (consumedEntry) {
+            data = injectResizeFlag(data);
+            if (consumedEntry.plotIndex !== undefined) {
+              data = injectPlotIndex(data, consumedEntry.plotIndex);
             }
           }
         }
         if (this.verbose) {
           const isIncremental = /"incremental"\s*:\s*true/.test(line);
           let classification: string;
-          if (drainedPending) {
-            classification = "newPage (drained pending)";
-          } else if (consumedEntry) {
+          if (consumedEntry) {
             classification = consumedEntry.plotIndex !== undefined
               ? `resize (plotIndex=${consumedEntry.plotIndex})`
-              : "resize (consumed pending)";
+              : isResizeReplay ? "resizeReplay (consumed pending)" : "resize (consumed pending)";
+          } else if (isResizeConsumed) {
+            classification = "newPage (resizeConsumed, drained pending)";
           } else if (hadPending && !isNewPage) {
             classification = "UNTAGGED (no pending resize!)";
           } else {
@@ -335,6 +346,7 @@ export class Hub {
           console.error(
             `[hub] frame: ${classification}, pendingResizes=${session.pendingResizes.length}` +
             `, deferred=${!!session.deferredResize}, newPage=${isNewPage}` +
+            `, resizeReplay=${isResizeReplay}, resizeConsumed=${isResizeConsumed}` +
             `, incremental=${isIncremental}`,
           );
         }
@@ -536,26 +548,29 @@ export class Hub {
 /** Metadata extracted from a single JSON.parse of a frame line. */
 interface FrameMeta {
   isNewPage: boolean;
+  isResizeReplay: boolean;
+  isResizeConsumed: boolean;
   dims: { width: number; height: number } | null;
 }
 
 /**
- * Extract frame metadata (newPage flag and device dimensions) from a
- * frame JSON line in a single JSON.parse call.  Uses parsed fields
- * (not regex) to avoid false positives from string payloads.
+ * Extract frame metadata from a frame JSON line in a single JSON.parse call.
+ * Uses parsed fields (not regex) to avoid false positives from string payloads.
  */
 function extractFrameMeta(line: string): FrameMeta {
   try {
     const msg = JSON.parse(line);
     const isNewPage = msg?.newPage === true;
+    const isResizeReplay = msg?.resizeReplay === true;
+    const isResizeConsumed = msg?.resizeConsumed === true;
     let dims: { width: number; height: number } | null = null;
     const dev = msg?.plot?.device;
     if (dev && typeof dev.width === "number" && typeof dev.height === "number") {
       dims = { width: dev.width, height: dev.height };
     }
-    return { isNewPage, dims };
+    return { isNewPage, isResizeReplay, isResizeConsumed, dims };
   } catch {
-    return { isNewPage: false, dims: null };
+    return { isNewPage: false, isResizeReplay: false, isResizeConsumed: false, dims: null };
   }
 }
 
@@ -608,31 +623,6 @@ export function consumePendingResize(
   // No dimension match — R may have rendered at adjusted dimensions
   // (e.g. device constraints).  Fall back to FIFO.
   return queue.shift()!;
-}
-
-/**
- * Drain a pending resize entry whose dimensions match the given frame.
- *
- * Used for newPage frames: when R consumes a resize in cb_newPage
- * (Race A), the new plot's dimensions coincidentally match the entry.
- * We remove the orphaned entry so it doesn't contaminate later frames,
- * but we do NOT tag the frame — it's a new plot, not a replay.
- *
- * Only removes the first matching entry.  No FIFO fallback: if dims
- * don't match, the entry belongs to a resize R hasn't replayed yet.
- */
-function drainMatchingEntry(
-  queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
-  frameDims: { width: number; height: number } | null,
-): void {
-  if (!frameDims || queue.length === 0) return;
-  for (let i = 0; i < queue.length; i++) {
-    if (queue[i].plotIndex !== undefined) continue; // skip plotIndex entries
-    if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
-      queue.splice(i, 1);
-      return;
-    }
-  }
 }
 
 /**

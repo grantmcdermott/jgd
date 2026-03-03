@@ -29,6 +29,8 @@ typedef struct {
     int hold_level;           /* R's dev.hold/dev.flush level (>0 = held) */
     int replaying;            /* guard against re-entry from GEplayDisplayList */
     int new_page;             /* 1 after cb_newPage; cleared on first complete flush */
+    int resize_consumed;      /* 1 if apply_pending_resize consumed a resize in cb_newPage */
+    int resize_replay;        /* 1 when poll_resize_impl is flushing a replay frame */
     double pending_w;         /* pending resize width in pixels, 0 = none */
     double pending_h;         /* pending resize height in pixels */
     int pending_plot_index;   /* plotIndex from resize msg, -1 = none */

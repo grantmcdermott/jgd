@@ -22,9 +22,12 @@ void page_free(jgd_page_t *p);
 void page_add_op(jgd_page_t *p, cJSON *op);
 /* Returns a malloc'd JSON string (caller must free).
  * new_page: if 1, adds "newPage":true so the server knows this is a
- * new plot, not a resize replay. */
+ * new plot, not a resize replay.
+ * resize_replay: if 1, adds "resizeReplay":true (frame from poll_resize_impl).
+ * resize_consumed: if 1, adds "resizeConsumed":true (cb_newPage consumed a
+ * pending resize via apply_pending_resize). */
 char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incremental,
-                           int new_page);
+                           int new_page, int resize_replay, int resize_consumed);
 cJSON *gc_to_cjson(const pGEcontext gc);
 cJSON *lty_to_cjson(int lty, double lwd);
 

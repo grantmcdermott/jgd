@@ -349,6 +349,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
                 REprintf("[jgd] poll_resize: flushing plotIndex replay frame "
                          "(ops=%d, last_flushed=%d)\n",
                          st->page.op_count, st->last_flushed_ops);
+            st->resize_replay = 1;
             jgd_flush_frame(st, 0);
             st->last_flushed_ops = st->page.op_count;
         }
@@ -399,6 +400,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
                 REprintf("[jgd] poll_resize: flushing replay frame "
                          "(ops=%d, last_flushed=%d)\n",
                          st->page.op_count, st->last_flushed_ops);
+            st->resize_replay = 1;
             jgd_flush_frame(st, 0);
             st->last_flushed_ops = st->page.op_count;
         }

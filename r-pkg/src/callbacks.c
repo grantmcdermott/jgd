@@ -35,17 +35,25 @@ static void jgd_capture_snapshot(jgd_state_t *st) {
 
 void jgd_flush_frame(jgd_state_t *st, int incremental) {
     int np = (!incremental && st->new_page && !st->replaying) ? 1 : 0;
+    int rr = st->resize_replay;
+    int rc = (np && st->resize_consumed) ? 1 : 0;
     if (st->debug_frames) {
         REprintf("[jgd] flush_frame: incr=%d new_page=%d replaying=%d np=%d "
+                 "resize_replay=%d resize_consumed=%d "
                  "ops=%d last_flushed=%d page_count=%d\n",
-                 incremental, st->new_page, st->replaying, np,
+                 incremental, st->new_page, st->replaying, np, rr, rc,
                  st->page.op_count, st->last_flushed_ops, st->page_count);
     }
-    char *json = page_serialize_frame(&st->page, st->session_id, incremental, np);
+    char *json = page_serialize_frame(&st->page, st->session_id, incremental,
+                                      np, rr, rc);
     if (json) {
         transport_send(&st->transport, json, strlen(json));
         free(json);
-        if (np) st->new_page = 0;
+        if (np) {
+            st->new_page = 0;
+            st->resize_consumed = 0;
+        }
+        st->resize_replay = 0;
     }
 }
 
@@ -500,6 +508,7 @@ static void apply_pending_resize(jgd_state_t *st, pDevDesc dd) {
         dd->clipBottom = st->pending_h;
         st->pending_w = 0;
         st->pending_h = 0;
+        st->resize_consumed = 1;
     }
 }
 
