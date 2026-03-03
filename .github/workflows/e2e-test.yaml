@@ -44,7 +44,7 @@ jobs:
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: r-pkg
-          extra-packages: any::ragg
+          extra-packages: any::ragg, any::ggplot2
 
       - uses: denoland/setup-deno@v2
         with:
