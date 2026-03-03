@@ -296,7 +296,10 @@ static void mcache_store(unsigned int hash, double v1, double v2, double v3) {
  * server's pendingResizes queue.  The dropped resize may leave an
  * orphaned server queue entry, but this scenario (multiple plotIndex
  * resizes during a single metrics exchange) is very unlikely and the
- * server's dimension-matching logic tolerates the mismatch. */
+ * server's dimension-matching logic tolerates the mismatch.
+ * (The server caps the queue at MAX_PENDING_RESIZES and clears it
+ * when the session disconnects, so orphaned entries cannot grow
+ * unboundedly.) */
 static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
     for (int attempts = 0; attempts < 5; attempts++) {
         int n = transport_recv_line(&st->transport, buf, bufsize, 500);
