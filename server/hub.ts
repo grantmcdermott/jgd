@@ -174,6 +174,10 @@ export class Hub {
       // dimensions is silently suppressed (matches stale lastResize).
       session.lastResizeW = dims!.width;
       session.lastResizeH = dims!.height;
+      // Mark that a plotIndex resize set the dedup state.  The next normal
+      // resize at these same dimensions must NOT be deduped — it targets
+      // the current display list, not the historical snapshot.
+      session.lastResizeHadPlotIndex = true;
       // Strip sessionId before forwarding to R (R doesn't need it)
       const forR = JSON.stringify({
         type: "resize",
@@ -198,9 +202,18 @@ export class Hub {
         // to R and don't arm the flag.  This prevents duplicate resizes
         // (ws.onopen + ResizeObserver with same dims) from generating
         // untagged frames that corrupt plot history.
+        //
+        // Exception: if the previous resize was a plotIndex resize, the
+        // dedup state reflects a historical snapshot replay.  A normal
+        // resize at the same dimensions targets the current display list,
+        // which is semantically different, so it must reach R.
         if (dims.width === session.lastResizeW && dims.height === session.lastResizeH) {
-          continue;
+          if (!session.lastResizeHadPlotIndex) {
+            continue;
+          }
+          // Fall through — allow this normal resize despite matching dims.
         }
+        session.lastResizeHadPlotIndex = false;
       }
 
       if (!session.hasReceivedFrame) {

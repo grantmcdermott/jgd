@@ -22,6 +22,12 @@ interface RSession {
     pendingResizes: Array<{ plotIndex?: number; width?: number; height?: number }>;
     lastResizeW: number;
     lastResizeH: number;
+    /**
+     * True when the last resize that updated lastResizeW/H was a plotIndex
+     * resize.  Prevents the dedup guard from suppressing the next normal
+     * resize at the same dimensions (they target different display lists).
+     */
+    lastResizeHadPlotIndex: boolean;
     /** True after the first "frame" message has been received from R. */
     hasReceivedFrame: boolean;
     /** Whether the initial (welcome) resize has been forwarded to R. */
@@ -172,7 +178,7 @@ export class SocketServer {
 
     private handleConnection(socket: net.Socket) {
         const sessionId = `session-${++this.sessionCounter}`;
-        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, pendingResizes: [], lastResizeW: 0, lastResizeH: 0, hasReceivedFrame: false, initialResizeSent: false, deferredResize: null };
+        const session: RSession = { id: sessionId, socket, buffer: '', welcomeSent: false, pendingResizes: [], lastResizeW: 0, lastResizeH: 0, lastResizeHadPlotIndex: false, hasReceivedFrame: false, initialResizeSent: false, deferredResize: null };
         this.sessions.set(sessionId, session);
         this.notifyConnectionChange();
 
@@ -321,6 +327,9 @@ export class SocketServer {
             // back to the pre-plotIndex dims must not be deduped.
             session.lastResizeW = w;
             session.lastResizeH = h;
+            // Mark that a plotIndex resize set the dedup state.  The next
+            // normal resize at these same dims must not be deduped.
+            session.lastResizeHadPlotIndex = true;
             const data = JSON.stringify({ type: 'resize', width: w, height: h, plotIndex }) + '\n';
             session.socket.write(data);
             return;
@@ -333,7 +342,11 @@ export class SocketServer {
         // replay frames need matching entries to be tagged resize:true.
         const data = JSON.stringify({ type: 'resize', width: w, height: h }) + '\n';
         for (const session of this.sessions.values()) {
-            if (session.lastResizeW === w && session.lastResizeH === h) continue;
+            if (session.lastResizeW === w && session.lastResizeH === h) {
+                if (!session.lastResizeHadPlotIndex) continue;
+                // Fall through — allow normal resize after plotIndex at same dims.
+            }
+            session.lastResizeHadPlotIndex = false;
 
             if (!session.hasReceivedFrame) {
                 // Before R has sent any frame, limit what we forward to avoid

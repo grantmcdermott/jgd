@@ -9,9 +9,10 @@ import type { FrameMessage, ResizeMessage } from "./helpers/types.ts";
  * Context: When a user resizes the viewport while viewing
  * a historical plot (plotIndex resize), then navigates back to the latest
  * plot, the browser sends a normal resize at the current viewport
- * dimensions.  Because the plotIndex resize already updated lastResizeW/H
- * to those same dimensions, the normal resize is silently deduped — even
- * though it targets a different plot (latest vs historical).
+ * dimensions.  The dedup guard uses a lastResizeHadPlotIndex flag to
+ * allow this normal resize through — even though the dimensions match —
+ * because the two target different display lists (historical snapshot
+ * vs current).
  *
  * R's poll_resize_impl does NOT skip same-dimension resizes: it always
  * replays the display list.  A plotIndex resize replays a historical
@@ -71,27 +72,22 @@ Deno.test("plotIndex→normal dedup interaction", withTestHarness(async (t, { rC
     await browser.waitForType<FrameMessage>("frame");
   });
 
-  await t.step("BUG: normal resize at same dims as prior plotIndex is deduped", async () => {
+  await t.step("normal resize at same dims as prior plotIndex passes through", async () => {
     // Dedup state is now 500x400 (updated by plotIndex resize).
     // User navigates back to latest plot — browser sends normal resize
     // at 500x400 (current viewport), targeting the latest plot's
-    // display list.  This SHOULD reach R, but the dedup guard blocks it.
-    //
-    // This test documents the current (buggy) behavior.
-    // After the dedup guard is fixed, this test should be updated to
-    // expect the normal resize to reach R.
-    browser.sendResize(500, 400); // targets latest plot — currently deduped
-    browser.sendResize(700, 500); // sentinel — should arrive
+    // display list.  The lastResizeHadPlotIndex flag ensures this
+    // passes through despite matching dimensions.
+    browser.sendResize(500, 400); // targets latest plot — should arrive
 
     const msg = await rClient.readMessage<ResizeMessage>();
-    // Current behavior: 500x400 is deduped, 700x500 arrives.
-    // Desired behavior: 500x400 should arrive (no plotIndex).
-    assertEquals(msg.width, 700, "BUG: 500x400 normal resize was deduped after plotIndex at same dims");
-    assertEquals(msg.height, 500);
+    assertEquals(msg.width, 500, "Normal resize after plotIndex should pass through");
+    assertEquals(msg.height, 400);
+    assertEquals(msg.plotIndex, undefined, "Should be a normal resize, not plotIndex");
 
     // Consume frame
     await rClient.sendFrame(
-      { ops: [{ op: "rect" }], device: { width: 700, height: 500 } },
+      { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
     );
     await browser.waitForType<FrameMessage>("frame");
   });
@@ -173,7 +169,7 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
     await browser.waitForType<FrameMessage>("frame");
   });
 
-  await t.step("BUG: normal resize after plotIndex at matching dedup state", async () => {
+  await t.step("normal resize after plotIndex at matching dedup state passes through", async () => {
     // Dedup state is 500x400 from previous step.
     // plotIndex resize to 500x400 (same dims, different plot).
     browser.sendResizeWithPlotIndex(500, 400, 2, sessionId);
@@ -184,19 +180,18 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
     );
     await browser.waitForType<FrameMessage>("frame");
 
-    // Now normal resize at 500x400 — should reach R (different plot)
-    // but currently deduped.
+    // Now normal resize at 500x400 — should reach R because the
+    // lastResizeHadPlotIndex flag allows it through.
     browser.sendResize(500, 400);
-    browser.sendResize(900, 700); // sentinel
 
     const msg = await rClient.readMessage<ResizeMessage>();
-    // Current behavior: 500x400 deduped, sentinel arrives.
-    // Desired: 500x400 arrives.
-    assertEquals(msg.width, 900, "BUG: normal resize at 500x400 deduped after plotIndex at same dims");
+    assertEquals(msg.width, 500, "Normal resize after plotIndex should pass through");
+    assertEquals(msg.height, 400);
+    assertEquals(msg.plotIndex, undefined, "Should be a normal resize");
 
     // Consume frame
     await rClient.sendFrame(
-      { ops: [{ op: "rect" }], device: { width: 900, height: 700 } },
+      { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
     );
     await browser.waitForType<FrameMessage>("frame");
   });
@@ -220,7 +215,7 @@ Deno.test("plotIndex→normal→normal dedup chain", withTestHarness(async (t, {
   );
   await browser.waitForType<FrameMessage>("frame");
 
-  await t.step("after fix: normal→normal at same dims should still be deduped", async () => {
+  await t.step("normal→normal at same dims should still be deduped after plotIndex", async () => {
     // plotIndex resize to 500x400
     browser.sendResizeWithPlotIndex(500, 400, 0, sessionId);
     await rClient.readMessage<ResizeMessage>();
@@ -229,47 +224,32 @@ Deno.test("plotIndex→normal→normal dedup chain", withTestHarness(async (t, {
     );
     await browser.waitForType<FrameMessage>("frame");
 
-    // Normal resize at 500x400 — after fix, this should reach R
-    // (first normal after plotIndex). For now it's deduped.
-    // We send a sentinel to proceed regardless of current behavior.
+    // First normal resize at 500x400 — passes through because
+    // lastResizeHadPlotIndex flag allows it.
     browser.sendResize(500, 400);
-    browser.sendResize(500, 400); // second normal at same dims
-    browser.sendResize(1200, 900); // sentinel
+    browser.sendResize(500, 400); // second normal at same dims — deduped
+    browser.sendResize(1200, 900); // different dims — arrives
 
     const msg = await rClient.readMessage<ResizeMessage>();
-    // With current behavior: all three 500x400 are deduped, sentinel arrives
-    // With fix: first 500x400 arrives, second is deduped, then 1200x900 arrives
-    // Either way, sentinel eventually arrives. Check it's there.
-    if (msg.width === 500) {
-      // Fix is in place: first 500x400 arrived.
-      assertEquals(msg.plotIndex, undefined, "Should be normal resize, not plotIndex");
+    assertEquals(msg.width, 500, "First 500x400 should pass through after plotIndex");
+    assertEquals(msg.plotIndex, undefined, "Should be normal resize, not plotIndex");
 
-      // Consume frame for first normal resize
-      await rClient.sendFrame(
-        { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
-      );
-      await browser.waitForType<FrameMessage>("frame");
+    // Consume frame for first normal resize
+    await rClient.sendFrame(
+      { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+    );
+    await browser.waitForType<FrameMessage>("frame");
 
-      // Second 500x400 should be deduped (normal→normal same dims).
-      // 1200x900 should arrive.
-      const msg2 = await rClient.readMessage<ResizeMessage>();
-      assertEquals(msg2.width, 1200, "Second 500x400 should be deduped; sentinel should arrive");
-      assertEquals(msg2.height, 900);
+    // Second 500x400 should be deduped (normal→normal same dims).
+    // 1200x900 should arrive.
+    const msg2 = await rClient.readMessage<ResizeMessage>();
+    assertEquals(msg2.width, 1200, "Second 500x400 should be deduped; 1200x900 should arrive");
+    assertEquals(msg2.height, 900);
 
-      // Consume sentinel frame
-      await rClient.sendFrame(
-        { ops: [{ op: "rect" }], device: { width: 1200, height: 900 } },
-      );
-      await browser.waitForType<FrameMessage>("frame");
-    } else {
-      // Current buggy behavior: all deduped, sentinel arrived.
-      assertEquals(msg.width, 1200, "Current behavior: all 500x400 deduped");
-
-      // Consume sentinel frame
-      await rClient.sendFrame(
-        { ops: [{ op: "rect" }], device: { width: 1200, height: 900 } },
-      );
-      await browser.waitForType<FrameMessage>("frame");
-    }
+    // Consume sentinel frame
+    await rClient.sendFrame(
+      { ops: [{ op: "rect" }], device: { width: 1200, height: 900 } },
+    );
+    await browser.waitForType<FrameMessage>("frame");
   });
 }));

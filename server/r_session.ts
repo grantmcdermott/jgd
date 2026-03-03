@@ -31,6 +31,13 @@ export class RSession {
   pendingResizes: Array<{ plotIndex?: number; width?: number; height?: number }> = [];
   lastResizeW = 0;
   lastResizeH = 0;
+  /**
+   * True when the last resize that updated lastResizeW/H was a plotIndex
+   * resize.  This flag prevents the dedup guard from suppressing the next
+   * normal resize at the same dimensions — the two target different display
+   * lists (historical snapshot vs current) so both must reach R.
+   */
+  lastResizeHadPlotIndex = false;
   /** True after the first "frame" message has been received from R. */
   hasReceivedFrame = false;
   /** Whether the initial (ws.onopen) resize has been forwarded to R. */
