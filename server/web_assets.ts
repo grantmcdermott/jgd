@@ -164,6 +164,11 @@ export const assets: Record<string, { body: string; type: string }> = {
         return session ? session.plots.length : 0;
     };
 
+    PlotHistory.prototype.isLatestDeleted = function() {
+        var session = this._sessions.get(this._activeSessionId);
+        return session ? session.latestDeleted : false;
+    };
+
     // ---- DOM references ----
 
     var canvas = document.getElementById('plot-canvas');
@@ -347,9 +352,13 @@ export const assets: Record<string, { body: string; type: string }> = {
                 };
                 // Include plotIndex when viewing a historical (non-latest) plot
                 // so R re-renders the specific snapshot at the new dimensions.
+                // Also include plotIndex when the latest plot was deleted:
+                // R's display list still holds the deleted plot, so a normal
+                // resize would replay it.  plotIndex directs R to replay the
+                // correct snapshot for the remaining plot instead.
                 var idx = history.currentIndex();
                 var cnt = history.count();
-                if (idx > 0 && idx < cnt) {
+                if ((idx > 0 && idx < cnt) || history.isLatestDeleted()) {
                     msg.plotIndex = idx - 1;
                     msg.sessionId = history.activeSessionId();
                 }

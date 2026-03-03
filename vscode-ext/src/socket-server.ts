@@ -85,9 +85,13 @@ export class SocketServer {
         this.webviewProvider.onResize((w, h) => {
             // When viewing a historical plot, include plotIndex and sessionId
             // so R re-renders the correct historical snapshot.
+            // Also include plotIndex when the latest plot was deleted:
+            // R's display list still holds the deleted plot, so a normal
+            // resize would replay it.  plotIndex directs R to replay the
+            // correct snapshot for the remaining plot instead.
             const idx = this.history.currentIndex();
             const total = this.history.count();
-            if (total > 0 && idx < total) {
+            if ((total > 0 && idx < total) || this.history.isLatestDeleted()) {
                 const plotIndex = idx - 1;
                 const sessionId = this.history.getActiveSessionId();
                 this.broadcastResize(w, h, plotIndex, sessionId);

@@ -129,6 +129,11 @@ export class PlotHistory {
         this.emitter.emit('change');
     }
 
+    isLatestDeleted(): boolean {
+        const session = this.sessions.get(this.activeSessionId);
+        return session ? session.latestDeleted : false;
+    }
+
     removeCurrent(): PlotFrame | null {
         const session = this.sessions.get(this.activeSessionId);
         if (!session || session.plots.length === 0) return null;
