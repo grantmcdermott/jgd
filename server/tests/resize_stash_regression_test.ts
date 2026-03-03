@@ -154,9 +154,10 @@ Deno.test("plotIndex→normal same-dims → stashed during metrics → replay ta
 // ---------------------------------------------------------------------------
 // Scenario 2: plotIndex → normal resize at same dims → metrics plot
 //
-// Same pattern as scenario 1 at different dimensions (500×400).
-// The newPage frame's dims match the pending entry but resizeConsumed is
-// absent, so the entry is preserved for the resizeReplay frame.
+// Same pattern as scenario 1 but at 500×400 (instead of 800×600) to confirm
+// the behavior is dimension-independent.  The newPage frame's dims match
+// the pending entry but resizeConsumed is absent, so the entry is preserved
+// for the resizeReplay frame.
 // ---------------------------------------------------------------------------
 
 Deno.test("plotIndex→normal same-dims → stashed during metrics → replay tagged (variant)", withTestHarness(async (t, { rClient, browser }) => {
