@@ -64,10 +64,12 @@ export class RClient {
   /** Send a frame message. */
   async sendFrame(
     plot: FrameMessage["plot"],
-    opts?: { incremental?: boolean; newPage?: boolean },
+    opts?: { incremental?: boolean; newPage?: boolean; resizeReplay?: boolean; resizeConsumed?: boolean },
   ): Promise<void> {
     const msg: Record<string, unknown> = { type: "frame", plot, incremental: opts?.incremental ?? false };
     if (opts?.newPage) msg.newPage = true;
+    if (opts?.resizeReplay) msg.resizeReplay = true;
+    if (opts?.resizeConsumed) msg.resizeConsumed = true;
     await this.send(msg);
   }
 

@@ -69,8 +69,11 @@ Deno.test("two sequential new plots — both untagged", withTestHarness(async (t
 //   1. Browser sends resize → server pushes pendingResizes, sends to R
 //   2. R reads resize in cb_newPage's check_incoming (NOT poll_resize_impl)
 //   3. R draws new plot at resize dims → sends frame with newPage:true
-//   4. Server sees newPage:true → drains matching entry silently (no tag)
-//   5. Browser calls addPlot ✓
+//      and resizeConsumed:true.  Server drains the matching entry.
+//   4. Browser calls addPlot ✓
+//
+// Note: this test omits resizeConsumed for simplicity.  The server still
+// never tags newPage frames as resize, regardless of resizeConsumed.
 // ---------------------------------------------------------------------------
 
 Deno.test("race A: new plot at resize dims should not be tagged (cb_newPage consumed resize)", withTestHarness(async (t, { rClient, browser }) => {

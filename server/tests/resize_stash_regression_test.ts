@@ -6,20 +6,16 @@
  * while waiting for the browser's response.  If a resize message has been
  * forwarded to R, recv_metrics_response picks it up and stashes it in
  * pending_w/h.  After drawing completes, poll_resize_impl replays the
- * display list at the stashed dimensions.
+ * display list at the stashed dimensions — that replay frame carries
+ * resizeReplay:true so the server can unambiguously tag it resize:true.
  *
  * R's poll_resize_impl does NOT skip same-dimension resizes — it always
  * replays the display list.  This means a resize at the current device
  * dimensions will still produce a replay frame.
  *
- * Bug scenario (trigd-1uj.23):
- *   The lastResizeHadPlotIndex flag (ec86175) allows a normal resize to
- *   pass through the dedup guard when it matches the dimensions of a prior
- *   plotIndex resize.  If R stashes this resize during metrics processing
- *   of a new plot, the new-plot frame (newPage:true) drains the
- *   pendingResizes entry via dimension matching.  The subsequent replay
- *   frame has no entry and arrives UNTAGGED — the browser treats it as
- *   a new plot, creating a duplicate.
+ * These tests verify that the resizeReplay/resizeConsumed protocol flags
+ * from R allow the server to correctly tag stashed replay frames, even
+ * when the new-plot frame's dimensions match the pending resize entry.
  */
 
 import { assertEquals } from "@std/assert";
@@ -34,22 +30,19 @@ import type {
 // ---------------------------------------------------------------------------
 // Scenario 1: plotIndex → normal resize at same dims → metrics plot
 //
-// This reproduces the user-reported Bug 1: ggplot2 faceted plot as the
-// 2nd plot causes plots 2 AND 3 to both become the same plot (duplicate).
-//
 // Timeline:
 //   1. Plot 1 exists at 800x600
 //   2. plotIndex resize(800,600) → historical snapshot replayed
 //   3. Normal resize(800,600) → flag bypasses dedup → sent to R
 //   4. R starts drawing plot 2 (ggplot2 with metrics)
 //   5. recv_metrics_response stashes the normal resize
-//   6. R finishes → frame (newPage:true, 800x600)
-//   7. Server: drainMatchingEntry → entry DRAINED
-//   8. R processes stashed resize → replay frame → NO entry → UNTAGGED
-//   9. Browser calls addPlot → DUPLICATE
+//   6. R finishes → frame (newPage:true, 800x600) — no resizeConsumed
+//   7. Server: newPage without resizeConsumed → entry preserved
+//   8. R processes stashed resize → replay frame (resizeReplay:true)
+//   9. Server: consumes entry, tags resize:true
 // ---------------------------------------------------------------------------
 
-Deno.test("BUG: plotIndex→normal same-dims → stashed during metrics → duplicate", withTestHarness(async (t, { rClient, browser }) => {
+Deno.test("plotIndex→normal same-dims → stashed during metrics → replay tagged", withTestHarness(async (t, { rClient, browser }) => {
   // Prime: establish session and initial frame
   browser.sendResize(1, 1);
   await rClient.readMessage<ResizeMessage>();
@@ -138,9 +131,10 @@ Deno.test("BUG: plotIndex→normal same-dims → stashed during metrics → dupl
   await t.step("stashed resize replay MUST be tagged as resize", async () => {
     // R processes the stashed resize (from recv_metrics_response).
     // poll_resize_impl always replays, even at same dimensions.
-    // The replay frame MUST be tagged resize:true to prevent duplicate.
+    // The replay frame carries resizeReplay:true from R.
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "faceted-ggplot2-resized" }], device: { width: 800, height: 600 } },
+      { resizeReplay: true },
     );
     const replayFrame = await browser.waitForType<FrameMessage>("frame");
 
@@ -160,13 +154,12 @@ Deno.test("BUG: plotIndex→normal same-dims → stashed during metrics → dupl
 // ---------------------------------------------------------------------------
 // Scenario 2: plotIndex → normal resize at same dims → metrics plot
 //
-// Same drain bug as scenario 1 — both the plotIndex resize and the normal
-// resize are at 500×400, and the new plot is also drawn at 500×400.
-// drainMatchingEntry matches the newPage frame's dims and drains the entry,
-// leaving the stashed replay untagged.
+// Same pattern as scenario 1 at different dimensions (500×400).
+// The newPage frame's dims match the pending entry but resizeConsumed is
+// absent, so the entry is preserved for the resizeReplay frame.
 // ---------------------------------------------------------------------------
 
-Deno.test("BUG: plotIndex→normal same-dims → stashed during metrics → untagged replay", withTestHarness(async (t, { rClient, browser }) => {
+Deno.test("plotIndex→normal same-dims → stashed during metrics → replay tagged (variant)", withTestHarness(async (t, { rClient, browser }) => {
   // Prime
   browser.sendResize(1, 1);
   await rClient.readMessage<ResizeMessage>();
@@ -222,9 +215,11 @@ Deno.test("BUG: plotIndex→normal same-dims → stashed during metrics → unta
   });
 
   await t.step("replay at same dims must be tagged", async () => {
-    // R processes stashed resize → replays at 500x400
+    // R processes stashed resize → replays at 500x400.
+    // poll_resize_impl sends resizeReplay:true.
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "plot2-resized" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true,
@@ -235,16 +230,14 @@ Deno.test("BUG: plotIndex→normal same-dims → stashed during metrics → unta
 // ---------------------------------------------------------------------------
 // Scenario 3: Deferred resize at different dims → metrics plot
 //
-// Pre-existing variant (not related to lastResizeHadPlotIndex).
 // When ResizeObserver fires at different dims from ws.onopen before R's
 // first frame, the resize is deferred.  After the first frame, the server
 // forwards the deferred resize.  If R stashes it during metrics processing
-// of the next plot AND the new plot is drawn at the deferred resize dims
-// (because cb_newPage applied the resize), the same drain→untagged bug
-// can occur.
+// of the next plot, the resizeReplay flag on the stashed replay ensures
+// the server tags it correctly.
 // ---------------------------------------------------------------------------
 
-Deno.test("BUG: deferred resize stashed during metrics → duplicate", withTestHarness(async (t, { rClient, browser }) => {
+Deno.test("deferred resize stashed during metrics → replay tagged", withTestHarness(async (t, { rClient, browser }) => {
   // Step 1: Initial resize (ws.onopen equivalent)
   browser.sendResize(800, 600);
   const initialResize = await rClient.readMessage<ResizeMessage>();
@@ -291,10 +284,11 @@ Deno.test("BUG: deferred resize stashed during metrics → duplicate", withTestH
   });
 
   await t.step("stashed deferred resize replay MUST be tagged", async () => {
-    // R processes stashed resize → replays at 900x700
-    // poll_resize_impl always replays, even at same dimensions.
+    // R processes stashed resize → replays at 900x700.
+    // poll_resize_impl sends resizeReplay:true.
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "plot2-replayed" }], device: { width: 900, height: 700 } },
+      { resizeReplay: true },
     );
     const replay = await browser.waitForType<FrameMessage>("frame");
 
@@ -365,8 +359,10 @@ Deno.test("normal resize stashed during metrics of next plot — must be tagged"
   });
 
   await t.step("stashed resize replay at same dims must be tagged", async () => {
+    // poll_resize_impl sends resizeReplay:true.
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "plot2-replayed" }], device: { width: 900, height: 700 } },
+      { resizeReplay: true },
     );
     const replay = await browser.waitForType<FrameMessage>("frame");
     assertEquals(
