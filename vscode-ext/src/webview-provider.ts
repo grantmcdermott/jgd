@@ -58,6 +58,7 @@ export class PlotWebviewProvider {
         if (plot) {
             this.sendPlotToWebview(plot);
             this.updateToolbar();
+            // plot.device is guaranteed by the protocol — every frame includes device dims.
             if (plot.device.width !== this.panelWidth || plot.device.height !== this.panelHeight) {
                 for (const l of this.resizeListeners) l(this.panelWidth, this.panelHeight);
             }
@@ -69,6 +70,7 @@ export class PlotWebviewProvider {
         if (plot) {
             this.sendPlotToWebview(plot);
             this.updateToolbar();
+            // plot.device is guaranteed by the protocol — every frame includes device dims.
             if (plot.device.width !== this.panelWidth || plot.device.height !== this.panelHeight) {
                 for (const l of this.resizeListeners) l(this.panelWidth, this.panelHeight);
             }
