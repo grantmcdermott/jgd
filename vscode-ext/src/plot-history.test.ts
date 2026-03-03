@@ -323,7 +323,8 @@ describe('PlotHistory', () => {
                 device: { width: 400, height: 300, dpi: 96, bg: 'A' },
             };
             history.appendOps('s1', extra);
-            // A should not have been modified
+            // A should not have been modified, and no new plot should be added
+            expect(history.count()).toBe(1);
             expect(history.currentPlot()!.ops).toHaveLength(1);
         });
     });
