@@ -291,10 +291,12 @@ static void mcache_store(unsigned int hash, double v1, double v2, double v3) {
  *
  * plotIndex resizes are routed to the single-entry buffer (same as
  * check_incoming) so they are not applied to the current page.
- * Unlike check_incoming, we always overwrite the buffer with the
- * latest plotIndex resize because the message has already been read
- * off the transport — dropping it would desynchronize the server's
- * pendingResizes queue (which already enqueued an entry). */
+ * If a plotIndex resize is already buffered, subsequent ones are
+ * skipped — preserving the first maintains FIFO ordering with the
+ * server's pendingResizes queue.  The dropped resize may leave an
+ * orphaned server queue entry, but this scenario (multiple plotIndex
+ * resizes during a single metrics exchange) is very unlikely and the
+ * server's dimension-matching logic tolerates the mismatch. */
 static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
     for (int attempts = 0; attempts < 5; attempts++) {
         int n = transport_recv_line(&st->transport, buf, bufsize, 500);
@@ -317,20 +319,21 @@ static int recv_metrics_response(jgd_state_t *st, char *buf, size_t bufsize) {
                     w->valuedouble > 0 && h->valuedouble > 0) {
                     if (cJSON_IsNumber(pi)) {
                         /* plotIndex resize — buffer for poll_resize_impl,
-                         * same as check_incoming does.  Unlike check_incoming
-                         * (which skips reading when a buffer exists), we must
-                         * overwrite here because the message is already
-                         * consumed from the transport. */
-                        if (st->has_buffered_resize && st->debug_frames)
-                            REprintf("[jgd] recv_metrics_response: "
-                                     "overwriting buffered resize "
-                                     "(pi=%d -> %d)\n",
-                                     st->buffered_plot_index,
-                                     (int)pi->valuedouble);
-                        st->has_buffered_resize = 1;
-                        st->buffered_w = w->valuedouble;
-                        st->buffered_h = h->valuedouble;
-                        st->buffered_plot_index = (int)pi->valuedouble;
+                         * same as check_incoming does.  Preserve the first
+                         * buffered resize (FIFO matches server's queue). */
+                        if (st->has_buffered_resize) {
+                            if (st->debug_frames)
+                                REprintf("[jgd] recv_metrics_response: "
+                                         "skipping plotIndex resize "
+                                         "(pi=%d, already buffered pi=%d)\n",
+                                         (int)pi->valuedouble,
+                                         st->buffered_plot_index);
+                        } else {
+                            st->has_buffered_resize = 1;
+                            st->buffered_w = w->valuedouble;
+                            st->buffered_h = h->valuedouble;
+                            st->buffered_plot_index = (int)pi->valuedouble;
+                        }
                     } else {
                         st->pending_w = w->valuedouble;
                         st->pending_h = h->valuedouble;

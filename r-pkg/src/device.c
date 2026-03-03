@@ -295,11 +295,19 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         SEXP snap = VECTOR_ELT(st->snapshot_store, pi);
         SEXP current = PROTECT(GEcreateSnapshot(gdd));
 
+        if (st->debug_frames)
+            REprintf("[jgd] poll_resize: plotIndex replay pi=%d at %.0fx%.0f\n",
+                     pi, st->width * st->dpi, st->height * st->dpi);
+
         st->replaying = 1;
         GEplaySnapshot(snap, gdd);
         st->replaying = 0;
 
         if (st->page.op_count > st->last_flushed_ops) {
+            if (st->debug_frames)
+                REprintf("[jgd] poll_resize: flushing plotIndex replay frame "
+                         "(ops=%d, last_flushed=%d)\n",
+                         st->page.op_count, st->last_flushed_ops);
             jgd_flush_frame(st, 0);
             st->last_flushed_ops = st->page.op_count;
         }
