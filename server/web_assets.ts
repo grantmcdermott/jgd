@@ -792,7 +792,7 @@ function plotToSvg(plot, exportW, exportH) {
                     var cx = dx + aw / 2, cy = dy + ah / 2;
                     transform = ' transform="rotate(' + (-op.rot) + ',' + cx + ',' + cy + ')"';
                 }
-                var safeHref = svgEsc(op.data);
+                var safeHref = /^data:image\\//.test(op.data) ? svgEsc(op.data) : '';
                 s += svgTag('image', ' x="' + dx + '" y="' + dy + '" width="' + aw + '" height="' + ah + '" href="' + safeHref + '"' + transform, true) + '\\n';
                 break;
             }
