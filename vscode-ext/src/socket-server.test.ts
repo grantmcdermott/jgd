@@ -162,16 +162,32 @@ describe('SocketServer', () => {
             expect(provider.shownPlots).toHaveLength(1);
         });
 
-        it('routes incremental frame to replaceCurrent', async () => {
+        it('routes incremental frame via appendOps (ops accumulate)', async () => {
             const client = await connect();
 
             client.send(makePlotMsg('A'));
             await waitMs(50);
-            client.send(makePlotMsg('A-updated', 400, 300, { incremental: true }));
+
+            // Send incremental frame with additional ops
+            const incrMsg = {
+                type: 'frame',
+                plot: {
+                    version: 1,
+                    sessionId: '',
+                    device: { width: 400, height: 300, dpi: 96, bg: 'A' },
+                    ops: [{ op: 'line', label: 'extra' }],
+                },
+                incremental: true,
+            };
+            client.send(incrMsg);
             await waitMs(50);
 
             expect(history.count()).toBe(1);
-            expect(history.currentPlot()?.device.bg).toBe('A-updated');
+            // The original rect op + the incremental line op
+            const ops = history.currentPlot()?.ops;
+            expect(ops).toHaveLength(2);
+            expect((ops![0] as any).op).toBe('rect');
+            expect((ops![1] as any).op).toBe('line');
             expect(provider.shownPlots).toHaveLength(2);
         });
 
@@ -201,7 +217,7 @@ describe('SocketServer', () => {
     // ---- Resize-after-delete (the jgd#11 bug) ----
 
     describe('resize after delete (jgd#11)', () => {
-        it('discards stale resize frame after latest plot was deleted', async () => {
+        it('resize after delete-latest uses plotIndex and updates correct plot', async () => {
             const client = await connect();
 
             // Two plots: RED then BLUE
@@ -211,25 +227,24 @@ describe('SocketServer', () => {
             await waitMs(50);
             expect(history.count()).toBe(2);
 
-            // Delete BLUE (latest)
+            // Delete BLUE (latest) → latestDeleted=true
             history.removeCurrent();
             expect(history.count()).toBe(1);
             expect(history.currentPlot()?.device.bg).toBe('RED');
 
-            // Trigger resize
+            // Trigger resize — should include plotIndex=0
             provider.triggerResize(1000, 700);
-            await client.readLine(); // consume resize message
+            const resizeMsg = JSON.parse(await client.readLine());
+            expect(resizeMsg.type).toBe('resize');
+            expect(resizeMsg.plotIndex).toBe(0);
 
-            // R replays BLUE (stale) as resize response
-            const plotsBefore = provider.shownPlots.length;
-            client.send(makePlotMsg('BLUE', 1000, 700));
+            // R replays snapshot[0] (RED) at new dimensions
+            client.send(makePlotMsg('RED-resized', 1000, 700));
             await waitMs(50);
 
-            // RED must survive, BLUE must not reappear
+            // Plot updated via replaceAtIndex, not added
             expect(history.count()).toBe(1);
-            expect(history.currentPlot()?.device.bg).toBe('RED');
-            // showPlot should NOT have been called for the rejected frame
-            expect(provider.shownPlots.length).toBe(plotsBefore);
+            expect(history.currentPlot()?.device.bg).toBe('RED-resized');
         });
     });
 

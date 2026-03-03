@@ -261,6 +261,103 @@ describe('PlotHistory', () => {
         });
     });
 
+    // ---- appendOps ----
+
+    describe('appendOps', () => {
+        it('appends ops to the latest plot', () => {
+            history.addPlot('s1', makePlot('A'));
+            const extra: PlotFrame = {
+                version: 1, sessionId: '', ops: [{ op: 'line', label: 'extra' }],
+                device: { width: 400, height: 300, dpi: 96, bg: 'A' },
+            };
+            history.appendOps('s1', extra);
+            expect(history.count()).toBe(1);
+            const ops = history.currentPlot()!.ops;
+            expect(ops).toHaveLength(2);
+            expect((ops[0] as any).op).toBe('rect');
+            expect((ops[1] as any).op).toBe('line');
+        });
+
+        it('updates device from incremental frame', () => {
+            history.addPlot('s1', makePlot('A'));
+            const extra: PlotFrame = {
+                version: 1, sessionId: '', ops: [],
+                device: { width: 500, height: 400, dpi: 96, bg: 'B' },
+            };
+            history.appendOps('s1', extra);
+            expect(history.currentPlot()!.device.bg).toBe('B');
+            expect(history.currentPlot()!.device.width).toBe(500);
+        });
+
+        it('always targets latest plot, not navigated position', () => {
+            history.addPlot('s1', makePlot('A'));
+            history.addPlot('s1', makePlot('B'));
+            history.navigatePrevious(); // viewing A
+            const extra: PlotFrame = {
+                version: 1, sessionId: '', ops: [{ op: 'line' }],
+                device: { width: 400, height: 300, dpi: 96, bg: 'B' },
+            };
+            history.appendOps('s1', extra);
+            // A (current view) should be unchanged
+            expect(history.currentPlot()!.ops).toHaveLength(1);
+            // B (latest) should have the appended op
+            history.navigateNext();
+            expect(history.currentPlot()!.ops).toHaveLength(2);
+        });
+
+        it('falls back to addPlot on empty session', () => {
+            const plot: PlotFrame = {
+                version: 1, sessionId: '', ops: [{ op: 'rect' }],
+                device: { width: 400, height: 300, dpi: 96, bg: 'A' },
+            };
+            history.appendOps('s1', plot);
+            expect(history.count()).toBe(1);
+        });
+
+        it('is rejected when latestDeleted is true', () => {
+            history.addPlot('s1', makePlot('A'));
+            history.addPlot('s1', makePlot('B'));
+            history.removeCurrent(); // delete B → latestDeleted=true
+            const extra: PlotFrame = {
+                version: 1, sessionId: '', ops: [{ op: 'line' }],
+                device: { width: 400, height: 300, dpi: 96, bg: 'A' },
+            };
+            history.appendOps('s1', extra);
+            // A should not have been modified
+            expect(history.currentPlot()!.ops).toHaveLength(1);
+        });
+    });
+
+    // ---- isLatestDeleted ----
+
+    describe('isLatestDeleted', () => {
+        it('returns false initially', () => {
+            expect(history.isLatestDeleted()).toBe(false);
+        });
+
+        it('returns true after deleting latest plot', () => {
+            history.addPlot('s1', makePlot('A'));
+            history.removeCurrent();
+            expect(history.isLatestDeleted()).toBe(true);
+        });
+
+        it('returns false after deleting non-latest plot', () => {
+            history.addPlot('s1', makePlot('A'));
+            history.addPlot('s1', makePlot('B'));
+            history.navigatePrevious();
+            history.removeCurrent(); // remove A (not latest)
+            expect(history.isLatestDeleted()).toBe(false);
+        });
+
+        it('resets to false after addPlot', () => {
+            history.addPlot('s1', makePlot('A'));
+            history.removeCurrent();
+            expect(history.isLatestDeleted()).toBe(true);
+            history.addPlot('s1', makePlot('B'));
+            expect(history.isLatestDeleted()).toBe(false);
+        });
+    });
+
     // ---- Eviction ----
 
     describe('eviction', () => {
