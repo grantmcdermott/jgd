@@ -51,6 +51,17 @@ export class RSession {
    * first frame arrives (see Hub.handleRMessage).
    */
   deferredResize: { data: string; width: number; height: number } | null = null;
+  /**
+   * Entry drained from pendingResizes by a newPage frame (Race A cleanup).
+   * Kept for one frame so that if R actually stashed the resize via
+   * recv_metrics_response (Race C), the subsequent replay frame can
+   * reclaim the entry and be correctly tagged resize:true.
+   *
+   * Cleared at the start of every frame: if the next frame is a replay,
+   * the entry is consumed; if it's another newPage or any other frame,
+   * the entry is discarded.
+   */
+  drainedEntry: { plotIndex?: number; width?: number; height?: number } | null = null;
   /** True when the server remapped this session's ID (retired ID dedup). */
   remappedSessionId = false;
   private conn: RConn;
