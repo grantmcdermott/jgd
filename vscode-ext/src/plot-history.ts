@@ -10,12 +10,15 @@ export interface PlotFrame {
         bg: string | null;
     };
     ops: any[];
+    /** R-side snapshot index, assigned by PlotHistory on addPlot. */
+    rIndex?: number;
 }
 
 interface SessionHistory {
     plots: PlotFrame[];
     currentIndex: number;
     latestDeleted: boolean;
+    nextRIndex: number;
 }
 
 export class PlotHistory {
@@ -35,11 +38,12 @@ export class PlotHistory {
     addPlot(sessionId: string, plot: PlotFrame) {
         let session = this.sessions.get(sessionId);
         if (!session) {
-            session = { plots: [], currentIndex: -1, latestDeleted: false };
+            session = { plots: [], currentIndex: -1, latestDeleted: false, nextRIndex: 0 };
             this.sessions.set(sessionId, session);
         }
 
         session.latestDeleted = false;
+        plot.rIndex = session.nextRIndex++;
         session.plots.push(plot);
         // Evict oldest if over limit
         while (session.plots.length > this.maxPlots) {
@@ -81,10 +85,13 @@ export class PlotHistory {
         return true;
     }
 
-    replaceAtIndex(sessionId: string, plotIndex: number, plot: PlotFrame): boolean {
+    replaceAtIndex(sessionId: string, rIndex: number, plot: PlotFrame): boolean {
         const session = this.sessions.get(sessionId);
-        if (!session || plotIndex < 0 || plotIndex >= session.plots.length) return false;
-        session.plots[plotIndex] = plot;
+        if (!session) return false;
+        const idx = session.plots.findIndex(p => p.rIndex === rIndex);
+        if (idx < 0) return false;
+        plot.rIndex = rIndex;
+        session.plots[idx] = plot;
         this.activeSessionId = sessionId;
         this.emitter.emit('change');
         return true;
@@ -133,6 +140,12 @@ export class PlotHistory {
     currentIndex(): number {
         const session = this.sessions.get(this.activeSessionId);
         return session ? session.currentIndex + 1 : 0;
+    }
+
+    /** Return the R-side snapshot index of the current plot. */
+    currentRIndex(): number | undefined {
+        const plot = this.currentPlot();
+        return plot?.rIndex;
     }
 
     count(): number {

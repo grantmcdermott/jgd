@@ -54,13 +54,18 @@ export const assets: Record<string, { body: string; type: string }> = {
         this._maxPlots = maxPlots || 50;
     }
 
+    function makeSession() {
+        return { plots: [], currentIndex: -1, latestDeleted: false, nextRIndex: 0 };
+    }
+
     PlotHistory.prototype.addPlot = function(sessionId, plot) {
         var session = this._sessions.get(sessionId);
         if (!session) {
-            session = { plots: [], currentIndex: -1, latestDeleted: false };
+            session = makeSession();
             this._sessions.set(sessionId, session);
         }
         session.latestDeleted = false;
+        plot._rIndex = session.nextRIndex++;
         session.plots.push(plot);
         while (session.plots.length > this._maxPlots) {
             session.plots.shift();
@@ -143,10 +148,16 @@ export const assets: Record<string, { body: string; type: string }> = {
         // Don't change currentIndex — user stays on their historical view
     };
 
-    PlotHistory.prototype.replaceAtIndex = function(sessionId, plotIndex, plot) {
+    PlotHistory.prototype.replaceAtIndex = function(sessionId, rIndex, plot) {
         var session = this._sessions.get(sessionId);
-        if (!session || plotIndex < 0 || plotIndex >= session.plots.length) return;
-        session.plots[plotIndex] = plot;
+        if (!session) return;
+        var idx = -1;
+        for (var i = 0; i < session.plots.length; i++) {
+            if (session.plots[i]._rIndex === rIndex) { idx = i; break; }
+        }
+        if (idx < 0) return;
+        plot._rIndex = rIndex;
+        session.plots[idx] = plot;
         this._activeSessionId = sessionId;
     };
 
@@ -358,11 +369,16 @@ export const assets: Record<string, { body: string; type: string }> = {
             // R's display list still holds the deleted plot, so a normal
             // resize would replay it.  plotIndex directs R to replay the
             // correct snapshot for the remaining plot instead.
+            // Use the plot's _rIndex (R-side snapshot index) rather than the
+            // browser array index, which can diverge after deletions.
             var idx = history.currentIndex();
             var cnt = history.count();
             if ((idx > 0 && idx < cnt) || (cnt > 0 && history.isLatestDeleted())) {
-                msg.plotIndex = idx - 1;
-                msg.sessionId = history.activeSessionId();
+                var currentPlot = history.currentPlot();
+                if (currentPlot && currentPlot._rIndex !== undefined) {
+                    msg.plotIndex = currentPlot._rIndex;
+                    msg.sessionId = history.activeSessionId();
+                }
             }
             ws.send(JSON.stringify(msg));
         }, 300);

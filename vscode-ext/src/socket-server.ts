@@ -69,12 +69,18 @@ export class SocketServer {
             // R's display list still holds the deleted plot, so a normal
             // resize would replay it.  plotIndex directs R to replay the
             // correct snapshot for the remaining plot instead.
+            // Use the plot's rIndex (R-side snapshot index) rather than the
+            // browser array index, which can diverge after deletions.
             const idx = this.history.currentIndex();
             const total = this.history.count();
             if ((total > 0 && idx < total) || (total > 0 && this.history.isLatestDeleted())) {
-                const plotIndex = idx - 1;
-                const sessionId = this.history.getActiveSessionId();
-                this.broadcastResize(w, h, plotIndex, sessionId);
+                const rIndex = this.history.currentRIndex();
+                if (rIndex !== undefined) {
+                    const sessionId = this.history.getActiveSessionId();
+                    this.broadcastResize(w, h, rIndex, sessionId);
+                } else {
+                    this.broadcastResize(w, h);
+                }
             } else {
                 this.broadcastResize(w, h);
             }
