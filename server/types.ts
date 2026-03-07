@@ -66,10 +66,11 @@ export type BrowserMessage =
 
 /**
  * Extract the top-level "type" field from a JSON string without full parse.
- * Anchored to the opening brace so nested objects can't shadow it.
+ * The regex scans from the opening brace up to (but not into) any nested
+ * object, so a "type" inside a nested `{}` can't shadow the top-level one.
  * Falls back to empty string on malformed input.
  */
 export function extractType(line: string): string {
-  const m = line.match(/^\s*\{\s*"type"\s*:\s*"([^"]+)"/);
+  const m = line.match(/^\s*\{[^{}]*"type"\s*:\s*"([^"]+)"/);
   return m ? m[1] : "";
 }
