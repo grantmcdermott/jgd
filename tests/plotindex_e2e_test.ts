@@ -66,8 +66,11 @@ Deno.test({
         const texts0 = extractTextOps(resized0);
         assert(texts0.length > 0, "plotIndex=0 re-render should contain text ops");
 
-        // --- Test 2: plotIndex=1 resize re-renders the second plot ---
-        // Use different dimensions to avoid dedup (though plotIndex bypasses it)
+        // --- Test 2: plotIndex=1 is the latest plot (no snapshot exists) ---
+        // With 2 plots, R has 1 snapshot (plot 1) and the active display list
+        // (plot 2).  plotIndex=1 exceeds the snapshot count, so R falls
+        // through to a normal resize of the current display list.  The frame
+        // should have resize:true but no plotIndex.
         browser.sendResizeWithPlotIndex(700, 500, 1, sessionId);
 
         const resized1 = await browser.waitForMessage<FrameMessage>(
@@ -76,7 +79,8 @@ Deno.test({
         );
 
         assertEquals(resized1.resize, true, "plotIndex=1 frame should have resize:true");
-        assertEquals(resized1.plotIndex, 1, "plotIndex=1 frame should have plotIndex:1");
+        assertEquals(resized1.plotIndex, undefined,
+          "plotIndex=1 targets the latest plot (no snapshot) — R treats as normal resize");
         assert(resized1.plot.ops.length > 0, "plotIndex=1 frame should have ops");
 
         const texts1 = extractTextOps(resized1);
@@ -103,7 +107,7 @@ Deno.test({
         assert(normalResize.plot.ops.length > 0, "Normal resize frame should have ops");
 
         // Normal resize re-renders the current (latest) plot, which is plot(4:6).
-        // Its text ops should match plotIndex=1 (the second plot), not plotIndex=0.
+        // Its text ops should match the plotIndex=1 response (also the latest plot).
         const textsNormal = extractTextOps(normalResize);
         assertEquals(
           JSON.stringify(textsNormal),
