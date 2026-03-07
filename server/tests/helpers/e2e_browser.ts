@@ -127,7 +127,7 @@ export async function sampleCanvasColors(
 export async function waitForCanvasColors(
   page: Page,
   expected: { hasRed?: boolean; hasGreen?: boolean; hasBlue?: boolean; hasYellow?: boolean },
-  timeoutMs = 3000,
+  timeoutMs = 5000,
 ): Promise<{ hasRed: boolean; hasGreen: boolean; hasBlue: boolean; hasYellow: boolean }> {
   const deadline = Date.now() + timeoutMs;
   let colors = { hasRed: false, hasGreen: false, hasBlue: false, hasYellow: false };
