@@ -123,6 +123,29 @@ export async function sampleCanvasColors(
   })()`) as { hasRed: boolean; hasGreen: boolean; hasBlue: boolean; hasYellow: boolean };
 }
 
+/** Poll until canvas colors match expectations, or throw on timeout. */
+export async function waitForCanvasColors(
+  page: Page,
+  expected: { hasRed?: boolean; hasGreen?: boolean; hasBlue?: boolean; hasYellow?: boolean },
+  timeoutMs = 3000,
+): Promise<{ hasRed: boolean; hasGreen: boolean; hasBlue: boolean; hasYellow: boolean }> {
+  const deadline = Date.now() + timeoutMs;
+  let colors = { hasRed: false, hasGreen: false, hasBlue: false, hasYellow: false };
+  while (Date.now() < deadline) {
+    colors = await sampleCanvasColors(page);
+    let match = true;
+    for (const [key, val] of Object.entries(expected)) {
+      if ((colors as Record<string, boolean>)[key] !== val) { match = false; break; }
+    }
+    if (match) return colors;
+    await delay(100);
+  }
+  throw new Error(
+    `Timed out after ${timeoutMs}ms waiting for canvas colors ` +
+    `${JSON.stringify(expected)}, last: ${JSON.stringify(colors)}`,
+  );
+}
+
 /** Read messages from R, skipping any that don't match. Defaults to 5 s timeout. */
 export async function readOfType<T extends ServerMessage>(
   rClient: RClient,

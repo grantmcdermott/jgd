@@ -2,7 +2,7 @@ import { assertEquals } from "@std/assert";
 import { TestServer } from "../helpers/server.ts";
 import { RClient } from "../helpers/r_client.ts";
 import { BrowserClient } from "../helpers/browser_client.ts";
-import { E2EBrowser, plotInfoText, readOfType, sampleCanvasColors, waitForPlotInfo } from "../helpers/e2e_browser.ts";
+import { E2EBrowser, plotInfoText, readOfType, sampleCanvasColors, waitForCanvasColors, waitForPlotInfo } from "../helpers/e2e_browser.ts";
 import { delay } from "@std/async";
 import type { ResizeMessage } from "../helpers/types.ts";
 
@@ -76,14 +76,14 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
         ops: [{ op: "rect", x0: 0, y0: 0, x1: 800, y1: 600, gc: { fill: "#00ff00" } }],
         device: { width: 800, height: 600, bg: "#00ff00" },
       }, { resizeReplay: true });
-      await delay(500);
+
+      const colors = await waitForCanvasColors(page, { hasRed: true, hasGreen: false });
 
       const info = await page.evaluate(
         `document.getElementById('plot-info').textContent`,
       ) as string;
       assertEquals(info, "1 / 2", "toolbar should stay at plot 1");
 
-      const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasRed, true, "canvas should show plot 1 (red)");
       assertEquals(colors.hasBlue, false, "canvas must not show ghost of plot 2 (blue)");
       assertEquals(colors.hasGreen, false, "canvas must not show resize frame (green)");
@@ -127,15 +127,16 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
         },
         { incremental: true },
       );
-      await delay(500);
+      // Poll until the canvas settles — the viewed plot (1) must stay red
+      // and the incremental resize frame (green) must not leak through.
+      // Using polling instead of fixed delay to avoid flakiness on slow CI.
+      const colors = await waitForCanvasColors(page, { hasRed: true, hasGreen: false });
 
-      // Historical plot 1 must not be corrupted by the incremental frame
       const info = await page.evaluate(
         `document.getElementById('plot-info').textContent`,
       ) as string;
       assertEquals(info, "1 / 2", "toolbar should stay at plot 1");
 
-      const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasRed, true, "canvas should show plot 1 (red)");
       assertEquals(colors.hasGreen, false, "incremental resize frame must not leak into historical plot");
     });
@@ -168,14 +169,14 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
         ops: [{ op: "rect", x0: 0, y0: 0, x1: msg.width, y1: msg.height, gc: { fill: "#ff0000" } }],
         device: { width: msg.width, height: msg.height, bg: "#ff0000" },
       }, { resizeReplay: true });
-      await delay(500);
+
+      const colors = await waitForCanvasColors(page, { hasRed: true });
 
       const info = await page.evaluate(
         `document.getElementById('plot-info').textContent`,
       ) as string;
       assertEquals(info, "1 / 2", "toolbar should stay at plot 1 after real resize");
 
-      const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasRed, true, "canvas should still show plot 1 (red)");
       assertEquals(colors.hasBlue, false, "no ghost of plot 2 (blue)");
       assertEquals(colors.hasGreen, false, "no leak of unrelated resize frame (green)");
@@ -200,7 +201,9 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
         ops: [{ op: "rect", x0: 0, y0: 0, x1: 900, y1: 700, gc: { fill: "#00ff00" } }],
         device: { width: 900, height: 700, bg: "#00ff00" },
       }, { resizeReplay: true });
-      await delay(300);
+
+      // Wait for first resize frame to be processed before sending second
+      await waitForCanvasColors(page, { hasRed: true });
 
       // Second resize
       resizeSender.sendResize(1000, 750);
@@ -211,7 +214,8 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
         ops: [{ op: "rect", x0: 0, y0: 0, x1: 1000, y1: 750, gc: { fill: "#ffff00" } }],
         device: { width: 1000, height: 750, bg: "#ffff00" },
       }, { resizeReplay: true });
-      await delay(500);
+
+      const colors = await waitForCanvasColors(page, { hasRed: true, hasGreen: false, hasYellow: false });
 
       // Neither resize should have added a history entry
       const infoAfter = await page.evaluate(
@@ -222,7 +226,6 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
         `sequential resizes should not add history entries: was ${infoBefore}, now ${infoAfter}`,
       );
 
-      const colors = await sampleCanvasColors(page);
       assertEquals(colors.hasRed, true, "canvas should still show plot 1 (red)");
       assertEquals(colors.hasGreen, false, "no leak of first resize frame (green)");
       assertEquals(colors.hasYellow, false, "no leak of second resize frame (yellow)");
