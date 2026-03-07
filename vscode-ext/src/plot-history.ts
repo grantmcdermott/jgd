@@ -60,9 +60,9 @@ export class PlotHistory {
         this.emitter.emit('change');
     }
 
-    appendOps(sessionId: string, plot: PlotFrame) {
+    appendOps(sessionId: string, plot: PlotFrame): boolean {
         const session = this.sessions.get(sessionId);
-        if (session && session.latestDeleted) return;
+        if (session && session.latestDeleted) return false;
         if (!session || session.plots.length === 0) {
             return this.addPlot(sessionId, plot);
         }
@@ -77,6 +77,7 @@ export class PlotHistory {
         latest.device = plot.device;
         this.activeSessionId = sessionId;
         this.emitter.emit('change');
+        return true;
     }
 
     replaceAtIndex(sessionId: string, plotIndex: number, plot: PlotFrame): boolean {

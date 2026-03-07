@@ -444,9 +444,12 @@ SEXP C_jgd_server_info(void) {
     SET_STRING_ELT(names, 3, Rf_mkChar("server_info"));
     Rf_setAttrib(result, R_NamesSymbol, names);
 
-    SET_VECTOR_ELT(result, 0, Rf_mkString(st->server_name));
-    SET_VECTOR_ELT(result, 1, Rf_ScalarInteger(st->protocol_version));
-    SET_VECTOR_ELT(result, 2, Rf_mkString(st->server_transport));
+    SEXP sname = PROTECT(Rf_mkString(st->server_name));
+    SEXP sproto = PROTECT(Rf_ScalarInteger(st->protocol_version));
+    SEXP strans = PROTECT(Rf_mkString(st->server_transport));
+    SET_VECTOR_ELT(result, 0, sname);
+    SET_VECTOR_ELT(result, 1, sproto);
+    SET_VECTOR_ELT(result, 2, strans);
 
     /* Build named character vector from kv pairs */
     int np = st->n_info_pairs;
@@ -459,7 +462,7 @@ SEXP C_jgd_server_info(void) {
     Rf_setAttrib(info, R_NamesSymbol, info_names);
     SET_VECTOR_ELT(result, 3, info);
 
-    UNPROTECT(4);
+    UNPROTECT(7);
     return result;
 }
 
@@ -583,7 +586,8 @@ int jgd_try_parse_resize(const char *buf, double *w, double *h, int *plot_index)
     cJSON *hj = cJSON_GetObjectItem(msg, "height");
     int ok = 0;
     if (cJSON_IsNumber(wj) && cJSON_IsNumber(hj) &&
-        wj->valuedouble > 0 && hj->valuedouble > 0) {
+        wj->valuedouble > 0 && hj->valuedouble > 0 &&
+        R_FINITE(wj->valuedouble) && R_FINITE(hj->valuedouble)) {
         *w = wj->valuedouble;
         *h = hj->valuedouble;
         ok = 1;

@@ -275,7 +275,7 @@ export class SocketServer {
                         } else if (isResize) {
                             accepted = this.history.replaceLatest(session.id, msg.plot);
                         } else if (msg.incremental) {
-                            this.history.appendOps(session.id, msg.plot);
+                            accepted = this.history.appendOps(session.id, msg.plot);
                         } else {
                             this.history.addPlot(session.id, msg.plot);
                         }
