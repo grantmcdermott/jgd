@@ -225,3 +225,37 @@ Deno.test("initial resize replay after first plot — must be tagged to avoid du
     assertEquals(frame.resize, undefined, "Plot 2 must be a new plot");
   });
 }));
+
+// ---------------------------------------------------------------------------
+// Scenario 5: Resize arrives before R draws any plot (empty display list).
+//
+// R's display list is empty, so poll_resize_impl produces no replay frame.
+// The first plot must arrive as a normal newPage, not tagged as resize.
+// With the old pendingResizes queue, a stale queue entry could mistag the
+// first plot.  The new stateless protocol avoids this by construction.
+// ---------------------------------------------------------------------------
+
+Deno.test("resize before any plot — first newPage must not be mistagged", withTestHarness(async (_t, { rClient, browser }) => {
+  await rClient.waitForWelcome();
+
+  // Browser sends resize before R has drawn anything.
+  browser.sendResize(800, 600);
+  const msg = await rClient.readMessage<ResizeMessage>();
+  assertEquals(msg.type, "resize");
+
+  // R has an empty display list.  poll_resize_impl sees the resize but
+  // there is nothing to replay — no frame is sent.
+  // Eventually R draws its first plot.
+  await rClient.sendFrame({
+    ops: [{ op: "text", str: "plot1" }],
+    device: { width: 800, height: 600 },
+  }, { newPage: true });
+  const frame = await browser.waitForType<FrameMessage>("frame");
+
+  assertEquals(
+    frame.resize,
+    undefined,
+    "First plot must not be tagged as resize even though a resize was pending",
+  );
+  assertEquals(frame.newPage, true, "First plot should have newPage flag");
+}));
