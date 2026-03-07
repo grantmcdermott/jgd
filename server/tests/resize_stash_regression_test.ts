@@ -13,9 +13,9 @@
  * replays the display list.  This means a resize at the current device
  * dimensions will still produce a replay frame.
  *
- * These tests verify that the resizeReplay/resizeConsumed protocol flags
- * from R allow the server to correctly tag stashed replay frames, even
- * when the new-plot frame's dimensions match the pending resize entry.
+ * These tests verify that the resizeReplay protocol flag from R allows
+ * the server to correctly tag stashed replay frames, even when the
+ * new-plot frame's dimensions match the resize dimensions.
  */
 
 import { assertEquals } from "@std/assert";
@@ -36,8 +36,8 @@ import type {
 //   3. Normal resize(800,600) → flag bypasses dedup → sent to R
 //   4. R starts drawing plot 2 (ggplot2 with metrics)
 //   5. recv_metrics_response stashes the normal resize
-//   6. R finishes → frame (newPage:true, 800x600) — no resizeConsumed
-//   7. Server: newPage without resizeConsumed → entry preserved
+//   6. R finishes → frame (newPage:true, 800x600)
+//   7. Server: no resizeReplay → not tagged as resize
 //   8. R processes stashed resize → replay frame (resizeReplay:true)
 //   9. Server: consumes entry, tags resize:true
 // ---------------------------------------------------------------------------
@@ -77,7 +77,7 @@ Deno.test("plotIndex→normal same-dims → stashed during metrics → replay ta
 
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 800, height: 600 } },
-      { resizeReplay: true },
+      { resizeReplay: true, plotIndex: 0 },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true);
@@ -158,7 +158,7 @@ Deno.test("plotIndex→normal same-dims → stashed during metrics → replay ta
 //
 // Same pattern as scenario 1 but at 500×400 (instead of 800×600) to confirm
 // the behavior is dimension-independent.  The newPage frame's dims match
-// the pending entry but resizeConsumed is absent, so the entry is preserved
+// R does not set resizeReplay, so the frame is not tagged as resize
 // for the resizeReplay frame.
 // ---------------------------------------------------------------------------
 
@@ -230,79 +230,6 @@ Deno.test("plotIndex→normal same-dims → stashed during metrics → replay ta
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true,
       "Replay must be tagged — entry must not have been drained by newPage");
-  });
-}));
-
-// ---------------------------------------------------------------------------
-// Scenario 3: Deferred resize at different dims → metrics plot
-//
-// When ResizeObserver fires at different dims from ws.onopen before R's
-// first frame, the resize is deferred.  After the first frame, the server
-// forwards the deferred resize.  If R stashes it during metrics processing
-// of the next plot, the resizeReplay flag on the stashed replay ensures
-// the server tags it correctly.
-// ---------------------------------------------------------------------------
-
-Deno.test("deferred resize stashed during metrics → replay tagged", withTestHarness(async (t, { rClient, browser }) => {
-  // Step 1: Initial resize (ws.onopen equivalent)
-  browser.sendResize(800, 600);
-  const initialResize = await rClient.readMessage<ResizeMessage>();
-  assertEquals(initialResize.width, 800);
-
-  // Step 2: ResizeObserver fires at different dims — deferred by server
-  // (hasReceivedFrame=false, initialResizeSent=true)
-  browser.sendResize(900, 700);
-  // R should NOT receive this yet — it's deferred
-
-  await t.step("plot 1 triggers deferred resize forwarding", async () => {
-    // R draws plot 1 (simple, at initial resize dims)
-    await rClient.sendFrame(
-      { ops: [{ op: "rect" }], device: { width: 800, height: 600 } },
-      { newPage: true },
-    );
-    const frame = await browser.waitForType<FrameMessage>("frame");
-    assertEquals(frame.resize, undefined, "Plot 1 is a new plot");
-
-    // After first frame, server forwards deferred resize(900,700)
-    const deferredResize = await rClient.readMessage<ResizeMessage>();
-    assertEquals(deferredResize.width, 900);
-    assertEquals(deferredResize.height, 700);
-  });
-
-  await t.step("R draws plot 2 with metrics — stashes deferred resize", async () => {
-    // R stashed the deferred resize via recv_metrics_response.
-    // R draws the new plot at the deferred dims (cb_newPage applied it).
-
-    // Metrics exchange during drawing
-    await rClient.sendMetricsRequest(1);
-    await browser.waitForType<MetricsRequestMessage>("metrics_request");
-    browser.sendMetricsResponse(1, 10, 5, 2);
-    await rClient.readMessage<MetricsResponseMessage>();
-
-    // R finishes drawing at 900x700 → frame (newPage:true, 900x700)
-    // The pending entry from deferred resize (900x700) matches → drained
-    await rClient.sendFrame(
-      { ops: [{ op: "text", str: "plot2" }], device: { width: 900, height: 700 } },
-      { newPage: true },
-    );
-    const plot2 = await browser.waitForType<FrameMessage>("frame");
-    assertEquals(plot2.resize, undefined, "Plot 2 is a new plot");
-  });
-
-  await t.step("stashed deferred resize replay MUST be tagged", async () => {
-    // R processes stashed resize → replays at 900x700.
-    // poll_resize_impl sends resizeReplay:true.
-    await rClient.sendFrame(
-      { ops: [{ op: "text", str: "plot2-replayed" }], device: { width: 900, height: 700 } },
-      { resizeReplay: true },
-    );
-    const replay = await browser.waitForType<FrameMessage>("frame");
-
-    assertEquals(
-      replay.resize,
-      true,
-      "Deferred resize replay must be tagged — otherwise browser creates duplicate",
-    );
   });
 }));
 
@@ -443,7 +370,7 @@ Deno.test("plotIndex resize while viewing historical — no extra untagged frame
 
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "ggplot2-faceted-640" }], device: { width: 640, height: 480 } },
-      { resizeReplay: true },
+      { resizeReplay: true, plotIndex: 0 },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true, "plotIndex replay must be tagged as resize");

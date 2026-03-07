@@ -102,6 +102,7 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
     st->drawing = 0;
     st->pending_plot_index = -1;
     st->buffered_plot_index = -1;
+    st->flush_plot_index = -1;
     st->snapshot_count = 0;
     st->snapshot_store = PROTECT(Rf_allocVector(VECSXP, JGD_MAX_SNAPSHOTS));
     R_PreserveObject(st->snapshot_store);
@@ -350,6 +351,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
                          "(ops=%d, last_flushed=%d)\n",
                          st->page.op_count, st->last_flushed_ops);
             st->resize_replay = 1;
+            st->flush_plot_index = pi;
             jgd_flush_frame(st, 0);
             st->last_flushed_ops = st->page.op_count;
         }

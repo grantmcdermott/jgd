@@ -1,23 +1,21 @@
 /**
- * Server-side protocol test for recv_metrics_response plotIndex buffering.
+ * Server-side protocol test for plotIndex resize frames.
  *
- * When two plotIndex resize messages arrive during a metrics exchange,
- * the R device (recv_metrics_response) should buffer only the first
- * and skip the second (FIFO ordering matches the server's queue).
+ * R now self-reports plotIndex in the frame message when replaying a
+ * historical snapshot.  The server reads plotIndex directly from the
+ * frame and injects resize:true when resizeReplay is present.
  *
- * This test verifies the server correctly handles the situation where
- * R responds to only ONE of two plotIndex resizes:
- * 1. Both plotIndex resize messages are forwarded to R
- * 2. R's single frame response is tagged with the first plotIndex
- * 3. The orphaned queue entry for the second resize is drained by
- *    subsequent frames without corrupting tagging
+ * These tests verify:
+ * 1. plotIndex resize frames are tagged with resize:true and plotIndex
+ * 2. Multiple plotIndex frames are each tagged correctly
+ * 3. Subsequent new-plot frames are not mistagged
  */
 
 import { assertEquals } from "@std/assert";
 import { withTestHarness } from "./helpers/harness.ts";
 import type { FrameMessage, ResizeMessage } from "./helpers/types.ts";
 
-Deno.test("plotIndex FIFO: R responds to first of two plotIndex resizes", withTestHarness(async (t, { rClient, browser }) => {
+Deno.test("plotIndex: R responds to first of two plotIndex resizes", withTestHarness(async (t, { rClient, browser }) => {
   // Prime dedup state and establish sessionId
   browser.sendResize(1, 1);
   await rClient.readMessage<ResizeMessage>();
@@ -43,12 +41,9 @@ Deno.test("plotIndex FIFO: R responds to first of two plotIndex resizes", withTe
   await browser.waitForType<FrameMessage>("frame");
 
   await t.step("two plotIndex resizes forwarded to R", async () => {
-    // Browser sends two plotIndex resizes in quick succession.
-    // In production, these would arrive during a metrics exchange.
     browser.sendResizeWithPlotIndex(500, 400, 0, sessionId);
     browser.sendResizeWithPlotIndex(600, 450, 1, sessionId);
 
-    // R receives both resize messages
     const msg1 = await rClient.readMessage<ResizeMessage>();
     assertEquals(msg1.type, "resize");
     assertEquals(msg1.plotIndex, 0);
@@ -61,32 +56,22 @@ Deno.test("plotIndex FIFO: R responds to first of two plotIndex resizes", withTe
   });
 
   await t.step("R responds to first plotIndex only — tagged correctly", async () => {
-    // After the fix, recv_metrics_response buffers only the first
-    // plotIndex resize (pi=0 at 500x400) and skips the second.
-    // R replays snapshot[0] at 500x400.
+    // R replays snapshot[0] at 500x400, including plotIndex in the frame.
     await rClient.sendFrame(
       { ops: [{ op: "rect", fill: "red" }], device: { width: 500, height: 400 } },
-      { resizeReplay: true },
+      { resizeReplay: true, plotIndex: 0 },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
 
     assertEquals(frame.resize, true,
       "Frame must be tagged as resize");
     assertEquals(frame.plotIndex, 0,
-      "plotIndex must be 0 (from first buffered resize)");
+      "plotIndex must be 0 (from R's frame)");
     assertEquals(frame.plot.device.width, 500);
     assertEquals(frame.plot.device.height, 400);
   });
 
   await t.step("subsequent normal frame is not mistagged", async () => {
-    // After the first plotIndex resize was consumed, the second
-    // plotIndex entry (pi=1 at 600x450) remains in the queue.
-    // A normal new-plot frame should NOT be mistagged with it
-    // because newPage frames without resizeConsumed preserve pending
-    // entries for subsequent resizeReplay frames.
-    //
-    // If dims don't match, the entry is simply left in the queue
-    // for future consumption.
     await rClient.sendFrame(
       { ops: [{ op: "rect", fill: "green" }], device: { width: 400, height: 300 } },
       { newPage: true },
@@ -100,9 +85,9 @@ Deno.test("plotIndex FIFO: R responds to first of two plotIndex resizes", withTe
   });
 }));
 
-Deno.test("plotIndex FIFO: both resizes consumed when R responds to both", withTestHarness(async (t, { rClient, browser }) => {
-  // Baseline: when R responds to both plotIndex resizes (the normal
-  // non-metrics-overlap case), both should be tagged correctly.
+Deno.test("plotIndex: both resizes consumed when R responds to both", withTestHarness(async (t, { rClient, browser }) => {
+  // Baseline: when R responds to both plotIndex resizes, both
+  // should be tagged correctly with their respective plotIndex.
   browser.sendResize(1, 1);
   await rClient.readMessage<ResizeMessage>();
   await rClient.sendFrame(
@@ -135,7 +120,7 @@ Deno.test("plotIndex FIFO: both resizes consumed when R responds to both", withT
   await t.step("first plotIndex response tagged correctly", async () => {
     await rClient.sendFrame(
       { ops: [{ op: "rect", fill: "red" }], device: { width: 500, height: 400 } },
-      { resizeReplay: true },
+      { resizeReplay: true, plotIndex: 0 },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true);
@@ -145,7 +130,7 @@ Deno.test("plotIndex FIFO: both resizes consumed when R responds to both", withT
   await t.step("second plotIndex response tagged correctly", async () => {
     await rClient.sendFrame(
       { ops: [{ op: "rect", fill: "blue" }], device: { width: 600, height: 450 } },
-      { resizeReplay: true },
+      { resizeReplay: true, plotIndex: 1 },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true);

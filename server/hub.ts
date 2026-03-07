@@ -1,14 +1,6 @@
 import type { RSession } from "./r_session.ts";
 import { extractType } from "./types.ts";
 
-/**
- * Maximum number of pending resize entries per session.  Under normal
- * operation the queue rarely exceeds 2-3 entries because each R frame
- * shifts one off.  This cap prevents unbounded growth if a browser
- * floods resize messages without R consuming them.
- */
-const MAX_PENDING_RESIZES = 32;
-
 /** Placeholder for browser clients (implemented in be2.2). */
 export interface BrowserClient {
   send(data: string): void;
@@ -116,13 +108,7 @@ export class Hub {
   }
 
   /**
-   * Broadcast a resize message to R sessions, marking each so the
-   * next frame can be tagged as a resize response.
-   *
-   * Each resize pushes an entry onto the session's pendingResizes queue.
-   * When R responds with a frame, handleRMessage shifts one entry off,
-   * ensuring each frame gets the correct metadata even when multiple
-   * resize messages are in flight.
+   * Broadcast a resize message to R sessions.
    *
    * Duplicate normal resizes with identical dimensions are silently dropped.
    * plotIndex resizes bypass dedup and are routed only to the session that
@@ -151,7 +137,7 @@ export class Hub {
           sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId : undefined,
         };
       }
-    } catch { /* malformed — skip dedup, always arm */ }
+    } catch { /* malformed — skip dedup, always forward */ }
 
     const hasPlotIndex = dims !== null && dims.plotIndex !== undefined;
 
@@ -161,12 +147,6 @@ export class Hub {
       if (!dims!.sessionId) return; // no session to route to
       const session = this.sessions.get(dims!.sessionId);
       if (!session) return; // target session is dead
-      if (session.pendingResizes.length >= MAX_PENDING_RESIZES) return;
-      session.pendingResizes.push({
-        plotIndex: dims!.plotIndex,
-        width: dims!.width,
-        height: dims!.height,
-      });
       // Update lastResizeW/H: R's device.c poll_resize_impl applies the
       // new dimensions BEFORE the plotIndex/normal branch, so R's actual
       // device size changes after a plotIndex resize.  If we don't update
@@ -191,17 +171,15 @@ export class Hub {
 
     if (this.verbose) {
       console.error(
-        `[hub] resize from browser: ${dims?.width}x${dims?.height}` +
-        (hasPlotIndex ? ` plotIndex=${dims?.plotIndex}` : ""),
+        `[hub] resize from browser: ${dims?.width}x${dims?.height}`,
       );
     }
     // Normal resize — broadcast to all sessions with dedup.
     for (const session of this.sessions.values()) {
       if (dims) {
         // When dimensions haven't changed, skip entirely — don't forward
-        // to R and don't arm the flag.  This prevents duplicate resizes
-        // (ws.onopen + ResizeObserver with same dims) from generating
-        // untagged frames that corrupt plot history.
+        // to R.  This prevents duplicate resizes (ws.onopen +
+        // ResizeObserver with same dims) from generating extra frames.
         //
         // Exception: if the previous resize was a plotIndex resize, the
         // dedup state reflects a historical snapshot replay.  A normal
@@ -214,56 +192,6 @@ export class Hub {
           // Fall through — allow this normal resize despite matching dims.
         }
         session.lastResizeHadPlotIndex = false;
-      }
-
-      if (!session.hasReceivedFrame) {
-        // Before R has sent any frame, limit what we forward to avoid the
-        // stashed-resize bug: recv_metrics_response can pick up resize
-        // messages during text-metric waits and stash them in pending_w/h.
-        // The resulting replay frame has no pendingResizes entry, so it
-        // arrives untagged → browser calls addPlot → duplicate plot.
-        if (!session.initialResizeSent) {
-          // Allow the very first resize (ws.onopen) through so R's device
-          // gets the correct initial dimensions.  Push a pendingResizes
-          // entry so that if R processes the resize AFTER the first plot
-          // (user typed fast), the replay frame gets tagged.  If R
-          // processes it before any plot (DL empty, no replay frame), the
-          // entry is silently drained when the first newPage frame arrives.
-          session.initialResizeSent = true;
-          if (dims) {
-            session.pendingResizes.push({
-              plotIndex: undefined,
-              width: dims.width,
-              height: dims.height,
-            });
-          }
-        } else {
-          // Defer subsequent resizes.  The latest deferred resize will be
-          // forwarded after the first frame arrives (see handleRMessage).
-          session.deferredResize = {
-            data,
-            width: dims?.width ?? 0,
-            height: dims?.height ?? 0,
-          };
-          if (dims) {
-            session.lastResizeW = dims.width;
-            session.lastResizeH = dims.height;
-          }
-          continue;
-        }
-      } else {
-        // R has sent at least one frame — normal resize path.
-        // Each forwarded resize gets its own pendingResizes entry because R
-        // will send a replay frame for each.  Do NOT collapse (remove) earlier
-        // entries: R has already received those resizes and the corresponding
-        // replay frames need matching entries to be tagged resize:true.
-        // MAX_PENDING_RESIZES caps unbounded growth from misbehaving clients.
-        if (session.pendingResizes.length >= MAX_PENDING_RESIZES) continue;
-        session.pendingResizes.push({
-          plotIndex: undefined,
-          width: dims?.width,
-          height: dims?.height,
-        });
       }
 
       if (dims) {
@@ -283,78 +211,32 @@ export class Hub {
 
     switch (type) {
       case "frame": {
-        session.hasReceivedFrame = true;
         let data = line;
-        const { isNewPage, isResizeReplay, isResizeConsumed, dims: frameDims } =
-          extractFrameMeta(line);
-        // Tag resize-triggered frames so the browser can update in place.
-        //
-        // R sends two flags to make resize handling unambiguous:
+        const { isResizeReplay, plotIndex } = extractFrameMeta(line);
+
+        // R self-reports resize metadata in each frame:
         //   resizeReplay:true  — frame from poll_resize_impl (display list replay)
-        //   resizeConsumed:true — cb_newPage consumed a pending resize
+        //   plotIndex:N        — which historical plot was replayed
         //
-        // When resizeReplay is present, consume the matching pendingResizes
-        // entry and tag the frame with resize:true (and optionally plotIndex).
-        //
-        // When resizeConsumed is present on a newPage frame, drain the
-        // matching entry without tagging (Race A: the resize was absorbed
-        // into the new page's dimensions, no separate replay follows).
-        //
-        // newPage without resizeConsumed: the pending entry belongs to a
-        // resize that R will replay later (stash scenario) — do not drain.
-        //
-        // Legacy fallback: non-newPage frames without resizeReplay still
-        // consume entries for backward compatibility with old R clients.
-        const hadPending = session.pendingResizes.length > 0;
-        let consumedEntry: { plotIndex?: number } | undefined;
-        if (hadPending) {
-          if (isResizeReplay) {
-            consumedEntry = consumePendingResize(session.pendingResizes, frameDims);
-          } else if (isResizeConsumed) {
-            // Race A: cb_newPage consumed the resize.  Drain the entry
-            // without tagging — this is a new plot, not a replay.
-            drainConsumedResize(session.pendingResizes, frameDims);
-          } else if (!isNewPage) {
-            // Legacy: non-newPage, non-resizeReplay frame.  For old R
-            // clients that don't send resizeReplay, this preserves the
-            // existing consume-and-tag behavior.
-            // Skip plotIndex entries — those are only consumed by
-            // resizeReplay frames.  A plotIndex entry can sit in the
-            // queue when the browser's sendResizeIfNeeded fires a
-            // plotIndex resize that R hasn't responded to yet; a
-            // subsequent non-resize frame must not consume it.
-            consumedEntry = consumePendingResize(
-              session.pendingResizes, frameDims, { skipPlotIndex: true },
-            );
-          }
-          // newPage without resizeConsumed: no action — the entry
-          // survives for the subsequent resizeReplay frame.
-          if (consumedEntry) {
-            data = injectResizeFlag(data);
-            if (consumedEntry.plotIndex !== undefined) {
-              data = injectPlotIndex(data, consumedEntry.plotIndex);
-            }
-          }
+        // When resizeReplay is present, inject resize:true so the browser
+        // knows to update in place rather than add a new plot.
+        if (isResizeReplay) {
+          data = injectResizeFlag(data);
         }
+
         if (this.verbose) {
           const isIncremental = /"incremental"\s*:\s*true/.test(line);
+          const isNewPage = /"newPage"\s*:\s*true/.test(line);
           let classification: string;
-          if (consumedEntry) {
-            classification = consumedEntry.plotIndex !== undefined
-              ? `resize (plotIndex=${consumedEntry.plotIndex})`
-              : isResizeReplay ? "resizeReplay (consumed pending)" : "resize (consumed pending)";
-          } else if (isResizeConsumed) {
-            classification = "newPage (resizeConsumed, drained pending)";
-          } else if (hadPending && !isNewPage) {
-            classification = "UNTAGGED (no pending resize!)";
+          if (isResizeReplay) {
+            classification = plotIndex !== undefined
+              ? `resize (plotIndex=${plotIndex})`
+              : "resize (current plot)";
           } else {
             classification = isNewPage ? "newPage" : isIncremental ? "incremental" : "complete";
           }
           console.error(
-            `[hub] frame: ${classification}, pendingResizes=${session.pendingResizes.length}` +
-            `, deferred=${!!session.deferredResize}, newPage=${isNewPage}` +
-            `, resizeReplay=${isResizeReplay}, resizeConsumed=${isResizeConsumed}` +
-            `, incremental=${isIncremental}`,
+            `[hub] frame: ${classification}`,
           );
         }
         // Ensure the frame carries the server-assigned sessionId.
@@ -373,32 +255,6 @@ export class Hub {
           }
         }
         this.broadcastToClients(data);
-        // Forward any deferred resize now that R has an active plot.
-        // Push a pendingResizes entry so the replay frame gets tagged.
-        // Note: if send() fails (broken pipe), the entry becomes orphaned,
-        // but a failed send means the session is dying and will be cleaned
-        // up shortly — no practical impact.
-        if (session.deferredResize) {
-          const deferred = session.deferredResize;
-          session.deferredResize = null;
-          // Skip both enqueue and send when the cap is hit, matching
-          // the normal and plotIndex resize paths.  Sending without an
-          // entry would cause the replay frame to arrive UNTAGGED.
-          if (session.pendingResizes.length < MAX_PENDING_RESIZES) {
-            session.pendingResizes.push({
-              plotIndex: undefined,
-              width: deferred.width,
-              height: deferred.height,
-            });
-            session.trySend(deferred.data);
-            if (this.verbose) {
-              console.error(
-                `[hub] sent deferred resize to R (${deferred.width}x${deferred.height})` +
-                `, pendingResizes now=${session.pendingResizes.length}`,
-              );
-            }
-          }
-        }
         if (this.verbose) {
           console.error(
             `frame from R session ${session.id} (${data.length} bytes)`,
@@ -554,153 +410,23 @@ export class Hub {
 
 /** Metadata extracted from a single JSON.parse of a frame line. */
 interface FrameMeta {
-  isNewPage: boolean;
   isResizeReplay: boolean;
-  isResizeConsumed: boolean;
-  dims: { width: number; height: number } | null;
+  plotIndex: number | undefined;
 }
 
 /**
  * Extract frame metadata from a frame JSON line in a single JSON.parse call.
- * Uses parsed fields (not regex) to avoid false positives from string payloads.
+ * R now self-reports resizeReplay and plotIndex directly in the frame.
  */
 function extractFrameMeta(line: string): FrameMeta {
   try {
     const msg = JSON.parse(line);
-    const isNewPage = msg?.newPage === true;
     const isResizeReplay = msg?.resizeReplay === true;
-    const isResizeConsumed = msg?.resizeConsumed === true;
-    let dims: { width: number; height: number } | null = null;
-    const dev = msg?.plot?.device;
-    if (dev && typeof dev.width === "number" && typeof dev.height === "number") {
-      dims = { width: dev.width, height: dev.height };
-    }
-    return { isNewPage, isResizeReplay, isResizeConsumed, dims };
+    const plotIndex = typeof msg?.plotIndex === "number" ? msg.plotIndex : undefined;
+    return { isResizeReplay, plotIndex };
   } catch {
-    return { isNewPage: false, isResizeReplay: false, isResizeConsumed: false, dims: null };
+    return { isResizeReplay: false, plotIndex: undefined };
   }
-}
-
-/**
- * Consume the appropriate pending resize entry for a frame.
- *
- * - plotIndex entries: strict FIFO (no coalescing).
- * - Normal entries: first-match FIFO when the head entry's dimensions match,
- *   otherwise deep-search for the last matching entry and drain up to it
- *   (handles R-side coalescing).  Falls back to FIFO when no match is found
- *   or dimensions are unavailable.
- */
-export function consumePendingResize(
-  queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
-  frameDims: { width: number; height: number } | null,
-  opts?: { skipPlotIndex?: boolean },
-): { plotIndex?: number } | undefined {
-  if (queue.length === 0) return undefined;
-
-  // When skipPlotIndex is set (legacy path for frames without
-  // resizeReplay), skip over any leading plotIndex entries and only
-  // consume normal (non-plotIndex) entries.  plotIndex entries are
-  // reserved for resizeReplay frames from R's plotIndex-aware path.
-  // This prevents a stale plotIndex entry (e.g. from the browser's
-  // sendResizeIfNeeded after navigation) from being incorrectly
-  // consumed by a non-resize frame, which would tag it with a
-  // plotIndex and corrupt a historical plot via replaceAtIndex.
-  if (opts?.skipPlotIndex) {
-    let start = 0;
-    while (start < queue.length && queue[start].plotIndex !== undefined) {
-      start++;
-    }
-    if (start >= queue.length) return undefined;
-
-    if (!frameDims) return queue.splice(start, 1)[0];
-
-    if (queue[start].width === frameDims.width && queue[start].height === frameDims.height) {
-      return queue.splice(start, 1)[0];
-    }
-
-    // Search within the first contiguous non-plotIndex segment only.
-    // plotIndex entries act as boundaries — entries beyond them belong
-    // to a different resize context and must not be matched here.
-    let matchIdx = -1;
-    for (let i = start + 1; i < queue.length; i++) {
-      if (queue[i].plotIndex !== undefined) break;
-      if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
-        matchIdx = i;
-      }
-    }
-    if (matchIdx >= 0) {
-      const removed = queue.splice(start, matchIdx - start + 1);
-      return removed[removed.length - 1];
-    }
-
-    // FIFO fallback: consume the first non-plotIndex entry even when
-    // dimensions don't match.  This mirrors the non-skipPlotIndex path
-    // and ensures the queue doesn't grow unbounded from orphaned entries
-    // (e.g. when the browser resizes but R replays at different dims).
-    return queue.splice(start, 1)[0];
-  }
-
-  // plotIndex entries: always consume strictly FIFO.
-  if (queue[0].plotIndex !== undefined) {
-    return queue.shift()!;
-  }
-
-  // Without frame dimensions, fall back to FIFO.
-  if (!frameDims) return queue.shift()!;
-
-  // If the first entry matches, consume it directly (R is processing
-  // resizes in order, no coalescing).  Checking the first entry separately
-  // prevents over-draining in A, B, A patterns where each resize produces
-  // its own frame.
-  if (queue[0].width === frameDims.width && queue[0].height === frameDims.height) {
-    return queue.shift()!;
-  }
-
-  // First entry doesn't match — R may have coalesced past it.  Find the
-  // last matching entry in the consecutive normal prefix and drain all
-  // entries up to and including it.
-  let matchIdx = -1;
-  for (let i = 1; i < queue.length; i++) {
-    if (queue[i].plotIndex !== undefined) break;
-    if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
-      matchIdx = i;
-    }
-  }
-  if (matchIdx >= 0) {
-    const removed = queue.splice(0, matchIdx + 1);
-    return removed[removed.length - 1];
-  }
-
-  // No dimension match — R may have rendered at adjusted dimensions
-  // (e.g. device constraints).  Fall back to FIFO.
-  return queue.shift()!;
-}
-
-/**
- * Drain a pending resize entry when R's cb_newPage consumed the resize
- * (resizeConsumed flag).  Unlike consumePendingResize, this only drains
- * when the frame dimensions match a normal (non-plotIndex) entry.  If no
- * match is found, the queue is left unchanged — cb_newPage may have applied
- * a resize that was already consumed by an earlier frame, so a miss is safe.
- *
- * This avoids the FIFO fallback in consumePendingResize which could drain
- * an unrelated entry when dimensions don't match.
- */
-export function drainConsumedResize(
-  queue: Array<{ plotIndex?: number; width?: number; height?: number }>,
-  frameDims: { width: number; height: number } | null,
-): void {
-  if (queue.length === 0 || !frameDims) return;
-
-  // Find the first normal entry whose dimensions match.
-  for (let i = 0; i < queue.length; i++) {
-    if (queue[i].plotIndex !== undefined) continue;
-    if (queue[i].width === frameDims.width && queue[i].height === frameDims.height) {
-      queue.splice(i, 1);
-      return;
-    }
-  }
-  // No match — leave queue unchanged.
 }
 
 /**
@@ -711,16 +437,6 @@ function injectResizeFlag(line: string): string {
   const idx = line.indexOf("{");
   if (idx < 0) return line;
   return line.slice(0, idx + 1) + '"resize":true,' + line.slice(idx + 1);
-}
-
-/**
- * Inject "plotIndex":N into a frame message so the browser knows which
- * historical plot this resize frame corresponds to.
- */
-function injectPlotIndex(line: string, plotIndex: number): string {
-  const idx = line.indexOf("{");
-  if (idx < 0) return line;
-  return line.slice(0, idx + 1) + `"plotIndex":${plotIndex},` + line.slice(idx + 1);
 }
 
 /**

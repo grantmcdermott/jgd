@@ -21,14 +21,6 @@ let sessionCounter = 0;
  */
 export class RSession {
   id: string;
-  /**
-   * Queue of pending resize entries.  Each browser resize message pushes one
-   * entry; each R frame consumes matching entries.  Entries store the resize
-   * dimensions so the frame handler can use dimension matching to correctly
-   * handle R-side coalescing (where R processes only the last of several
-   * rapid resizes and sends a single replay frame).
-   */
-  pendingResizes: Array<{ plotIndex?: number; width?: number; height?: number }> = [];
   lastResizeW = 0;
   lastResizeH = 0;
   /**
@@ -38,19 +30,6 @@ export class RSession {
    * lists (historical snapshot vs current) so both must reach R.
    */
   lastResizeHadPlotIndex = false;
-  /** True after the first "frame" message has been received from R. */
-  hasReceivedFrame = false;
-  /** Whether the initial (ws.onopen) resize has been forwarded to R. */
-  initialResizeSent = false;
-  /**
-   * Deferred resize (data + dimensions).  Resizes that arrive after the
-   * initial one but before R's first frame are stored here instead of being
-   * forwarded.  This prevents recv_metrics_response from stashing the
-   * resize during text-metric waits, which would produce an untagged replay
-   * frame (duplicate plot bug).  The deferred resize is forwarded after the
-   * first frame arrives (see Hub.handleRMessage).
-   */
-  deferredResize: { data: string; width: number; height: number } | null = null;
   /** True when the server remapped this session's ID (retired ID dedup). */
   remappedSessionId = false;
   private conn: RConn;

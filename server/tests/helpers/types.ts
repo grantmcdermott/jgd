@@ -12,7 +12,6 @@ export interface FrameMessage {
   resize?: boolean;
   plotIndex?: number;
   resizeReplay?: boolean;
-  resizeConsumed?: boolean;
 }
 
 export interface ResizeMessage {

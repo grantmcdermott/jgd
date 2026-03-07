@@ -33,27 +33,11 @@ Deno.test("E2E: resize after history navigation must not show ghost image", asyn
     const H = initResize.height ?? 300;
 
     // Frame 1: entirely RED (#ff0000)
-    // resizeConsumed drains the initial resize's pendingResizes entry.
     await rClient.sendFrame({
       ops: [{ op: "rect", x0: 0, y0: 0, x1: W, y1: H, gc: { fill: "#ff0000" } }],
       device: { width: W, height: H, bg: "#ff0000" },
-    }, { newPage: true, resizeConsumed: true });
+    }, { newPage: true });
     await waitForPlotInfo(page, "1 / 1");
-
-    // After Frame 1, the server forwards its deferred resize (the
-    // browser's second initial resize from ResizeObserver).  Consume
-    // it and respond so the pendingResizes queue is clean.
-    try {
-      const deferred = await rClient.readMessage<ResizeMessage>(1000);
-      if (deferred.type === "resize") {
-        await rClient.sendFrame({
-          ops: [{ op: "rect", x0: 0, y0: 0, x1: W, y1: H, gc: { fill: "#ff0000" } }],
-          device: { width: W, height: H, bg: "#ff0000" },
-        }, { resizeReplay: true });
-      }
-    } catch (_e: unknown) {
-      // readMessage timeout — no deferred resize arrived, which is fine.
-    }
 
     // Frame 2: entirely BLUE (#0000ff)
     await rClient.sendFrame({

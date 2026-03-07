@@ -5,14 +5,11 @@ import type { FrameMessage, ResizeMessage } from "./helpers/types.ts";
 /**
  * Regression test: duplicate resizes with the same dimensions must NOT be
  * forwarded to R.  Without dedup, ws.onopen + ResizeObserver both send the
- * same {width, height} — R responds to each, but only the first frame gets
- * resize:true.  The second, untagged frame is treated as addPlot, corrupting
- * plot history (ghost/overlap bug).
+ * same {width, height} — R responds to each, but only one is semantically
+ * needed.  The duplicate produces an extra replay frame.
  */
 Deno.test("resize dedup — same dimensions are dropped", withTestHarness(async (t, { rClient, browser }) => {
-  // Send an initial frame so the session is marked as having received
-  // a frame (hasReceivedFrame=true).  Without this, resize messages
-  // won't push pendingResizes entries (stale-entry fix).
+  // Send an initial frame to establish the session.
   await rClient.sendFrame(
     { ops: [{ op: "text", str: "init" }], device: { width: 1, height: 1 } },
   );
@@ -42,15 +39,16 @@ Deno.test("resize dedup — same dimensions are dropped", withTestHarness(async 
   });
 
   await t.step("tagged resize:true frame after dedup", async () => {
-    // resizePending should be armed from the 1024x768 resize above
+    // R processes the resize and sends a replay frame
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 1024, height: 768 } },
+      { resizeReplay: true },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true, "frame after resize should be tagged");
   });
 
-  await t.step("subsequent frame without resize has no tag", async () => {
+  await t.step("subsequent frame without resizeReplay has no tag", async () => {
     await rClient.sendFrame(
       { ops: [{ op: "circle" }], device: { width: 1024, height: 768 } },
     );

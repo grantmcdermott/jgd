@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as net from 'net';
 import { PlotHistory, PlotFrame } from './plot-history';
-import { SocketServer, consumePendingResize } from './socket-server';
+import { SocketServer } from './socket-server';
 
 // Minimal mock that satisfies the SocketServer's usage of PlotWebviewProvider.
 // We only need the methods SocketServer actually calls.
@@ -191,26 +191,38 @@ describe('SocketServer', () => {
             expect(provider.shownPlots).toHaveLength(2);
         });
 
-        it('routes resize-response frame to replaceLatest', async () => {
+        it('routes resizeReplay frame to replaceLatest', async () => {
             const client = await connect();
 
             // Add a plot first
             client.send(makePlotMsg('A'));
             await waitMs(50);
 
-            // Trigger a resize from the webview
-            provider.triggerResize(1000, 700);
-            const resizeMsg = JSON.parse(await client.readLine());
-            expect(resizeMsg.type).toBe('resize');
-            expect(resizeMsg.width).toBe(1000);
-
-            // R responds with a resized frame
-            client.send(makePlotMsg('A-resized', 1000, 700));
+            // R responds with a resizeReplay frame
+            client.send(makePlotMsg('A-resized', 1000, 700, { resizeReplay: true }));
             await waitMs(50);
 
             // Should replace, not add
             expect(history.count()).toBe(1);
             expect(history.currentPlot()?.device.bg).toBe('A-resized');
+        });
+
+        it('routes resizeReplay frame with plotIndex to replaceAtIndex', async () => {
+            const client = await connect();
+
+            // Add two plots
+            client.send(makePlotMsg('A'));
+            await waitMs(50);
+            client.send(makePlotMsg('B'));
+            await waitMs(50);
+            expect(history.count()).toBe(2);
+
+            // R sends a plotIndex resize replay for plot 0
+            client.send(makePlotMsg('A-resized', 500, 400, { resizeReplay: true, plotIndex: 0 }));
+            await waitMs(50);
+
+            // Should replace at index, not add
+            expect(history.count()).toBe(2);
         });
     });
 
@@ -238,8 +250,8 @@ describe('SocketServer', () => {
             expect(resizeMsg.type).toBe('resize');
             expect(resizeMsg.plotIndex).toBe(0);
 
-            // R replays snapshot[0] (RED) at new dimensions
-            client.send(makePlotMsg('RED-resized', 1000, 700));
+            // R replays snapshot[0] (RED) at new dimensions with plotIndex
+            client.send(makePlotMsg('RED-resized', 1000, 700, { resizeReplay: true, plotIndex: 0 }));
             await waitMs(50);
 
             // Plot updated via replaceAtIndex, not added
@@ -268,11 +280,6 @@ describe('SocketServer', () => {
         it('forwards resize with different dimensions', async () => {
             const client = await connect();
 
-            // Send a first frame so hasReceivedFrame=true (resizes are
-            // deferred until R's first frame).
-            client.send(makePlotMsg('A'));
-            await waitMs(50);
-
             provider.triggerResize(1024, 768);
             const msg = JSON.parse(await client.readLine());
             expect(msg.type).toBe('resize');
@@ -296,32 +303,6 @@ describe('SocketServer', () => {
             expect(msg.type).toBe('resize');
             expect(msg.width).toBe(500);
             expect(msg.height).toBe(400);
-        });
-
-        it('first frame after connect uses replaceLatest, not addPlot', async () => {
-            // Pre-populate a plot so we can distinguish replaceLatest from addPlot
-            history.addPlot('session-1', {
-                version: 1, sessionId: 'session-1',
-                device: { width: 800, height: 600, dpi: 96, bg: 'existing' },
-                ops: [],
-            });
-            expect(history.count()).toBe(1);
-
-            const client = await connect();
-
-            // First frame from R is a resize response (resizePending armed on connect).
-            // It should replace the existing plot, not add a second one.
-            client.send(makePlotMsg('resized', 800, 600));
-            await waitMs(50);
-
-            expect(history.count()).toBe(1);
-            expect(history.currentPlot()?.device.bg).toBe('resized');
-
-            // Second frame is a genuinely new plot
-            client.send(makePlotMsg('new'));
-            await waitMs(50);
-
-            expect(history.count()).toBe(2);
         });
     });
 
@@ -361,13 +342,13 @@ describe('SocketServer', () => {
         });
     });
 
-    // ---- newPage + Race A drain ----
+    // ---- newPage frames are not tagged as resize ----
 
-    describe('newPage drain', () => {
-        it('newPage frame drains matching resize entry without tagging as resize', async () => {
+    describe('newPage handling', () => {
+        it('newPage frame is added as new plot, not tagged as resize', async () => {
             const client = await connect();
 
-            // First frame (consumes the initial welcome resize entry)
+            // First frame
             client.send(makePlotMsg('A'));
             await waitMs(50);
             expect(history.count()).toBe(1);
@@ -376,17 +357,17 @@ describe('SocketServer', () => {
             provider.triggerResize(1000, 700);
             await client.readLine(); // consume resize message
 
-            // R sends a newPage frame at the new dimensions (Race A:
-            // cb_newPage consumed the resize, so this is a new plot, not a replay)
+            // R sends a newPage frame at the new dimensions
+            // (cb_newPage consumed the resize, so this is a new plot)
             client.send(makePlotMsg('B', 1000, 700, { newPage: true }));
             await waitMs(50);
 
-            // Should be added as a new plot (addPlot), not replace (replaceLatest)
+            // Should be added as a new plot (addPlot), not replace
             expect(history.count()).toBe(2);
             expect(history.currentPlot()?.device.bg).toBe('B');
         });
 
-        it('newPage frame does not drain non-matching resize entry', async () => {
+        it('resizeReplay frame after newPage correctly replaces', async () => {
             const client = await connect();
 
             // First frame
@@ -397,150 +378,19 @@ describe('SocketServer', () => {
             provider.triggerResize(1000, 700);
             await client.readLine();
 
-            // R sends a newPage frame at original dimensions (not matching resize)
+            // R sends a newPage frame at original dimensions
             client.send(makePlotMsg('B', 800, 600, { newPage: true }));
             await waitMs(50);
 
-            // New plot added, pending resize entry preserved for later replay
+            // New plot added
             expect(history.count()).toBe(2);
 
-            // Now R replays the resize — should consume the entry and replace
-            client.send(makePlotMsg('B-resized', 1000, 700));
+            // Now R replays the resize with resizeReplay flag
+            client.send(makePlotMsg('B-resized', 1000, 700, { resizeReplay: true }));
             await waitMs(50);
 
             expect(history.count()).toBe(2);
             expect(history.currentPlot()?.device.bg).toBe('B-resized');
-        });
-    });
-
-    // ---- Dimension-matching consumption (R coalescing) ----
-
-    describe('dimension-matching consumption', () => {
-        it('handles R-side coalescing: single frame for multiple resizes', async () => {
-            const client = await connect();
-
-            // First frame
-            client.send(makePlotMsg('A'));
-            await waitMs(50);
-
-            // Rapid resizes: 900x600 then 1000x700
-            provider.triggerResize(900, 600);
-            await client.readLine();
-            provider.triggerResize(1000, 700);
-            await client.readLine();
-
-            // R coalesces and sends only one frame at 1000x700
-            client.send(makePlotMsg('A-resized', 1000, 700));
-            await waitMs(50);
-
-            // Should replace (not add), and both entries should be drained
-            expect(history.count()).toBe(1);
-            expect(history.currentPlot()?.device.bg).toBe('A-resized');
-        });
-    });
-
-    // ---- Deferred resize ----
-
-    describe('deferred resize', () => {
-        it('defers resize before first frame and forwards after', async () => {
-            const client = await connect();
-
-            // Resize BEFORE first frame (welcome resize already sent, so this is deferred)
-            provider.triggerResize(1024, 768);
-
-            // First frame from R (consumes the welcome resize entry)
-            client.send(makePlotMsg('A'));
-            await waitMs(50);
-
-            // After the first frame, deferred resize should be forwarded
-            const resizeMsg = JSON.parse(await client.readLine());
-            expect(resizeMsg.type).toBe('resize');
-            expect(resizeMsg.width).toBe(1024);
-            expect(resizeMsg.height).toBe(768);
-
-            // Now R sends the replay for the deferred resize
-            client.send(makePlotMsg('A-resized', 1024, 768));
-            await waitMs(50);
-
-            // Should replace, not add
-            expect(history.count()).toBe(1);
-            expect(history.currentPlot()?.device.bg).toBe('A-resized');
-        });
-
-        it('multiple rapid resizes before first frame: only latest is forwarded', async () => {
-            const client = await connect();
-
-            // Multiple resizes before first frame — all deferred
-            provider.triggerResize(900, 600);
-            provider.triggerResize(1000, 700);
-            provider.triggerResize(1100, 800);
-
-            // First frame from R
-            client.send(makePlotMsg('A'));
-            await waitMs(50);
-
-            // Only the latest deferred resize (1100x800) should be forwarded
-            const resizeMsg = JSON.parse(await client.readLine());
-            expect(resizeMsg.type).toBe('resize');
-            expect(resizeMsg.width).toBe(1100);
-            expect(resizeMsg.height).toBe(800);
-
-            // No additional resize messages should follow — use timeout race
-            const gotExtra = await Promise.race([
-                client.readLine().then(() => true),
-                waitMs(100).then(() => false),
-            ]);
-            expect(gotExtra).toBe(false);
-        });
-    });
-
-    // ---- consumePendingResize unit tests ----
-
-    describe('consumePendingResize', () => {
-        it('returns undefined for empty queue', () => {
-            expect(consumePendingResize([], null)).toBeUndefined();
-        });
-
-        it('consumes FIFO for plotIndex entries', () => {
-            const queue = [
-                { plotIndex: 3, width: 800, height: 600 },
-                { plotIndex: undefined, width: 1000, height: 700 },
-            ];
-            const entry = consumePendingResize(queue, { width: 1000, height: 700 });
-            expect(entry?.plotIndex).toBe(3);
-            expect(queue).toHaveLength(1);
-        });
-
-        it('consumes matching first entry', () => {
-            const queue = [
-                { plotIndex: undefined, width: 800, height: 600 },
-                { plotIndex: undefined, width: 1000, height: 700 },
-            ];
-            const entry = consumePendingResize(queue, { width: 800, height: 600 });
-            expect(entry).toEqual({ plotIndex: undefined, width: 800, height: 600 });
-            expect(queue).toHaveLength(1);
-        });
-
-        it('drains up to last matching entry on coalescing', () => {
-            const queue = [
-                { plotIndex: undefined, width: 800, height: 600 },
-                { plotIndex: undefined, width: 900, height: 650 },
-                { plotIndex: undefined, width: 1000, height: 700 },
-            ];
-            // Frame at 1000x700 — R coalesced past 800x600 and 900x650
-            const entry = consumePendingResize(queue, { width: 1000, height: 700 });
-            expect(entry).toEqual({ plotIndex: undefined, width: 1000, height: 700 });
-            expect(queue).toHaveLength(0);
-        });
-
-        it('falls back to FIFO when no dimension match', () => {
-            const queue = [
-                { plotIndex: undefined, width: 800, height: 600 },
-            ];
-            // Frame at different dimensions (R adjusted)
-            const entry = consumePendingResize(queue, { width: 799, height: 599 });
-            expect(entry).toEqual({ plotIndex: undefined, width: 800, height: 600 });
-            expect(queue).toHaveLength(0);
         });
     });
 });

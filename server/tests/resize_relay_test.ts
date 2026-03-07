@@ -5,9 +5,7 @@ import { delay } from "@std/async";
 import type { FrameMessage, ResizeMessage } from "./helpers/types.ts";
 
 Deno.test("Browser→R resize relay", withTestHarness(async (t, { server, rClient, browser }) => {
-  // Send an initial frame so the session is marked as having received
-  // a frame (hasReceivedFrame=true).  Without this, resize messages
-  // won't push pendingResizes entries (stale-entry fix).
+  // Send an initial frame to establish the session.
   await rClient.sendFrame(
     { ops: [{ op: "text", str: "init" }], device: { width: 1, height: 1 } },
   );
@@ -34,22 +32,23 @@ Deno.test("Browser→R resize relay", withTestHarness(async (t, { server, rClien
     assertEquals(msg.height, 1080);
   });
 
-  await t.step("frame after resize has resize flag", async () => {
+  await t.step("frame with resizeReplay has resize flag", async () => {
     browser.sendResize(1024, 768);
 
     // R receives the resize
     await rClient.readMessage<ResizeMessage>();
 
-    // R responds with a frame (simulating device redraw)
+    // R responds with a frame (simulating display list replay)
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 1024, height: 768 } },
+      { resizeReplay: true },
     );
 
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true);
   });
 
-  await t.step("frame without preceding resize has no resize flag", async () => {
+  await t.step("frame without resizeReplay has no resize flag", async () => {
     // R sends a regular frame (not triggered by resize)
     await rClient.sendFrame(
       { ops: [{ op: "circle" }], device: { width: 1024, height: 768 } },

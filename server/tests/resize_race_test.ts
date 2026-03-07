@@ -3,12 +3,12 @@
  *
  * When the browser sends two resize messages in quick succession (e.g.,
  * ws.onopen resize without plotIndex, then ResizeObserver with plotIndex
- * after 300ms debounce), the server's pendingPlotIndex from the second
- * message can overwrite the first's state.
+ * after 300ms debounce), R processes them separately and includes the
+ * correct plotIndex (or lack thereof) in each frame's JSON.
  *
- * If R processes them separately (likely when 300ms apart), the first
- * frame gets tagged with the second message's plotIndex — corrupting
- * the browser's plot history.
+ * This test verifies that the server correctly passes through R's
+ * plotIndex from the frame message, rather than mixing up state between
+ * the two resize responses.
  */
 
 import { assertEquals } from "@std/assert";
@@ -31,8 +31,8 @@ Deno.test("resize state race — normal then plotIndex", withTestHarness(async (
   );
   await browser.waitForType<FrameMessage>("frame");
 
-  // Prime dedup state.  Consume the pending resize with a frame so the
-  // queue stays in sync (in production, every resize triggers a frame).
+  // Prime dedup state.  Consume the pending resize with a frame so
+  // dedup state is in sync (in production, every resize triggers a frame).
   browser.sendResize(800, 600);
   await rClient.readMessage<ResizeMessage>();
   await rClient.sendFrame(
@@ -71,31 +71,29 @@ Deno.test("resize state race — normal then plotIndex", withTestHarness(async (
     );
 
     // The browser should receive this frame as a normal resize (no plotIndex).
-    // The server uses a FIFO queue so each frame gets the correct entry,
-    // even when multiple resizes are in flight.
+    // R did not include plotIndex in the frame JSON because it was a normal resize.
     const frame1 = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame1.resize, true, "First frame should be a resize response");
     assertEquals(
       frame1.plotIndex,
       undefined,
-      "First frame (normal resize of plot 2) should NOT have plotIndex. " +
-        "The server tagged it with plotIndex from the SECOND resize message — state race!",
+      "First frame (normal resize of plot 2) should NOT have plotIndex",
     );
 
     // R processes message 2 (plotIndex resize) and sends the historical plot.
+    // R includes plotIndex:0 in the frame JSON because it was a plotIndex resize.
     await rClient.sendFrame(
       { ops: [{ op: "text", str: "plot1-resized" }], device: { width: 640, height: 480 } },
-      { resizeReplay: true },
+      { resizeReplay: true, plotIndex: 0 },
     );
 
     // The browser should receive this frame with plotIndex:0.
-    // The queue ensures the second entry (with plotIndex) is still available.
+    // R reported the plotIndex directly in the frame, so the server passes it through.
     const frame2 = await browser.waitForType<FrameMessage>("frame");
     assertEquals(
       frame2.resize,
       true,
-      "Second frame (plotIndex resize of plot 1) should have resize:true. " +
-        "The server already cleared resizePending for the first frame — lost tag!",
+      "Second frame (plotIndex resize of plot 1) should have resize:true",
     );
     assertEquals(
       frame2.plotIndex,

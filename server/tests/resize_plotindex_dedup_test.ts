@@ -26,6 +26,7 @@ Deno.test("plotIndex→normal dedup interaction", withTestHarness(async (t, { rC
   await rClient.readMessage<ResizeMessage>();
   await rClient.sendFrame(
     { ops: [], device: { width: 1, height: 1 } },
+    { resizeReplay: true },
   );
   const primingFrame = await browser.waitForType<FrameMessage>("frame");
   const sessionId = primingFrame.plot.sessionId!;
@@ -35,6 +36,7 @@ Deno.test("plotIndex→normal dedup interaction", withTestHarness(async (t, { rC
   await rClient.readMessage<ResizeMessage>();
   await rClient.sendFrame(
     { ops: [{ op: "rect" }], device: { width: 800, height: 600 } },
+    { resizeReplay: true },
   );
   await browser.waitForType<FrameMessage>("frame");
 
@@ -51,6 +53,7 @@ Deno.test("plotIndex→normal dedup interaction", withTestHarness(async (t, { rC
     // Consume frame to keep queue in sync
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 640, height: 480 } },
+      { resizeReplay: true },
     );
     await browser.waitForType<FrameMessage>("frame");
   });
@@ -68,6 +71,7 @@ Deno.test("plotIndex→normal dedup interaction", withTestHarness(async (t, { rC
     // Consume plotIndex frame
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true, plotIndex: 0 },
     );
     await browser.waitForType<FrameMessage>("frame");
   });
@@ -88,6 +92,7 @@ Deno.test("plotIndex→normal dedup interaction", withTestHarness(async (t, { rC
     // Consume frame
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true },
     );
     await browser.waitForType<FrameMessage>("frame");
   });
@@ -98,6 +103,7 @@ Deno.test("plotIndex→normal dedup interaction", withTestHarness(async (t, { rC
     await rClient.readMessage<ResizeMessage>();
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 400, height: 300 } },
+      { resizeReplay: true, plotIndex: 1 },
     );
     await browser.waitForType<FrameMessage>("frame");
 
@@ -112,6 +118,7 @@ Deno.test("plotIndex→normal dedup interaction", withTestHarness(async (t, { rC
     // Consume frame and verify tagging
     await rClient.sendFrame(
       { ops: [{ op: "circle" }], device: { width: 700, height: 500 } },
+      { resizeReplay: true },
     );
     const frame = await browser.waitForType<FrameMessage>("frame");
     assertEquals(frame.resize, true);
@@ -125,6 +132,7 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
   await rClient.readMessage<ResizeMessage>();
   await rClient.sendFrame(
     { ops: [], device: { width: 1, height: 1 } },
+    { resizeReplay: true },
   );
   const primingFrame = await browser.waitForType<FrameMessage>("frame");
   const sessionId = primingFrame.plot.sessionId!;
@@ -134,6 +142,7 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
   await rClient.readMessage<ResizeMessage>();
   await rClient.sendFrame(
     { ops: [{ op: "rect" }], device: { width: 800, height: 600 } },
+    { resizeReplay: true },
   );
   await browser.waitForType<FrameMessage>("frame");
 
@@ -143,6 +152,7 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
     await rClient.readMessage<ResizeMessage>();
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true, plotIndex: 0 },
     );
     await browser.waitForType<FrameMessage>("frame");
 
@@ -151,6 +161,7 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
     await rClient.readMessage<ResizeMessage>();
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 600, height: 450 } },
+      { resizeReplay: true, plotIndex: 1 },
     );
     await browser.waitForType<FrameMessage>("frame");
 
@@ -165,6 +176,7 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
     // Consume frame
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true },
     );
     await browser.waitForType<FrameMessage>("frame");
   });
@@ -177,6 +189,7 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
     assertEquals(piMsg.plotIndex, 2, "plotIndex bypasses dedup even at same dims");
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true, plotIndex: 2 },
     );
     await browser.waitForType<FrameMessage>("frame");
 
@@ -192,6 +205,7 @@ Deno.test("multiple plotIndex then normal resize", withTestHarness(async (t, { r
     // Consume frame
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true },
     );
     await browser.waitForType<FrameMessage>("frame");
   });
@@ -203,6 +217,7 @@ Deno.test("plotIndex→normal→normal dedup chain", withTestHarness(async (t, {
   await rClient.readMessage<ResizeMessage>();
   await rClient.sendFrame(
     { ops: [], device: { width: 1, height: 1 } },
+    { resizeReplay: true },
   );
   const primingFrame = await browser.waitForType<FrameMessage>("frame");
   const sessionId = primingFrame.plot.sessionId!;
@@ -212,6 +227,7 @@ Deno.test("plotIndex→normal→normal dedup chain", withTestHarness(async (t, {
   await rClient.readMessage<ResizeMessage>();
   await rClient.sendFrame(
     { ops: [{ op: "rect" }], device: { width: 800, height: 600 } },
+    { resizeReplay: true },
   );
   await browser.waitForType<FrameMessage>("frame");
 
@@ -221,6 +237,7 @@ Deno.test("plotIndex→normal→normal dedup chain", withTestHarness(async (t, {
     await rClient.readMessage<ResizeMessage>();
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true, plotIndex: 0 },
     );
     await browser.waitForType<FrameMessage>("frame");
 
@@ -237,6 +254,7 @@ Deno.test("plotIndex→normal→normal dedup chain", withTestHarness(async (t, {
     // Consume frame for first normal resize
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 500, height: 400 } },
+      { resizeReplay: true },
     );
     await browser.waitForType<FrameMessage>("frame");
 
@@ -249,6 +267,7 @@ Deno.test("plotIndex→normal→normal dedup chain", withTestHarness(async (t, {
     // Consume sentinel frame
     await rClient.sendFrame(
       { ops: [{ op: "rect" }], device: { width: 1200, height: 900 } },
+      { resizeReplay: true },
     );
     await browser.waitForType<FrameMessage>("frame");
   });
