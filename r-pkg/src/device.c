@@ -266,8 +266,13 @@ static void do_play_snapshot(void *data) {
 static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
     st->replaying = 1;
 
+    /* PROTECT snap during R_ToplevelExec: although snap is typically
+     * reachable via snapshot_store or the caller's PROTECT frame,
+     * R_ToplevelExec may trigger GC in a new top-level context. */
+    PROTECT(snap);
     replay_snapshot_args_t args = { snap, gdd };
     Rboolean ok = R_ToplevelExec(do_play_snapshot, &args);
+    UNPROTECT(1);
     if (!ok) {
         REprintf("[jgd] replay_snapshot: GEplaySnapshot failed (longjmp caught)\n");
         st->replaying = 0;
