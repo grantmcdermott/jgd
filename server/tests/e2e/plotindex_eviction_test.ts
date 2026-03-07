@@ -1,14 +1,12 @@
 /**
- * E2E test: plotNumber→store_idx conversion after snapshot eviction.
+ * Protocol-level test: plotIndex passthrough after snapshot eviction boundary.
  *
- * Creates more plots than JGD_MAX_SNAPSHOTS (50) so the snapshot store
- * evicts the oldest entry, then resizes a historical plot.  Verifies that
- * the plotNumber (absolute plot number) sent by the browser is correctly
- * routed through the server, so R can convert it to a snapshot_store index
- * via evicted_count.
+ * Creates more plots than JGD_MAX_SNAPSHOTS (50) and then resizes historical
+ * plots.  Verifies that the *server* correctly forwards the absolute
+ * plotIndex (plotNumber) to R and back to the browser, unchanged.
  *
- * This is a protocol-level test (mock R) that validates the server passes
- * plotIndex through correctly after many plots.
+ * Note: this is a mock-R test — R's C-side store_idx = plotIndex - evicted_count
+ * conversion is not exercised here; that requires a real R E2E test.
  */
 
 import { assert, assertEquals } from "@std/assert";
@@ -86,6 +84,10 @@ Deno.test("plotIndex resize routes correctly after >50 plots (eviction boundary)
       (resized as Record<string, unknown>).plotIndex, 1,
       "Resize response should carry plotIndex=1",
     );
+    assertEquals(
+      (resized as Record<string, unknown>).plotNumber, undefined,
+      "Resize-replay frame should not include plotNumber",
+    );
 
     // --- Test 2: resize targeting plot 50 (plotNumber=50) ---
     // After eviction, R's store_idx = 50 - 1 = 49.
@@ -111,6 +113,10 @@ Deno.test("plotIndex resize routes correctly after >50 plots (eviction boundary)
     assertEquals(
       (resized2 as Record<string, unknown>).plotIndex, 50,
       "Resize response should carry plotIndex=50",
+    );
+    assertEquals(
+      (resized2 as Record<string, unknown>).plotNumber, undefined,
+      "Resize-replay frame should not include plotNumber",
     );
 
   } finally {
