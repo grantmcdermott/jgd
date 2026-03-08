@@ -281,10 +281,10 @@ SEXP C_jgd_set_ext(SEXP s_json) {
          * test harnesses).  The previous ext_json is preserved. */
         const char *err = cJSON_GetErrorPtr();
         if (err && err >= json) {
-            ptrdiff_t pos = err - json;
+            long pos = (long)(err - json);
             char buf[128];
             snprintf(buf, sizeof(buf),
-                     "invalid JSON in ext at position %td", pos);
+                     "invalid JSON in ext at position %ld", pos);
             return Rf_mkString(buf);
         }
         return Rf_mkString("invalid JSON in ext");
