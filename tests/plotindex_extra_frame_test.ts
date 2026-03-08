@@ -87,12 +87,18 @@ Deno.test({
         // CRITICAL: No extra frames should arrive after the resize.
         // Bug 1 also manifests as the current plot restoration leaking an
         // extra untagged frame, which the browser would treat as a new plot 3.
+        //
+        // Send a ping sentinel: because WebSocket messages are ordered, any
+        // frame queued before the pong will arrive first.  If we receive the
+        // pong without seeing a frame, no extra frame was delivered.
         let extraFrame: FrameMessage | null = null;
+        const pingDone = browser.sendPing(5000);
         try {
-          extraFrame = await browser.waitForType<FrameMessage>("frame", 2000);
+          extraFrame = await browser.waitForType<FrameMessage>("frame", 5000);
         } catch {
-          // Timeout is expected — no extra frame should arrive
+          // pong arrived first — no extra frame
         }
+        await pingDone;
 
         assertEquals(
           extraFrame,

@@ -56,6 +56,10 @@ export interface ServerInfoMessage {
   serverInfo?: Record<string, string>;
 }
 
+export interface PongMessage {
+  type: "pong";
+}
+
 export interface DiscoveryFile {
   socketPath: string;
   httpPort: number;
@@ -68,4 +72,5 @@ export type ServerMessage =
   | MetricsRequestMessage
   | MetricsResponseMessage
   | CloseMessage
-  | ServerInfoMessage;
+  | ServerInfoMessage
+  | PongMessage;
