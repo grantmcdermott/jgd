@@ -47,6 +47,15 @@ test_that("jgd_ext errors when no jgd device is active", {
   expect_error(jgd_ext('{"opacity":0.5}'))
 })
 
+test_that("with_jgd_ext rejects non-string input", {
+  open_jgd()
+  on.exit({ graphics.off() }, add = TRUE)
+
+  expect_error(with_jgd_ext(42, plot(1)))
+  expect_error(with_jgd_ext(NULL, plot(1)))
+  expect_error(with_jgd_ext(list(a = 1), plot(1)))
+})
+
 test_that("with_jgd_ext restores NULL on exit", {
   open_jgd()
   on.exit(dev.off(), add = TRUE)

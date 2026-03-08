@@ -59,10 +59,10 @@ jgd_server_info = function() {
 #' parameters.
 #'
 #' @param json A single JSON string representing the extension object, or
-#'   `NULL` to clear.  jgd does not validate the contents — the caller is
-#'   responsible for producing valid JSON.  Packages built on top of jgd
+#'   `NULL` to clear.  The string must be valid JSON (validated on the C side
+#'   via cJSON); an error is raised otherwise.  Packages built on top of jgd
 #'   (using e.g. jsonlite) should provide user-friendly wrappers.
-#' @return The previous ext JSON string (invisibly), or `NULL` if none was set.
+#' @return Called for its side effect; returns `NULL` invisibly.
 #' @section Lifecycle:
 #' **Experimental.** This API may change in future versions.
 #' @export
@@ -78,8 +78,8 @@ jgd_ext = function(json = NULL) {
 
 #' Scoped extended graphics context (experimental)
 #'
-#' Temporarily sets extension fields for the duration of `expr`, then restores
-#' the previous value.
+#' Temporarily sets extension fields for the duration of `expr`, then clears
+#' ext on exit (sets to `NULL`).
 #'
 #' @inheritParams jgd_ext
 #' @param expr Expression to evaluate with the extension active.
@@ -88,6 +88,7 @@ jgd_ext = function(json = NULL) {
 #' **Experimental.** This API may change in future versions.
 #' @export
 with_jgd_ext = function(json, expr) {
+  stopifnot(is.character(json), length(json) == 1L)
   .Call(C_jgd_set_ext, json)
   on.exit(.Call(C_jgd_set_ext, NULL), add = TRUE)
   expr
