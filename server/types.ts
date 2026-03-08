@@ -59,10 +59,28 @@ export type RMessage =
   | MetricsRequestMessage
   | CloseMessage;
 
+/** Ping message from browser (ordering probe / health-check). */
+export interface PingMessage {
+  type: "ping";
+}
+
+/** Pong response from server. */
+export interface PongMessage {
+  type: "pong";
+}
+
 /** Union of all browser-to-server messages. */
 export type BrowserMessage =
   | ResizeMessage
-  | MetricsResponseMessage;
+  | MetricsResponseMessage
+  | PingMessage;
+
+/** Union of all server-to-browser messages. */
+export type ServerToBrowserMessage =
+  | FrameMessage
+  | MetricsRequestMessage
+  | CloseMessage
+  | PongMessage;
 
 /**
  * Extract the top-level "type" field from a JSON string without full parse.

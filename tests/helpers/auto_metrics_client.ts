@@ -91,9 +91,10 @@ export class AutoMetricsBrowserClient {
   /**
    * Send a ping and wait for the pong.
    *
-   * Because WebSocket messages are ordered, any server-side message
-   * queued before the pong will arrive first.  This lets tests confirm
-   * non-delivery without relying on timeouts.
+   * Because the server is single-threaded and WebSocket messages are
+   * ordered, any server-side message produced while handling earlier
+   * messages will be sent before the pong.  Used with Promise.race as
+   * a deterministic ordering probe for non-delivery assertions.
    */
   sendPing(timeoutMs = 5000): Promise<void> {
     return this.#inner.sendPing(timeoutMs);

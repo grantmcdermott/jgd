@@ -136,10 +136,12 @@ export class BrowserClient {
   /**
    * Send a ping and wait for the pong response.
    *
-   * Because WebSocket messages are ordered, any server-side message that
-   * was queued before the pong will arrive first.  This lets tests verify
-   * non-delivery without relying on timeouts: send a ping after the
-   * action under test, then assert that the pong is the next message.
+   * Because the server is single-threaded and WebSocket messages are
+   * ordered, any server-side message produced while handling earlier
+   * messages will be sent before the pong.  In a Promise.race with a
+   * concurrent frame waiter, this gives a deterministic ordering probe:
+   * if the pong arrives first (and no frame waiter fired), no frame was
+   * produced by the server in response to the preceding action.
    */
   async sendPing(timeoutMs = 5000): Promise<void> {
     this.send({ type: "ping" });
