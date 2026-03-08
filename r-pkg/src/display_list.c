@@ -33,6 +33,7 @@ void page_free(jgd_page_t *p) {
 }
 
 void page_add_op(jgd_page_t *p, cJSON *op) {
+    if (!op) return;  /* OOM — silently drop the op */
     cJSON_AddItemToArray(p->ops, op);
     p->ops_tail = op;
     p->op_count++;

@@ -263,6 +263,11 @@ static void do_play_snapshot(void *data) {
     GEplaySnapshot(args->snap, args->gdd);
 }
 
+static void do_play_display_list(void *data) {
+    pGEDevDesc gdd = (pGEDevDesc)data;
+    GEplayDisplayList(gdd);
+}
+
 static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
     st->replaying = 1;
 
@@ -412,8 +417,12 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * This prevents the browser from receiving untagged incremental frames
          * that would be misrouted (appendOps to the wrong history slot). */
         st->replaying = 1;
-        GEplayDisplayList(gdd);
+        Rboolean ok = R_ToplevelExec(do_play_display_list, gdd);
         st->replaying = 0;
+        if (!ok) {
+            REprintf("[jgd] poll_resize: GEplayDisplayList failed (longjmp caught)\n");
+            return 1;
+        }
 
         /* Send the complete replayed frame as a single flush.  The server will
          * tag this frame with resize:true so the browser does replaceLatest

@@ -5,6 +5,7 @@
 #include "metrics.h"
 #include "png_encoder.h"
 #include "cJSON.h"
+#include <stdint.h>
 
 #include <R.h>
 #include <Rinternals.h>
@@ -608,6 +609,7 @@ static void cb_raster(unsigned int *raster, int w, int h,
     if (w <= 0 || h <= 0) return;
 
     size_t npix = (size_t)w * (size_t)h;
+    if (npix > SIZE_MAX / 4) return;  /* overflow guard */
     unsigned char *rgba = (unsigned char *)malloc(npix * 4);
     if (!rgba) return;
     for (size_t i = 0; i < npix; i++) {
