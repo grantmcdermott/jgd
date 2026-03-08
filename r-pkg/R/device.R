@@ -91,7 +91,7 @@ jgd_ext = function(json = NULL) {
 #' @export
 with_jgd_ext = function(json, expr) {
   stopifnot(is.character(json), length(json) == 1L)
-  .Call(C_jgd_set_ext, json)
-  on.exit(.Call(C_jgd_set_ext, NULL), add = TRUE)
+  jgd_ext(json)
+  on.exit(jgd_ext(NULL), add = TRUE)
   expr
 }

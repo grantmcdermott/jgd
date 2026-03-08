@@ -56,6 +56,14 @@ test_that("with_jgd_ext rejects non-string input", {
   expect_error(with_jgd_ext(list(a = 1), plot(1)))
 })
 
+test_that("with_jgd_ext rejects invalid JSON", {
+  open_jgd()
+  on.exit({ graphics.off() }, add = TRUE)
+
+  expect_error(with_jgd_ext("not valid json", 1), "not valid JSON")
+  expect_error(with_jgd_ext("{unclosed", 1), "not valid JSON")
+})
+
 test_that("with_jgd_ext restores NULL on exit", {
   open_jgd()
   on.exit(dev.off(), add = TRUE)

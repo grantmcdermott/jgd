@@ -9,7 +9,7 @@
 import { assertEquals } from "@std/assert";
 import { TestServer } from "../helpers/server.ts";
 import { RClient } from "../helpers/r_client.ts";
-import { E2EBrowser, canvasHasContent, waitForPlotInfo } from "../helpers/e2e_browser.ts";
+import { E2EBrowser, waitForPlotInfo } from "../helpers/e2e_browser.ts";
 import { delay } from "@std/async";
 import type { ResizeMessage } from "../helpers/types.ts";
 

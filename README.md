@@ -294,9 +294,11 @@ jgd_ext(NULL)  # clear for subsequent plots
 
 ### Design for extension packages
 
-`jgd_ext()` is intentionally low-level — it accepts a raw JSON string and
-performs no validation. The intent is that higher-level packages built on top
-of jgd can provide user-friendly wrappers with proper argument checking, e.g.:
+`jgd_ext()` is intentionally low-level — it accepts a raw JSON string. The
+JSON must be syntactically valid (it is parsed in C and invalid JSON will
+error), but no higher-level or semantic validation is performed. The intent is
+that higher-level packages built on top of jgd can provide user-friendly
+wrappers with proper argument checking, e.g.:
 
 ```r
 # Hypothetical wrapper package

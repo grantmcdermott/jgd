@@ -674,6 +674,7 @@ async function renderOp(ctx, op, plotH) {
             break;
         }
         case 'raster': {
+            applyGc(ctx, op.gc);
             var img = new Image();
             img.src = op.data;
             await img.decode();
