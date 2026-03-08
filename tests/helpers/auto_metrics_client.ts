@@ -64,8 +64,9 @@ export class AutoMetricsBrowserClient {
   waitForType<T extends ServerMessage = ServerMessage>(
     type: string,
     timeoutMs = 10_000,
+    signal?: AbortSignal,
   ): Promise<T> {
-    return this.#inner.waitForType<T>(type, timeoutMs);
+    return this.#inner.waitForType<T>(type, timeoutMs, signal);
   }
 
   /** Send a resize message. */
@@ -82,8 +83,9 @@ export class AutoMetricsBrowserClient {
   waitForMessage<T extends ServerMessage = ServerMessage>(
     predicate: (msg: ServerMessage) => boolean,
     timeoutMs = 10_000,
+    signal?: AbortSignal,
   ): Promise<T> {
-    return this.#inner.waitForMessage<T>(predicate, timeoutMs);
+    return this.#inner.waitForMessage<T>(predicate, timeoutMs, signal);
   }
 
   /**

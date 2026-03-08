@@ -43,6 +43,7 @@ export class BrowserClient {
   waitForMessage<T extends ServerMessage = ServerMessage>(
     predicate: (msg: ServerMessage) => boolean,
     timeoutMs = 5000,
+    signal?: AbortSignal,
   ): Promise<T> {
     // Check the queue first
     for (let i = 0; i < this.#queue.length; i++) {
@@ -51,17 +52,34 @@ export class BrowserClient {
       }
     }
 
+    if (signal?.aborted) {
+      return Promise.reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+    }
+
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
-        const idx = this.#waiters.findIndex((w) => w.resolve === typedResolve);
-        if (idx >= 0) this.#waiters.splice(idx, 1);
+        cleanup();
         reject(new Error(`Timed out waiting for message (${timeoutMs}ms)`));
       }, timeoutMs);
 
       const typedResolve = (msg: ServerMessage) => {
-        clearTimeout(timer);
+        cleanup();
         resolve(msg as T);
       };
+
+      const onAbort = () => {
+        cleanup();
+        reject(signal!.reason ?? new DOMException("Aborted", "AbortError"));
+      };
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        signal?.removeEventListener("abort", onAbort);
+        const idx = this.#waiters.findIndex((w) => w.resolve === typedResolve);
+        if (idx >= 0) this.#waiters.splice(idx, 1);
+      };
+
+      signal?.addEventListener("abort", onAbort, { once: true });
 
       this.#waiters.push({ predicate, resolve: typedResolve, timer });
     });
@@ -71,10 +89,12 @@ export class BrowserClient {
   waitForType<T extends ServerMessage = ServerMessage>(
     type: string,
     timeoutMs = 5000,
+    signal?: AbortSignal,
   ): Promise<T> {
     return this.waitForMessage<T>(
       (msg) => msg.type === type,
       timeoutMs,
+      signal,
     );
   }
 

@@ -91,10 +91,13 @@ Deno.test({
         // Send a ping sentinel: because WebSocket messages are ordered, any
         // frame queued before the pong will arrive first.  Race the pong
         // against a frame waiter — if the pong wins, no extra frame arrived.
+        // AbortController cancels the losing waiter so it doesn't consume
+        // later messages.
+        const ac = new AbortController();
         const sentinel = Symbol("pong");
         const extraFrame = await Promise.race([
-          browser.waitForType<FrameMessage>("frame", 10000).catch(() => null),
-          browser.sendPing(5000).then(() => sentinel),
+          browser.waitForType<FrameMessage>("frame", 10000, ac.signal).catch(() => null),
+          browser.sendPing(5000).then(() => { ac.abort(); return sentinel; }),
         ]);
 
         assertEquals(
