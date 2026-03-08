@@ -135,7 +135,11 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
      * restored ext_json from the snapshot's saved copy, so this
      * propagates the correct ext to page_ext_json for drawing ops. */
     free(st->page_ext_json);
+    cJSON_Delete(st->page_ext_parsed);
     st->page_ext_json = st->ext_json ? strdup(st->ext_json) : NULL;
+    st->page_ext_parsed = (st->page_ext_json && st->page_ext_json[0])
+                              ? cJSON_Parse(st->page_ext_json)
+                              : NULL;
 }
 
 static void cb_close(pDevDesc dd) {
@@ -159,6 +163,7 @@ static void cb_close(pDevDesc dd) {
     R_ReleaseObject(st->snapshot_store);
     free(st->ext_json);
     free(st->page_ext_json);
+    cJSON_Delete(st->page_ext_parsed);
     for (int i = 0; i < st->snapshot_count; i++)
         free(st->snapshot_ext[i]);
     free(st);
@@ -190,7 +195,7 @@ static void cb_line(double x1, double y1, double x2, double y2,
     cJSON_AddNumberToObject(op, "y1", y1);
     cJSON_AddNumberToObject(op, "x2", x2);
     cJSON_AddNumberToObject(op, "y2", y2);
-    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_json));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_parsed));
     page_add_op(&st->page, op);
 }
 
@@ -201,7 +206,7 @@ static void cb_polyline(int n, double *x, double *y,
     cJSON_AddStringToObject(op, "op", "polyline");
     cJSON_AddItemToObject(op, "x", cJSON_CreateDoubleArray(x, n));
     cJSON_AddItemToObject(op, "y", cJSON_CreateDoubleArray(y, n));
-    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_json));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_parsed));
     page_add_op(&st->page, op);
 }
 
@@ -212,7 +217,7 @@ static void cb_polygon(int n, double *x, double *y,
     cJSON_AddStringToObject(op, "op", "polygon");
     cJSON_AddItemToObject(op, "x", cJSON_CreateDoubleArray(x, n));
     cJSON_AddItemToObject(op, "y", cJSON_CreateDoubleArray(y, n));
-    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_json));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_parsed));
     page_add_op(&st->page, op);
 }
 
@@ -225,7 +230,7 @@ static void cb_rect(double x0, double y0, double x1, double y1,
     cJSON_AddNumberToObject(op, "y0", y0);
     cJSON_AddNumberToObject(op, "x1", x1);
     cJSON_AddNumberToObject(op, "y1", y1);
-    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_json));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_parsed));
     page_add_op(&st->page, op);
 }
 
@@ -237,7 +242,7 @@ static void cb_circle(double x, double y, double r,
     cJSON_AddNumberToObject(op, "x", x);
     cJSON_AddNumberToObject(op, "y", y);
     cJSON_AddNumberToObject(op, "r", r);
-    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_json));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_parsed));
     page_add_op(&st->page, op);
 }
 
@@ -252,7 +257,7 @@ static void cb_text(double x, double y, const char *str,
     cJSON_AddStringToObject(op, "str", str);
     cJSON_AddNumberToObject(op, "rot", rot);
     cJSON_AddNumberToObject(op, "hadj", hadj);
-    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_json));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_parsed));
     page_add_op(&st->page, op);
 }
 
@@ -616,7 +621,7 @@ static void cb_path(double *x, double *y, int npoly, int *nper,
         offset += nper[i];
     }
 
-    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_json));
+    cJSON_AddItemToObject(op, "gc", gc_to_cjson(gc, st->page_ext_parsed));
     page_add_op(&st->page, op);
 }
 

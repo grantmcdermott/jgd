@@ -69,6 +69,10 @@ typedef struct {
      * Drawing ops read from this (not ext_json) so that ext survives
      * with_jgd_ext's on.exit cleanup and display list replay on resize. */
     char *page_ext_json;
+    /* Pre-parsed cJSON tree of page_ext_json, cached to avoid re-parsing
+     * for every drawing op.  Owned by jgd_state_t; freed when page_ext_json
+     * changes (cb_newPage) or at cb_close. */
+    cJSON *page_ext_parsed;
     /* Per-snapshot ext, parallel to snapshot_store.  Stored when a snapshot
      * is saved so that plotIndex replay can restore the correct ext. */
     char *snapshot_ext[JGD_MAX_SNAPSHOTS];

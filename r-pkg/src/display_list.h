@@ -32,7 +32,7 @@ void page_add_op(jgd_page_t *p, cJSON *op);
 char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incremental,
                            int new_page, int resize_replay, int plot_index,
                            int plot_number);
-cJSON *gc_to_cjson(const pGEcontext gc, const char *ext_json);
+cJSON *gc_to_cjson(const pGEcontext gc, const cJSON *ext_parsed);
 cJSON *lty_to_cjson(int lty, double lwd);
 
 #endif
