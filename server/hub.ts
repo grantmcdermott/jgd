@@ -211,49 +211,54 @@ export class Hub {
 
     switch (type) {
       case "frame": {
-        let data = line;
-        const { isResizeReplay, plotIndex } = extractFrameMeta(line);
+        const { msg, isResizeReplay, plotIndex } = parseFrame(line);
+
+        // If parsing failed, forward the raw line unchanged.
+        if (!msg) {
+          this.broadcastToClients(line);
+          break;
+        }
 
         // R self-reports resize metadata in each frame:
         //   resizeReplay:true  — frame from poll_resize_impl (display list replay)
         //   plotIndex:N        — which historical plot was replayed
         //
-        // When resizeReplay is present, inject resize:true so the browser
+        // When resizeReplay is present, set resize:true so the browser
         // knows to update in place rather than add a new plot.
         if (isResizeReplay) {
-          data = injectResizeFlag(data);
+          msg.resize = true;
         }
 
         if (this.verbose) {
-          const isIncremental = /"incremental"\s*:\s*true/.test(line);
-          const isNewPage = /"newPage"\s*:\s*true/.test(line);
           let classification: string;
           if (isResizeReplay) {
             classification = plotIndex !== undefined
               ? `resize (plotIndex=${plotIndex})`
               : "resize (current plot)";
           } else {
-            classification = isNewPage ? "newPage" : isIncremental ? "incremental" : "complete";
+            classification = msg.newPage ? "newPage" : msg.incremental ? "incremental" : "complete";
           }
           console.error(
             `[hub] frame: ${classification}`,
           );
         }
+
         // Ensure the frame carries the server-assigned sessionId.
         if (session.id) {
-          if (/"sessionId"\s*:/.test(data)) {
-            // Only replace when the server remapped the session ID
-            // (retired ID dedup).  Otherwise preserve R's explicit sessionId.
-            if (session.remappedSessionId) {
-              data = data.replace(
-                /"sessionId"\s*:\s*"[^"]*"/,
-                () => `"sessionId":${JSON.stringify(session.id)}`,
-              );
+          if (msg.plot) {
+            if (msg.plot.sessionId !== undefined) {
+              // Only replace when the server remapped the session ID
+              // (retired ID dedup).  Otherwise preserve R's explicit sessionId.
+              if (session.remappedSessionId) {
+                msg.plot.sessionId = session.id;
+              }
+            } else {
+              msg.plot.sessionId = session.id;
             }
-          } else {
-            data = injectSessionId(data, session.id);
           }
         }
+
+        const data = JSON.stringify(msg);
         this.broadcastToClients(data);
         if (this.verbose) {
           console.error(
@@ -408,53 +413,27 @@ export class Hub {
   }
 }
 
-/** Metadata extracted from a single JSON.parse of a frame line. */
-interface FrameMeta {
+/** Result of parsing a frame JSON line. */
+interface ParsedFrame {
+  /** The parsed message object, or null if parsing failed. */
+  // deno-lint-ignore no-explicit-any
+  msg: Record<string, any> | null;
   isResizeReplay: boolean;
   plotIndex: number | undefined;
 }
 
 /**
- * Extract frame metadata from a frame JSON line in a single JSON.parse call.
- * R now self-reports resizeReplay and plotIndex directly in the frame.
+ * Parse a frame JSON line and extract metadata in a single JSON.parse call.
+ * The parsed object is returned so callers can mutate it and re-serialize,
+ * avoiding fragile string-based JSON injection.
  */
-function extractFrameMeta(line: string): FrameMeta {
+function parseFrame(line: string): ParsedFrame {
   try {
     const msg = JSON.parse(line);
     const isResizeReplay = msg?.resizeReplay === true;
     const plotIndex = typeof msg?.plotIndex === "number" ? msg.plotIndex : undefined;
-    return { isResizeReplay, plotIndex };
+    return { msg, isResizeReplay, plotIndex };
   } catch {
-    return { isResizeReplay: false, plotIndex: undefined };
+    return { msg: null, isResizeReplay: false, plotIndex: undefined };
   }
-}
-
-/**
- * Inject "resize":true into a frame message so the browser knows this
- * frame is a response to a resize event, not a new plot.
- */
-function injectResizeFlag(line: string): string {
-  const idx = line.indexOf("{");
-  if (idx < 0) return line;
-  return line.slice(0, idx + 1) + '"resize":true,' + line.slice(idx + 1);
-}
-
-/**
- * Inject sessionId into the plot object of a frame message.
- * Finds `"plot":{` or `"plot": {` and inserts `"sessionId":"<id>",` after
- * the opening brace — matching the Go server's injection logic.
- */
-export function injectSessionId(line: string, sessionId: string): string {
-  // Find "plot":{ or "plot": {
-  const plotRe = /"plot"\s*:\s*\{/;
-  const match = plotRe.exec(line);
-  if (!match) return line;
-
-  const insertPos = match.index + match[0].length;
-  const escaped = JSON.stringify(sessionId);
-  return (
-    line.slice(0, insertPos) +
-    `"sessionId":${escaped},` +
-    line.slice(insertPos)
-  );
 }
