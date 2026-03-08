@@ -81,7 +81,9 @@ jgd_ext = function(json = NULL) {
 #' Temporarily sets extension fields for the duration of `expr`, then clears
 #' ext on exit (sets to `NULL`).
 #'
-#' @inheritParams jgd_ext
+#' @param json A single JSON string representing the extension object.
+#'   Must be valid JSON; an error is raised otherwise.  Unlike [jgd_ext()],
+#'   `NULL` is not accepted (use `jgd_ext(NULL)` to clear ext explicitly).
 #' @param expr Expression to evaluate with the extension active.
 #' @return The result of evaluating `expr`.
 #' @section Lifecycle:

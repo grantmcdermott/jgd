@@ -7,10 +7,9 @@
 with_jgd_ext(json, expr)
 }
 \arguments{
-\item{json}{A single JSON string representing the extension object, or
-\code{NULL} to clear.  The string must be valid JSON (validated on the C side
-via cJSON); an error is raised otherwise.  Packages built on top of jgd
-(using e.g. jsonlite) should provide user-friendly wrappers.}
+\item{json}{A single JSON string representing the extension object.
+Must be valid JSON; an error is raised otherwise.  Unlike \code{\link[=jgd_ext]{jgd_ext()}},
+\code{NULL} is not accepted (use \code{jgd_ext(NULL)} to clear ext explicitly).}
 
 \item{expr}{Expression to evaluate with the extension active.}
 }
