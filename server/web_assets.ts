@@ -478,6 +478,16 @@ function mapFontFamily(family) {
 }
 
 function applyGc(ctx, gc) {
+    // Always reset extended Canvas2D state to defaults, even when gc is
+    // absent.  This prevents gc.ext fields from leaking into subsequent
+    // ops that lack a gc object (e.g. raster ops without gc).
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.filter = 'none';
     if (!gc) return;
     if (gc.col != null) ctx.strokeStyle = gc.col;
     if (gc.fill != null) ctx.fillStyle = gc.fill;
@@ -498,6 +508,18 @@ function applyGc(ctx, gc) {
         if (face === 2 || face === 4) style += 'bold ';
         if (face === 3 || face === 4) style += 'italic ';
         ctx.font = style + size + 'px ' + family;
+    }
+    // Apply extension fields from gc.ext if present.
+    if (gc.ext) {
+        if (gc.ext.blendMode != null) ctx.globalCompositeOperation = gc.ext.blendMode;
+        if (gc.ext.opacity != null) ctx.globalAlpha = gc.ext.opacity;
+        if (gc.ext.shadow) {
+            if (gc.ext.shadow.blur != null) ctx.shadowBlur = gc.ext.shadow.blur;
+            if (gc.ext.shadow.color != null) ctx.shadowColor = gc.ext.shadow.color;
+            if (gc.ext.shadow.offsetX != null) ctx.shadowOffsetX = gc.ext.shadow.offsetX;
+            if (gc.ext.shadow.offsetY != null) ctx.shadowOffsetY = gc.ext.shadow.offsetY;
+        }
+        if (gc.ext.filter != null) ctx.filter = gc.ext.filter;
     }
 }
 
@@ -652,6 +674,7 @@ async function renderOp(ctx, op, plotH) {
             break;
         }
         case 'raster': {
+            applyGc(ctx, op.gc);
             var img = new Image();
             img.src = op.data;
             await img.decode();

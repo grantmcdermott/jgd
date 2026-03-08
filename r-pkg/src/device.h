@@ -60,6 +60,22 @@ typedef struct {
     void *input_handler;      /* InputHandler* for R event-loop resize polling */
 #endif
     int debug_frames;         /* 1 to log frame details to stderr */
+    /* Experimental extended graphics context (gc.ext).
+     * A pre-serialized JSON string provided by the user via .Call(C_jgd_set_ext).
+     * When non-NULL, gc_to_cjson() embeds it as the "ext" field in every gc object.
+     * jgd does not validate the contents — that is the caller's responsibility. */
+    char *ext_json;
+    /* Page-level copy of ext_json, captured at cb_newPage time.
+     * Drawing ops read from this (not ext_json) so that ext survives
+     * with_jgd_ext's on.exit cleanup and display list replay on resize. */
+    char *page_ext_json;
+    /* Pre-parsed cJSON tree of page_ext_json, cached to avoid re-parsing
+     * for every drawing op.  Owned by jgd_state_t; freed when page_ext_json
+     * changes (cb_newPage) or at cb_close. */
+    cJSON *page_ext_parsed;
+    /* Per-snapshot ext, parallel to snapshot_store.  Stored when a snapshot
+     * is saved so that plotIndex replay can restore the correct ext. */
+    char *snapshot_ext[JGD_MAX_SNAPSHOTS];
 } jgd_state_t;
 
 /* Flush the current frame over the transport. */

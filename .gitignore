@@ -11,6 +11,7 @@ r-pkg/src/*.so
 r-pkg/src/*.d
 r-pkg/src/symbols.rds
 r-pkg/*.Rcheck
+Rplots.pdf
 
 # VS Code extension
 vscode-ext/node_modules/

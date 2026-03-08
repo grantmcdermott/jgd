@@ -49,3 +49,49 @@ jgd = function(
 jgd_server_info = function() {
   .Call(C_jgd_server_info)
 }
+
+#' Set extended graphics context (experimental)
+#'
+#' Sets extension fields that are included in every subsequent drawing
+#' operation's graphics context (`gc.ext` in the JSON protocol).  This is
+#' an experimental, low-level API for injecting renderer-specific properties
+#' (e.g. blend modes, shadows, opacity) that go beyond R's standard graphics
+#' parameters.
+#'
+#' @param json A single JSON string representing the extension object, or
+#'   `NULL` to clear.  The string must be valid JSON (validated on the C side
+#'   via cJSON); an error is raised otherwise.  Packages built on top of jgd
+#'   (using e.g. jsonlite) should provide user-friendly wrappers.
+#' @return Called for its side effect; returns `NULL` invisibly.
+#' @section Lifecycle:
+#' **Experimental.** This API may change in future versions.
+#' @export
+jgd_ext = function(json = NULL) {
+  if (!is.null(json)) {
+    stopifnot(is.character(json), length(json) == 1L)
+  }
+  result = .Call(C_jgd_set_ext, json)
+  if (is.character(result))
+    stop(result, call. = FALSE)
+  invisible()
+}
+
+#' Scoped extended graphics context (experimental)
+#'
+#' Temporarily sets extension fields for the duration of `expr`, then clears
+#' ext on exit (sets to `NULL`).
+#'
+#' @param json A single JSON string representing the extension object.
+#'   Must be valid JSON; an error is raised otherwise.  Unlike [jgd_ext()],
+#'   `NULL` is not accepted (use `jgd_ext(NULL)` to clear ext explicitly).
+#' @param expr Expression to evaluate with the extension active.
+#' @return The result of evaluating `expr`.
+#' @section Lifecycle:
+#' **Experimental.** This API may change in future versions.
+#' @export
+with_jgd_ext = function(json, expr) {
+  stopifnot(is.character(json), length(json) == 1L)
+  jgd_ext(json)
+  on.exit(jgd_ext(NULL), add = TRUE)
+  expr
+}

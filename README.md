@@ -231,6 +231,91 @@ using the browser's Canvas2D API.
   Windows (default), TCP on all platforms
 - **Reference server**: Deno-based server with browser frontend over
   HTTP/WebSocket
+- **Extended graphics context** (experimental): Blend modes, opacity, shadows,
+  and CSS filters via `jgd_ext()`
+
+## Extended graphics context (experimental)
+
+R's standard graphics parameters (colors, line width, font, etc.) are
+automatically included in every drawing operation that jgd sends to the
+renderer. The **extended graphics context** (`gc.ext`) allows you to send
+additional styling properties beyond what R's graphics API provides. Renderers
+can use these to apply visual effects that have no R equivalent.
+
+Because the JSON protocol is extensible, renderer implementations can define
+their own extension fields. The Deno reference server and VS Code extension
+currently support the fields listed below, but custom renderers could support
+any fields they choose. Unknown fields are silently ignored, so extensions are
+forward-compatible.
+
+> **Note:** This API is experimental and may change in future versions.
+
+### Supported extension fields
+
+The Deno reference server and VS Code renderer currently support:
+
+| Field | Canvas2D property | Example |
+|-------|------------------|---------|
+| `blendMode` | `globalCompositeOperation` | `"multiply"`, `"screen"`, `"lighter"` |
+| `opacity` | `globalAlpha` | `0.5` |
+| `shadow.blur` | `shadowBlur` | `10` |
+| `shadow.color` | `shadowColor` | `"rgba(0,0,0,0.5)"` |
+| `shadow.offsetX` | `shadowOffsetX` | `5` |
+| `shadow.offsetY` | `shadowOffsetY` | `5` |
+| `filter` | `filter` | `"blur(3px)"` |
+
+### Usage
+
+`jgd_ext()` accepts a JSON string and embeds it as the `ext` field in
+the graphics context of every drawing operation in the current plot.
+The extension applies per-plot: set it before `plot()` and it remains
+active for the entire plot, including on resize. `with_jgd_ext()` provides
+scoped application with automatic cleanup.
+
+```r
+library(jgd)
+jgd()
+
+# Drop shadow (scoped — automatically cleared after the block)
+with_jgd_ext('{"shadow":{"blur":15,"color":"rgba(0,0,0,0.5)","offsetX":5,"offsetY":5}}', {
+  plot(1:10, pch = 19, cex = 3, col = "steelblue")
+})
+
+# Semi-transparent overlay
+with_jgd_ext('{"opacity":0.3}', {
+  plot(1:10, pch = 19, cex = 5, col = "red")
+})
+
+# Manual set/clear (equivalent to with_jgd_ext but without scoping)
+jgd_ext('{"shadow":{"blur":10,"color":"gray","offsetX":5,"offsetY":5}}')
+plot(1:10, pch = 19, cex = 3, col = "steelblue")
+jgd_ext(NULL)  # clear for subsequent plots
+```
+
+### Design for extension packages
+
+`jgd_ext()` is intentionally low-level — it accepts a raw JSON string. The
+JSON must be syntactically valid (it is parsed in C and invalid JSON will
+error), but no higher-level or semantic validation is performed. The intent is
+that higher-level packages built on top of jgd can provide user-friendly
+wrappers with proper argument checking, e.g.:
+
+```r
+# Hypothetical wrapper package
+jgd_blend <- function(mode = "source-over") {
+  jgd_ext(jsonlite::toJSON(list(blendMode = mode), auto_unbox = TRUE))
+}
+
+jgd_shadow <- function(blur = 0, color = "black", offsetX = 0, offsetY = 0) {
+  jgd_ext(jsonlite::toJSON(
+    list(shadow = list(blur = blur, color = color, offsetX = offsetX, offsetY = offsetY)),
+    auto_unbox = TRUE
+  ))
+}
+```
+
+jgd itself has no dependency on jsonlite or any serialization library —
+upstream packages choose their own.
 
 ## Roadmap
 
@@ -248,37 +333,12 @@ using the browser's Canvas2D API.
 
 ## Project structure
 
-```
-r-pkg/
-├── DESCRIPTION
-├── NAMESPACE
-├── R/
-│   ├── device.R          # R wrapper: jgd()
-│   └── zzz.R             # .onLoad
-├── src/
-│   ├── device.c           # DevDesc setup and registration
-│   ├── callbacks.c        # All graphics callbacks (line, rect, text, ...)
-│   ├── display_list.c     # Page state and JSON frame serialization
-│   ├── json_writer.c      # Streaming JSON builder (no dependencies)
-│   ├── transport.c        # Socket/pipe/TCP client + discovery
-│   ├── metrics.c          # Approximation-based font metrics
-│   ├── color.c            # R color → CSS rgba() conversion
-│   ├── png_encoder.c      # Minimal uncompressed PNG encoder + base64
-│   └── init.c             # .Call registration
-└── tests/testthat/        # Unit tests (transport, frame output, etc.)
-
-server/                    # Deno reference server (HTTP/WebSocket renderer)
-
-tests/                     # End-to-end tests and benchmarks
-
-vscode-ext/
-├── package.json
-└── src/
-    ├── extension.ts       # Activation, commands, env var injection
-    ├── socket-server.ts   # Socket server (Unix + TCP) + NDJSON framing
-    ├── webview-provider.ts # Webview panel + Canvas2D renderer
-    └── plot-history.ts    # Per-session plot history management
-```
+| Directory | Description |
+|-----------|-------------|
+| `r-pkg/` | R package (pure C, zero dependencies) |
+| `server/` | Deno reference server (HTTP/WebSocket renderer) |
+| `vscode-ext/` | VS Code extension |
+| `tests/` | End-to-end tests |
 
 ## License
 

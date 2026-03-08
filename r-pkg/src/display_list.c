@@ -69,7 +69,7 @@ cJSON *lty_to_cjson(int lty, double lwd) {
     return arr;
 }
 
-cJSON *gc_to_cjson(const pGEcontext gc) {
+cJSON *gc_to_cjson(const pGEcontext gc, const cJSON *ext_parsed) {
     cJSON *g = cJSON_CreateObject();
     cJSON_AddItemToObject(g, "col", color_to_cjson(gc->col));
     cJSON_AddItemToObject(g, "fill", color_to_cjson(gc->fill));
@@ -84,6 +84,15 @@ cJSON *gc_to_cjson(const pGEcontext gc) {
     cJSON_AddNumberToObject(font, "face", gc->fontface);
     cJSON_AddNumberToObject(font, "size", gc->cex * gc->ps);
     cJSON_AddNumberToObject(font, "lineheight", gc->lineheight);
+
+    /* Experimental: embed cached extension fields as gc.ext.
+     * ext_parsed is the pre-parsed cJSON tree cached in page_ext_parsed;
+     * we duplicate it here since cJSON_AddItemToObject takes ownership. */
+    if (ext_parsed) {
+        cJSON *ext = cJSON_Duplicate(ext_parsed, 1);
+        if (ext)
+            cJSON_AddItemToObject(g, "ext", ext);
+    }
 
     return g;
 }
