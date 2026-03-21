@@ -44,7 +44,7 @@ jobs:
 
       - run: npm run compile
 
-      - run: npx @vscode/vsce package -o jgd-vscode-nightly.vsix
+      - run: npx @vscode/vsce@3.7.1 package -o jgd-vscode-nightly.vsix
 
       - name: upload artifact
         uses: actions/upload-artifact@v6
