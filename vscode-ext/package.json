@@ -88,6 +88,7 @@
     "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=es2022 --sourcemap --minify",
     "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --target=es2022 --sourcemap --watch",
     "check-types": "tsc --noEmit",
+    "vscode:prepublish": "npm run check-types && npm run compile",
     "lint": "eslint src --ext ts",
     "test": "vitest run"
   },
