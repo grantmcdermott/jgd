@@ -74,10 +74,13 @@ export class RClient {
     if (opts?.resizeReplay) msg.resizeReplay = true;
     if (opts?.plotIndex !== undefined) msg.plotIndex = opts.plotIndex;
     // Auto-assign plotNumber for new (non-resize, non-incremental) frames.
-    // For resize replays, include plotNumber only when explicitly provided
-    // (R sends plotNumber in normal resize replays to identify the replayed plot).
+    // For resize replays without plotIndex (normal resize), R includes
+    // plotNumber to identify the replayed plot — default to the most
+    // recently assigned plot number to match real traffic.
     if (!opts?.resizeReplay && !opts?.incremental) {
       msg.plotNumber = opts?.plotNumber ?? this.#plotCounter++;
+    } else if (opts?.resizeReplay && opts?.plotIndex === undefined) {
+      msg.plotNumber = opts?.plotNumber ?? Math.max(0, this.#plotCounter - 1);
     } else if (opts?.plotNumber !== undefined) {
       msg.plotNumber = opts.plotNumber;
     }

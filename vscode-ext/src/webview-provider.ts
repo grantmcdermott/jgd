@@ -421,22 +421,23 @@ async function replay(plot) {
     ctx.scale(dpr * scale, dpr * scale);
 
     ctx.save();
+    try {
+        if (plot.device.bg) {
+            ctx.fillStyle = plot.device.bg;
+            ctx.fillRect(0, 0, plotW, plotH);
+        } else {
+            ctx.clearRect(0, 0, plotW, plotH);
+        }
 
-    if (plot.device.bg) {
-        ctx.fillStyle = plot.device.bg;
-        ctx.fillRect(0, 0, plotW, plotH);
-    } else {
-        ctx.clearRect(0, 0, plotW, plotH);
+        const ops = plot.ops;
+        for (let i = 0; i < ops.length; i++) {
+            if (replayGeneration !== gen) return;
+            await renderOp(ctx, ops[i], plotH);
+            if (replayGeneration !== gen) return;
+        }
+    } finally {
+        ctx.restore();
     }
-
-    const ops = plot.ops;
-    for (let i = 0; i < ops.length; i++) {
-        if (replayGeneration !== gen) { ctx.restore(); return; }
-        await renderOp(ctx, ops[i], plotH);
-        if (replayGeneration !== gen) { ctx.restore(); return; }
-    }
-
-    ctx.restore();
 }
 
 async function renderOp(ctx, op, plotH) {
