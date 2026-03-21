@@ -358,8 +358,12 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
     if (st->page.op_count - st->last_flushed_ops <= 2) {
         /* Use R_NamespaceRegistry lookup instead of R_FindNamespace to
          * avoid longjmp on error (grid is a base package, always loaded). */
+#if defined(R_VERSION) && R_VERSION >= R_Version(4, 5, 0)
+        SEXP grid_ns = R_getVarEx(Rf_install("grid"), R_NamespaceRegistry, FALSE, R_UnboundValue);
+#else
         SEXP grid_ns = Rf_findVarInFrame(R_NamespaceRegistry,
                                          Rf_install("grid"));
+#endif
         if (grid_ns != R_UnboundValue && grid_ns != R_NilValue) {
             SEXP refresh_sym = Rf_install("grid.refresh");
             SEXP call = PROTECT(Rf_lang1(refresh_sym));
