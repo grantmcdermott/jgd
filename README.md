@@ -63,7 +63,7 @@ Alternatively, you can also build and install the extension from source[^1]:
 
 ```bash
 cd vscode-ext && npm install && npm run compile \
-  && npx vsce package \
+  && npx @vscode/vsce@3.7.1 package \
   && code --install-extension jgd-vscode-0.0.1.vsix \
   && cd ..
 ```

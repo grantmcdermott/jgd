@@ -4,4 +4,5 @@ src/
 node_modules/
 tsconfig.json
 *.ts
-!out/**/*.js
+out/
+!dist/**/*.js

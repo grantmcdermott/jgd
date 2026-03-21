@@ -16,6 +16,7 @@ Rplots.pdf
 # VS Code extension
 vscode-ext/node_modules/
 vscode-ext/out/
+vscode-ext/dist/
 *.vsix
 
 # OS

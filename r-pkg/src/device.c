@@ -4,6 +4,7 @@
 
 #include <R.h>
 #include <Rinternals.h>
+#include <Rversion.h>
 #include <R_ext/GraphicsDevice.h>
 #include <R_ext/GraphicsEngine.h>
 
@@ -444,8 +445,12 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
     /* If GEplaySnapshot produced very few ops, the base DL was empty
      * (grid/ggplot2 case) — need grid.refresh() to redraw. */
     if (new_ops <= 2) {
+#if defined(R_VERSION) && R_VERSION >= R_Version(4, 5, 0)
+        SEXP grid_ns = R_getVarEx(Rf_install("grid"), R_NamespaceRegistry, FALSE, R_UnboundValue);
+#else
         SEXP grid_ns = Rf_findVarInFrame(R_NamespaceRegistry,
                                          Rf_install("grid"));
+#endif
         if (grid_ns != R_UnboundValue && grid_ns != R_NilValue) {
             /* Force-restore grid DL from snapshot (bypasses the
              * dlIndex > 1 gate in GE_RestoreSnapshotState). */
