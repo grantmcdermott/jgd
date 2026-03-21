@@ -4,6 +4,7 @@
 
 #include <R.h>
 #include <Rinternals.h>
+#include <Rversion.h>
 #include <R_ext/GraphicsDevice.h>
 #include <R_ext/GraphicsEngine.h>
 
