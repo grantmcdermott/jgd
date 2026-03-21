@@ -429,8 +429,9 @@ async function replay(plot) {
 
     const ops = plot.ops;
     for (let i = 0; i < ops.length; i++) {
-        if (replayGeneration !== gen) return; // aborted — newer replay started
+        if (replayGeneration !== gen) { ctx.restore(); return; }
         await renderOp(ctx, ops[i], plotH);
+        if (replayGeneration !== gen) { ctx.restore(); return; }
     }
 }
 
