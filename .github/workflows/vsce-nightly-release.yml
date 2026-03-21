@@ -38,6 +38,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run check-types
+
       - run: npm test
 
       - run: npm run compile

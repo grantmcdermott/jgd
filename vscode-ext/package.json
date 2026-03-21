@@ -18,7 +18,7 @@
   "activationEvents": [
     "onStartupFinished"
   ],
-  "main": "./out/extension.js",
+  "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
@@ -85,8 +85,9 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
+    "compile": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --minify",
+    "watch": "esbuild src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node --sourcemap --watch",
+    "check-types": "tsc --noEmit",
     "lint": "eslint src --ext ts",
     "test": "vitest run"
   },
@@ -94,6 +95,7 @@
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.85.0",
     "@vscode/vsce": "^3.7.1",
+    "esbuild": "^0.25.0",
     "typescript": "^5.3.0",
     "vitest": "^4.0.18"
   }
