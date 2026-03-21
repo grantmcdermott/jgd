@@ -26,6 +26,23 @@ static void jgd_capture_snapshot(jgd_state_t *st) {
     SEXP snap = GEcreateSnapshot(gdd);
     if (snap != R_NilValue) {
         PROTECT(snap);
+        if (st->debug_frames) {
+            /* Find grid state in snapshot by pkgName */
+            for (int si = 1; si < LENGTH(snap); si++) {
+                SEXP st_i = VECTOR_ELT(snap, si);
+                if (st_i != R_NilValue && TYPEOF(st_i) == VECSXP) {
+                    SEXP pn = Rf_getAttrib(st_i, Rf_install("pkgName"));
+                    if (pn != R_NilValue && TYPEOF(pn) == STRSXP &&
+                        strcmp(CHAR(STRING_ELT(pn, 0)), "grid") == 0) {
+                        SEXP idx = VECTOR_ELT(st_i, 1);
+                        REprintf("[jgd] capture_snapshot: grid DL index=%d page_count=%d ops=%d\n",
+                                 (idx != R_NilValue && TYPEOF(idx) == INTSXP) ? INTEGER(idx)[0] : -1,
+                                 st->page_count, st->page.op_count);
+                        break;
+                    }
+                }
+            }
+        }
         if (st->last_snapshot != R_NilValue)
             R_ReleaseObject(st->last_snapshot);
         R_PreserveObject(snap);
@@ -87,9 +104,16 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         jgd_flush_frame(st, st->last_flushed_ops > 0 ? 1 : 0);
     }
 
-    /* Move the last_snapshot (captured when the complete frame was flushed)
-     * into the snapshot store.  R clears the display list before calling
-     * newPage, so GEcreateSnapshot here would capture an empty DL. */
+    /* Re-capture the snapshot now.  The base display list was already
+     * cleared by GEinitDisplayList (called from grid.newpage's
+     * C_newpagerecording before C_newpage triggers this callback), but
+     * grid's own display list is still intact — it won't be cleared
+     * until C_initDisplayList runs later in grid.newpage.  Capturing
+     * here ensures the snapshot contains the complete grid DL (with
+     * dlIndex > 1), which GE_RestoreSnapshotState requires to restore
+     * grid state during replay. */
+    if (st->page_count > 0 && !st->replaying)
+        jgd_capture_snapshot(st);
     if (st->page_count > 0 && !st->replaying && st->last_snapshot != R_NilValue) {
         if (st->snapshot_count >= JGD_MAX_SNAPSHOTS) {
             /* Shift snapshots and their ext strings left by one */
