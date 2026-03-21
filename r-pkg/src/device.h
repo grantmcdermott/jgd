@@ -91,7 +91,8 @@ void jgd_remove_input_handler(jgd_state_t *st);
 int jgd_try_parse_resize(const char *buf, double *w, double *h, int *plot_index);
 
 /* Find grid state in a GEcreateSnapshot SEXP by looking for the
-   pkgName="grid" attribute.  Returns the grid state VECSXP or R_NilValue. */
+   pkgName="grid" attribute.  Returns the grid state VECSXP (with
+   LENGTH >= 2) or R_NilValue if not found or malformed. */
 SEXP find_grid_state(SEXP snap);
 
 #endif

@@ -173,7 +173,7 @@ test_that("plotIndex resize replay contains the historical plot's content, not t
   # Extract all text ops from the replay frame
   replay_ops = resize_frames[[1]]$plot$ops
   text_ops = Filter(function(o) identical(o$op, "text"), replay_ops)
-  text_strings = vapply(text_ops, function(o) o$str %||% "", character(1))
+  text_strings = vapply(text_ops, function(o) if (is.null(o$str)) "" else o$str, character(1))
 
   # THE KEY ASSERTION: the replay frame must contain plot 1's title
   expect_true("PLOT_AAA" %in% text_strings,
