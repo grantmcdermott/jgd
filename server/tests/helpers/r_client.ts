@@ -73,9 +73,13 @@ export class RClient {
     if (opts?.newPage) msg.newPage = true;
     if (opts?.resizeReplay) msg.resizeReplay = true;
     if (opts?.plotIndex !== undefined) msg.plotIndex = opts.plotIndex;
-    // Auto-assign plotNumber for new (non-resize, non-incremental) frames
+    // Auto-assign plotNumber for new (non-resize, non-incremental) frames.
+    // For resize replays, include plotNumber only when explicitly provided
+    // (R sends plotNumber in normal resize replays to identify the replayed plot).
     if (!opts?.resizeReplay && !opts?.incremental) {
       msg.plotNumber = opts?.plotNumber ?? this.#plotCounter++;
+    } else if (opts?.plotNumber !== undefined) {
+      msg.plotNumber = opts.plotNumber;
     }
     await this.send(msg);
   }
