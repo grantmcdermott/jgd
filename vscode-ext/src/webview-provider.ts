@@ -391,9 +391,21 @@ function mapFontFamily(family) {
 }
 
 let replayGeneration = 0;
+let replayChain = Promise.resolve();
 
 async function replay(plot) {
     const gen = ++replayGeneration;
+    // Serialize replays so that a stale replay's ctx.restore() (in its
+    // finally block) completes before the next replay touches the canvas.
+    // Without this, overlapping replays corrupt the shared canvas state stack.
+    const run = () => doReplay(plot, gen);
+    replayChain = replayChain.then(run, run);
+    await replayChain;
+}
+
+async function doReplay(plot, gen) {
+    if (replayGeneration !== gen) return;
+
     const dpr = window.devicePixelRatio || 1;
     const containerW = container.clientWidth;
     const containerH = container.clientHeight;
@@ -409,8 +421,6 @@ async function replay(plot) {
 
     const drawW = plotW * scale;
     const drawH = plotH * scale;
-
-    if (replayGeneration !== gen) return;
 
     canvas.width = drawW * dpr;
     canvas.height = drawH * dpr;
