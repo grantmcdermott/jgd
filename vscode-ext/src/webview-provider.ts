@@ -765,6 +765,15 @@ function handleExport(format, exportW, exportH) {
                 const curCtx = rc.groupStack.length > 0 ? rc.groupStack[rc.groupStack.length - 1].ctx : offCtx;
                 await renderOp(curCtx, op, plotH, rc);
             }
+            // Reset extended canvas state before post-effects to avoid
+            // residual globalAlpha/composite/shadow/filter from the last op.
+            offCtx.globalAlpha = 1;
+            offCtx.globalCompositeOperation = 'source-over';
+            offCtx.shadowBlur = 0;
+            offCtx.shadowColor = 'transparent';
+            offCtx.shadowOffsetX = 0;
+            offCtx.shadowOffsetY = 0;
+            offCtx.filter = 'none';
             if (currentPlot.frameExt && currentPlot.frameExt.postEffects) {
                 applyPostEffects(offCtx, currentPlot.frameExt.postEffects);
             }
@@ -927,6 +936,7 @@ function plotToSvg(plot, exportW, exportH) {
         }
     }
 
+    while (svgGroupDepth > 0) { s += svgClose('g') + '\\n'; svgGroupDepth--; }
     if (inClip) s += svgClose('g') + '\\n';
     s += svgClose('svg');
     return s;
