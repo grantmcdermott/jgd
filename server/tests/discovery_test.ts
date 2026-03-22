@@ -2,86 +2,77 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { writeDiscovery, removeDiscovery } from "../discovery.ts";
 import { join } from "@std/path";
 
-Deno.test("discovery file lifecycle", async (t) => {
-  const tmpDir = Deno.makeTempDirSync({ prefix: "jgd-disc-test-" });
+/** Write discovery and assert it succeeded. */
+async function writeDiscoveryOrFail(
+  socketPath: string,
+  serverName: string,
+  serverInfo?: Record<string, string>,
+): Promise<string> {
+  const path = await writeDiscovery(socketPath, serverName, serverInfo);
+  assert(path !== null, "writeDiscovery should succeed");
+  return path;
+}
 
-  // Override temp dir env vars so discovery writes to our test directory.
-  // POSIX uses TMPDIR; Windows uses TEMP/TMP.
-  const origTmpDir = Deno.env.get("TMPDIR");
-  const origTemp = Deno.env.get("TEMP");
-  const origTmp = Deno.env.get("TMP");
-  Deno.env.set("TMPDIR", tmpDir);
-  Deno.env.set("TEMP", tmpDir);
-  Deno.env.set("TMP", tmpDir);
+Deno.test("discovery file lifecycle", async (t) => {
+  const cacheDir = Deno.makeTempDirSync({ prefix: "jgd-disc-test-" });
+
+  // Override cache dir env vars so discovery writes to our test directory.
+  // XDG_CACHE_HOME for Linux, LOCALAPPDATA for Windows.
+  const origXdg = Deno.env.get("XDG_CACHE_HOME");
+  const origLocalAppData = Deno.env.get("LOCALAPPDATA");
+  Deno.env.set("XDG_CACHE_HOME", cacheDir);
+  Deno.env.set("LOCALAPPDATA", cacheDir);
 
   try {
-    await t.step("removeDiscovery skips file owned by another PID", async () => {
-      // Write a discovery file with the current process's PID
-      const paths = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
-      assert(paths.length > 0, "should write at least one discovery file");
+    const discPath = join(cacheDir, "jgd", "discovery.json");
 
-      const discPath = join(tmpDir, "jgd-discovery.json");
+    await t.step("removeDiscovery skips file owned by another PID", async () => {
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
+
       const before = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(before.pid, Deno.pid);
 
-      // Overwrite all paths with a different PID (simulating another instance).
-      // writeDiscovery may write to both $TMPDIR and /tmp when they differ,
-      // so overwrite all of them.
+      // Overwrite with a different PID (simulating another instance).
       const otherPid = Deno.pid + 99999;
-      for (const p of paths) {
-        await Deno.writeTextFile(
-          p,
-          JSON.stringify({ serverName: "jgd-other", socketPath: "unix:///tmp/other.sock", pid: otherPid }),
-        );
-      }
+      await Deno.writeTextFile(
+        path,
+        JSON.stringify({ serverName: "jgd-other", socketPath: "unix:///tmp/other.sock", pid: otherPid }),
+      );
 
-      // removeDiscovery should NOT delete any file because the PID doesn't match
-      await removeDiscovery(paths);
+      // removeDiscovery should NOT delete the file because the PID doesn't match
+      await removeDiscovery(path);
 
       const after = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(after.pid, otherPid, "file should still exist with other PID");
       assertEquals(after.serverName, "jgd-other");
 
-      // Clean up all paths
-      for (const p of paths) {
-        try { await Deno.remove(p); } catch { /* ignore */ }
-      }
+      try { await Deno.remove(path); } catch { /* ignore */ }
     });
 
     await t.step("discovery file contains serverName and serverInfo", async () => {
-      const paths = await writeDiscovery(
+      const path = await writeDiscoveryOrFail(
         "unix:///tmp/test.sock",
         "jgd-test",
         { httpUrl: "http://127.0.0.1:8080/" },
       );
-      assert(paths.length > 0);
 
-      const discPath = join(tmpDir, "jgd-discovery.json");
       const content = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(content.serverName, "jgd-test");
       assertEquals(content.socketPath, "unix:///tmp/test.sock");
       assertEquals(content.pid, Deno.pid);
       assertEquals(content.serverInfo.httpUrl, "http://127.0.0.1:8080/");
 
-      // Clean up for next step
-      for (const p of paths) {
-        try { await Deno.remove(p); } catch { /* ignore */ }
-      }
+      try { await Deno.remove(path); } catch { /* ignore */ }
     });
 
     await t.step("serverInfo is omitted when not provided", async () => {
-      const paths = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
-      assert(paths.length > 0);
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
 
-      const discPath = join(tmpDir, "jgd-discovery.json");
       const content = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(content.serverName, "jgd-test");
       assertEquals(content.serverInfo, undefined);
 
-      // Clean up for next step
-      for (const p of paths) {
-        try { await Deno.remove(p); } catch { /* ignore */ }
-      }
+      try { await Deno.remove(path); } catch { /* ignore */ }
     });
 
     await t.step("writeDiscovery rejects invalid serverInfo", async () => {
@@ -124,15 +115,13 @@ Deno.test("discovery file lifecycle", async (t) => {
     });
 
     await t.step("removeDiscovery deletes file owned by current PID", async () => {
-      const paths = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
-      assert(paths.length > 0);
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
 
-      const discPath = join(tmpDir, "jgd-discovery.json");
       const content = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(content.pid, Deno.pid);
 
       // removeDiscovery should delete the file because the PID matches
-      await removeDiscovery(paths);
+      await removeDiscovery(path);
 
       try {
         await Deno.readTextFile(discPath);
@@ -142,24 +131,18 @@ Deno.test("discovery file lifecycle", async (t) => {
       }
     });
   } finally {
-    // Restore temp dir env vars
-    if (origTmpDir !== undefined) {
-      Deno.env.set("TMPDIR", origTmpDir);
+    if (origXdg !== undefined) {
+      Deno.env.set("XDG_CACHE_HOME", origXdg);
     } else {
-      Deno.env.delete("TMPDIR");
+      Deno.env.delete("XDG_CACHE_HOME");
     }
-    if (origTemp !== undefined) {
-      Deno.env.set("TEMP", origTemp);
+    if (origLocalAppData !== undefined) {
+      Deno.env.set("LOCALAPPDATA", origLocalAppData);
     } else {
-      Deno.env.delete("TEMP");
-    }
-    if (origTmp !== undefined) {
-      Deno.env.set("TMP", origTmp);
-    } else {
-      Deno.env.delete("TMP");
+      Deno.env.delete("LOCALAPPDATA");
     }
     try {
-      await Deno.remove(tmpDir, { recursive: true });
+      await Deno.remove(cacheDir, { recursive: true });
     } catch { /* ignore */ }
   }
 });
