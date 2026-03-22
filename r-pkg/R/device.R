@@ -71,15 +71,16 @@ jgd_cache_dir = function() {
     if (nzchar(base)) return(file.path(base, "AppData", "Local", "jgd"))
     stop("Cannot determine cache directory: LOCALAPPDATA and USERPROFILE are both unset")
   }
-  xdg = Sys.getenv("XDG_CACHE_HOME", unset = "")
-  if (nzchar(xdg)) return(file.path(xdg, "jgd"))
   home = normalizePath("~", mustWork = FALSE)
   if (!nzchar(home) || identical(home, "~")) {
     stop("Cannot determine cache directory: HOME is unset")
   }
   if (Sys.info()[["sysname"]] == "Darwin") {
+    # On macOS, always use ~/Library/Caches/jgd to match server and tooling.
     return(file.path(home, "Library", "Caches", "jgd"))
   }
+  xdg = Sys.getenv("XDG_CACHE_HOME", unset = "")
+  if (nzchar(xdg)) return(file.path(xdg, "jgd"))
   file.path(home, ".cache", "jgd")
 }
 
