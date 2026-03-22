@@ -387,6 +387,89 @@ test_that("jgd_end_group errors without matching beginGroup", {
   expect_error(jgd_end_group(), "endGroup without matching beginGroup")
 })
 
+# --- Auto-close tests ---
+
+test_that("unclosed group is auto-closed at new page with warning", {
+  msgs = with_mock_jgd({
+    plot.new()
+    jgd_begin_group('{"opacity":0.5}')
+    rect(0, 0, 1, 1)
+    # No jgd_end_group() — auto-close should happen at next plot.new()
+    expect_warning(plot.new(), "unclosed group")
+    rect(0, 0, 0.5, 0.5)
+  })
+
+  # Collect all ops from frames before the second page's first complete frame.
+  # The auto-closed endGroup may be in an incremental frame.
+  frames = extract_frames(msgs)
+  full_frames = Filter(function(f) !isTRUE(f$incremental), frames)
+  expect_true(length(full_frames) >= 2)
+
+  # All ops up to (but not including) the second complete frame belong
+  # to the first page (including auto-close incremental frames).
+  second_idx = which(vapply(
+    frames,
+    function(f) !isTRUE(f$incremental),
+    logical(1)
+  ))[2]
+  first_page_frames = frames[seq_len(second_idx - 1)]
+  all_ops = unlist(
+    lapply(first_page_frames, function(f) f$plot$ops),
+    recursive = FALSE
+  )
+  op_types = vapply(all_ops, function(o) o$op, character(1))
+  begin_count = sum(op_types == "beginGroup")
+  end_count = sum(op_types == "endGroup")
+  expect_equal(begin_count, end_count,
+    info = "Auto-close should balance beginGroup/endGroup")
+})
+
+test_that("unclosed group is auto-closed at device close with warning", {
+  expect_warning(
+    with_mock_jgd({
+      plot.new()
+      jgd_begin_group('{"filter":"blur(3px)"}')
+      rect(0, 0, 1, 1)
+      # No jgd_end_group() — auto-close should happen at dev.off()
+    }),
+    "unclosed group"
+  )
+})
+
+test_that("multiple unclosed groups are all auto-closed", {
+  msgs = with_mock_jgd({
+    plot.new()
+    jgd_begin_group('{"opacity":0.5}')
+    jgd_begin_group('{"filter":"blur(3px)"}')
+    rect(0, 0, 1, 1)
+    # 2 unclosed groups
+    expect_warning(plot.new(), "2 unclosed group")
+    rect(0, 0, 0.5, 0.5)
+  })
+
+  # Collect all first-page ops (including auto-close incremental frames)
+  frames = extract_frames(msgs)
+  full_indices = which(vapply(
+    frames,
+    function(f) !isTRUE(f$incremental),
+    logical(1)
+  ))
+  expect_true(length(full_indices) >= 2)
+  first_page_frames = frames[seq_len(full_indices[2] - 1)]
+  all_ops = unlist(
+    lapply(first_page_frames, function(f) f$plot$ops),
+    recursive = FALSE
+  )
+  op_types = vapply(all_ops, function(o) o$op, character(1))
+  expect_equal(
+    sum(op_types == "beginGroup"),
+    sum(op_types == "endGroup"),
+    info = "Both unclosed groups should be auto-closed"
+  )
+})
+
+# --- Error tests ---
+
 test_that("group ops errors when no jgd device is active", {
   graphics.off()
   expect_error(jgd_begin_group('{"opacity":0.5}'))
