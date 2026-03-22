@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { writeDiscovery, removeDiscovery } from "../discovery.ts";
 import { join } from "@std/path";
 
@@ -82,6 +82,45 @@ Deno.test("discovery file lifecycle", async (t) => {
       for (const p of paths) {
         try { await Deno.remove(p); } catch { /* ignore */ }
       }
+    });
+
+    await t.step("writeDiscovery rejects invalid serverInfo", async () => {
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "jgd-test", null as unknown as Record<string, string>),
+        Error,
+        "serverInfo must be a plain object",
+      );
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "jgd-test", [1, 2] as unknown as Record<string, string>),
+        Error,
+        "serverInfo must be a plain object",
+      );
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "jgd-test", "string" as unknown as Record<string, string>),
+        Error,
+        "serverInfo must be a plain object",
+      );
+    });
+
+    await t.step("writeDiscovery rejects non-string serverInfo values", async () => {
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "jgd-test", { key: 123 } as unknown as Record<string, string>),
+        Error,
+        'serverInfo value for "key" must be a string',
+      );
+    });
+
+    await t.step("writeDiscovery rejects empty serverName", async () => {
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", ""),
+        Error,
+        "serverName must be a non-empty string",
+      );
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "   "),
+        Error,
+        "serverName must be a non-empty string",
+      );
     });
 
     await t.step("removeDiscovery deletes file owned by current PID", async () => {

@@ -325,6 +325,7 @@ describe('SocketServer', () => {
             expect(content.serverName).toBe('jgd-vscode');
             expect(content.socketPath).toBe(server.getSocketPath());
             expect(content.pid).toBe(process.pid);
+            expect(content).not.toHaveProperty('serverInfo');
         });
     });
 
