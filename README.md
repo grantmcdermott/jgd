@@ -233,6 +233,10 @@ using the browser's Canvas2D API.
   HTTP/WebSocket
 - **Extended graphics context** (experimental): Blend modes, opacity, shadows,
   and CSS filters via `jgd_ext()`
+- **Drawing groups** (experimental): Group drawing operations and apply
+  per-group effects via `jgd_begin_group()` / `jgd_end_group()`
+- **Frame-level extensions** (experimental): Frame-wide properties such as
+  post-processing effects via `jgd_frame_ext()`
 
 ## Extended graphics context (experimental)
 
@@ -316,6 +320,94 @@ jgd_shadow <- function(blur = 0, color = "black", offsetX = 0, offsetY = 0) {
 
 jgd itself has no dependency on jsonlite or any serialization library —
 upstream packages choose their own.
+
+## Drawing groups (experimental)
+
+Drawing groups let you bracket a set of drawing operations so the renderer
+can apply effects to the group as a whole. Each group carries its own `ext`
+fields.
+
+> **Note:** This API is experimental and may change in future versions.
+
+### Usage
+
+```r
+library(jgd)
+jgd()
+
+# Apply a blur filter to a group of drawing operations
+plot.new()
+with_jgd_group('{"filter":"blur(3px)"}', {
+  rect(0.1, 0.1, 0.5, 0.5, col = "steelblue")
+  rect(0.3, 0.3, 0.7, 0.7, col = "coral")
+})
+
+# Groups can be nested
+plot.new()
+with_jgd_group('{"opacity":0.5}', {
+  rect(0.1, 0.1, 0.9, 0.9, col = "steelblue")
+  with_jgd_group('{"filter":"blur(2px)"}', {
+    text(0.5, 0.5, "Blurred text inside transparent group")
+  })
+})
+
+# Manual begin/end (equivalent to with_jgd_group but without scoping)
+plot.new()
+jgd_begin_group('{"filter":"drop-shadow(5px 5px 5px gray)"}')
+rect(0.2, 0.2, 0.8, 0.8, col = "steelblue")
+jgd_end_group()
+```
+
+### Protocol
+
+Group ops appear in the drawing stream as:
+
+```json
+{"op": "beginGroup", "ext": {"filter": "blur(3px)"}}
+{"op": "rect", ...}
+{"op": "endGroup"}
+```
+
+Groups survive resize replay via `recordGraphics()`. Unclosed groups are
+automatically closed (with a warning) at page boundaries and device close.
+
+## Frame-level extensions (experimental)
+
+Frame-level extensions attach properties to the entire frame, independent of
+individual drawing operations. This is useful for post-processing effects
+that apply to the rendered image as a whole.
+
+> **Note:** This API is experimental and may change in future versions.
+
+### Usage
+
+```r
+library(jgd)
+jgd()
+
+# Apply post-processing effects to the entire frame
+with_jgd_frame_ext('{"postEffects":[{"type":"blur","radius":2}]}', {
+  plot(1:10, pch = 19, cex = 3, col = "steelblue")
+})
+
+# Frame ext and gc ext are independent — use both at once
+jgd_frame_ext('{"postEffects":[{"type":"glow"}]}')
+with_jgd_ext('{"opacity":0.5}', {
+  plot(1:10, pch = 19, cex = 3, col = "coral")
+})
+jgd_frame_ext(NULL)  # clear for subsequent plots
+```
+
+### Protocol
+
+Frame-level ext appears at the top level of the frame message:
+
+```json
+{"type": "frame", "ext": {"postEffects": [...]}, "plot": {...}}
+```
+
+Frame ext follows the same lifecycle as `gc.ext`: captured at page creation,
+saved per-snapshot, and restored on plotIndex replay.
 
 ## Roadmap
 
