@@ -122,29 +122,31 @@ void transport_init(jgd_transport_t *t) {
  * - Windows: %LOCALAPPDATA%/jgd/discovery.json
  * Returns 0 on success, -1 if the path cannot be determined. */
 static int discovery_path(char *out, size_t outsize) {
+    int n;
 #ifdef _WIN32
     const char *base = getenv("LOCALAPPDATA");
     if (!base || !base[0]) {
         const char *home = getenv("USERPROFILE");
         if (!home || !home[0]) return -1;
-        snprintf(out, outsize, "%s\\AppData\\Local\\jgd\\discovery.json", home);
+        n = snprintf(out, outsize, "%s\\AppData\\Local\\jgd\\discovery.json", home);
     } else {
-        snprintf(out, outsize, "%s\\jgd\\discovery.json", base);
+        n = snprintf(out, outsize, "%s\\jgd\\discovery.json", base);
     }
 #elif defined(__APPLE__)
     const char *home = getenv("HOME");
     if (!home || !home[0]) return -1;
-    snprintf(out, outsize, "%s/Library/Caches/jgd/discovery.json", home);
+    n = snprintf(out, outsize, "%s/Library/Caches/jgd/discovery.json", home);
 #else
     const char *xdg = getenv("XDG_CACHE_HOME");
     if (xdg && xdg[0]) {
-        snprintf(out, outsize, "%s/jgd/discovery.json", xdg);
+        n = snprintf(out, outsize, "%s/jgd/discovery.json", xdg);
     } else {
         const char *home = getenv("HOME");
         if (!home || !home[0]) return -1;
-        snprintf(out, outsize, "%s/.cache/jgd/discovery.json", home);
+        n = snprintf(out, outsize, "%s/.cache/jgd/discovery.json", home);
     }
 #endif
+    if (n < 0 || (size_t)n >= outsize) return -1;
     return 0;
 }
 
@@ -193,6 +195,10 @@ static int discover_socket_path(char *out, size_t outsize) {
    Reads the discovery file at the given path and returns all fields
    as a named list, or NULL if the file is missing or invalid. */
 SEXP C_jgd_discover(SEXP s_path) {
+    if (TYPEOF(s_path) != STRSXP || Rf_length(s_path) != 1)
+        Rf_error("'path' must be a length-1 character vector");
+    if (STRING_ELT(s_path, 0) == NA_STRING)
+        Rf_error("'path' cannot be NA");
     const char *path = CHAR(STRING_ELT(s_path, 0));
     cJSON *json = read_json_file(path);
     if (!json) return R_NilValue;

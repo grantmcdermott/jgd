@@ -89,16 +89,16 @@ export async function writeDiscovery(
     ...(serverInfo !== undefined && { serverInfo }),
   };
   const content = new TextEncoder().encode(JSON.stringify(disc));
-  const loc = discoveryLocation();
   try {
+    const loc = discoveryLocation();
     await Deno.mkdir(dirname(loc), { recursive: true });
     await atomicWrite(loc, content);
     console.error(`wrote discovery file: ${loc}`);
+    return loc;
   } catch (e) {
-    console.error(`warning: failed to write discovery to ${loc}: ${e}`);
+    console.error(`warning: failed to write discovery file: ${e}`);
     return null;
   }
-  return loc;
 }
 
 /** Remove the discovery file written during startup, but only if it
