@@ -67,14 +67,20 @@ jgd_cache_dir = function() {
   if (.Platform$OS.type == "windows") {
     base = Sys.getenv("LOCALAPPDATA", unset = "")
     if (nzchar(base)) return(file.path(base, "jgd"))
-    return(file.path(Sys.getenv("USERPROFILE"), "AppData", "Local", "jgd"))
-  }
-  if (Sys.info()[["sysname"]] == "Darwin") {
-    return(file.path(Sys.getenv("HOME"), "Library", "Caches", "jgd"))
+    base = Sys.getenv("USERPROFILE", unset = "")
+    if (nzchar(base)) return(file.path(base, "AppData", "Local", "jgd"))
+    stop("Cannot determine cache directory: LOCALAPPDATA and USERPROFILE are both unset")
   }
   xdg = Sys.getenv("XDG_CACHE_HOME", unset = "")
   if (nzchar(xdg)) return(file.path(xdg, "jgd"))
-  file.path(Sys.getenv("HOME"), ".cache", "jgd")
+  home = normalizePath("~", mustWork = FALSE)
+  if (!nzchar(home) || identical(home, "~")) {
+    stop("Cannot determine cache directory: HOME is unset")
+  }
+  if (Sys.info()[["sysname"]] == "Darwin") {
+    return(file.path(home, "Library", "Caches", "jgd"))
+  }
+  file.path(home, ".cache", "jgd")
 }
 
 #' Discover a running jgd server

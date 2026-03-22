@@ -217,9 +217,11 @@ SEXP C_jgd_discover(SEXP s_path) {
         return R_NilValue;
     }
 
-    /* pid is required */
+    /* pid is required and must be a positive integer */
     cJSON *pidj = cJSON_GetObjectItem(json, "pid");
-    if (!cJSON_IsNumber(pidj)) {
+    if (!cJSON_IsNumber(pidj) ||
+        pidj->valuedouble != (double)(int)pidj->valuedouble ||
+        pidj->valuedouble <= 0) {
         cJSON_Delete(json);
         return R_NilValue;
     }
