@@ -11,20 +11,10 @@ test_that("explicit socket= does not fall back to discovery file", {
   withr::defer(server$cleanup())
 
   # Write a discovery file pointing to the mock server.
-  discovery_dir = withr::local_tempdir("jgd-disc-")
-  writeLines(
-    sprintf('{"socketPath": "%s"}', server$socket_url),
-    file.path(discovery_dir, "jgd-discovery.json")
+  write_test_discovery(
+    sprintf('{"serverName":"test","socketPath":"%s","pid":1}', server$socket_url)
   )
-
-  # Point TMPDIR at our discovery dir so C-side discover_socket_path()
-  # would find it.  Clear other env vars to avoid interference.
-  withr::local_envvar(
-    TMPDIR = discovery_dir,
-    TMP = NA,
-    TEMP = NA,
-    JGD_SOCKET = NA
-  )
+  withr::local_envvar(JGD_SOCKET = NA)
   withr::local_options(jgd.socket = NULL)
 
   # Open jgd with an explicit bogus socket (nothing listens on port 1).
@@ -43,4 +33,40 @@ test_that("explicit socket= does not fall back to discovery file", {
   # (blocked on socketAccept = no connection was made).
   server$bg$wait(2000)
   expect_true(server$bg$is_alive())
+})
+
+test_that("jgd_discover reads all discovery file fields", {
+  write_test_discovery(
+    '{"serverName":"test-server","socketPath":"unix:///tmp/test.sock","pid":12345,"serverInfo":{"httpUrl":"http://127.0.0.1:8080/"}}'
+  )
+
+  info = jgd_discover()
+  expect_type(info, "list")
+  expect_equal(info$server_name, "test-server")
+  expect_equal(info$socket_path, "unix:///tmp/test.sock")
+  expect_equal(info$pid, 12345L)
+  expect_equal(info$server_info, c(httpUrl = "http://127.0.0.1:8080/"))
+})
+
+test_that("jgd_discover returns NULL when no discovery file", {
+  set_empty_discovery_env()
+  expect_null(jgd_discover())
+})
+
+test_that("jgd_discover returns NULL for invalid discovery file", {
+  write_test_discovery('{"socketPath":"unix:///tmp/test.sock"}')
+
+  # Missing serverName → invalid
+  expect_null(jgd_discover())
+})
+
+test_that("jgd_discover handles missing serverInfo gracefully", {
+  write_test_discovery(
+    '{"serverName":"test","socketPath":"unix:///tmp/test.sock","pid":1}'
+  )
+
+  info = jgd_discover()
+  expect_type(info, "list")
+  expect_equal(info$server_name, "test")
+  expect_length(info$server_info, 0)
 })

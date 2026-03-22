@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as net from 'net';
+import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
 import { PlotHistory, PlotFrame } from './plot-history';
-import { SocketServer } from './socket-server';
+import { SocketServer, discoveryPath } from './socket-server';
 
 // Minimal mock that satisfies the SocketServer's usage of PlotWebviewProvider.
 // We only need the methods SocketServer actually calls.
@@ -312,6 +315,19 @@ describe('SocketServer', () => {
             expect(msg.type).toBe('resize');
             expect(msg.width).toBe(500);
             expect(msg.height).toBe(400);
+        });
+    });
+
+    // ---- Discovery file ----
+
+    describe('discovery file', () => {
+        it('writes discovery file with correct schema', () => {
+            const discPath = discoveryPath();
+            const content = JSON.parse(fs.readFileSync(discPath, 'utf-8'));
+            expect(content.serverName).toBe('jgd-vscode');
+            expect(content.socketPath).toBe(server.getSocketPath());
+            expect(content.pid).toBe(process.pid);
+            expect(content).not.toHaveProperty('serverInfo');
         });
     });
 

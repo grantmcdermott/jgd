@@ -2,6 +2,7 @@
 
 export(jgd)
 export(jgd_begin_group)
+export(jgd_discover)
 export(jgd_end_group)
 export(jgd_ext)
 export(jgd_frame_ext)

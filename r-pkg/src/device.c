@@ -808,33 +808,60 @@ SEXP C_jgd_poll_resize(void) {
     return Rf_ScalarLogical(poll_resize_impl(st, dd, gdd));
 }
 
-/* Called from R: .Call(C_jgd_server_info) */
-SEXP C_jgd_server_info(void) {
+/* Defined in transport.c */
+SEXP C_jgd_discover(SEXP s_path);
+
+/* Called from R: .Call(C_jgd_server_info, path) */
+SEXP C_jgd_server_info(SEXP s_path) {
     pGEDevDesc gdd = GEcurrentDevice();
-    if (!gdd || !gdd->dev) return R_NilValue;
+    int have_device = gdd && gdd->dev && jgd_is_jgd_device(gdd->dev);
+    jgd_state_t *st = NULL;
 
-    pDevDesc dd = gdd->dev;
-    if (!jgd_is_jgd_device(dd)) return R_NilValue;
+    if (have_device) {
+        st = (jgd_state_t *)gdd->dev->deviceSpecific;
+        if (!st || !st->server_info_received) {
+            have_device = 0;
+        }
+    }
 
-    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
-    if (!st || !st->server_info_received) return R_NilValue;
+    if (!have_device) {
+        /* Fall back to discovery file, prepend connected=FALSE */
+        SEXP disc = PROTECT(C_jgd_discover(s_path));
+        if (disc == R_NilValue) {
+            UNPROTECT(1);
+            return R_NilValue;
+        }
+        /* Wrap: list(connected=FALSE, <discovery fields...>) */
+        int disc_len = Rf_length(disc);
+        SEXP result = PROTECT(Rf_allocVector(VECSXP, 1 + disc_len));
+        SEXP rnames = PROTECT(Rf_allocVector(STRSXP, 1 + disc_len));
+        SET_STRING_ELT(rnames, 0, Rf_mkChar("connected"));
+        SET_VECTOR_ELT(result, 0, PROTECT(Rf_ScalarLogical(0)));
+        SEXP disc_names = Rf_getAttrib(disc, R_NamesSymbol);
+        for (int i = 0; i < disc_len; i++) {
+            SET_VECTOR_ELT(result, 1 + i, VECTOR_ELT(disc, i));
+            SET_STRING_ELT(rnames, 1 + i, STRING_ELT(disc_names, i));
+        }
+        Rf_setAttrib(result, R_NamesSymbol, rnames);
+        UNPROTECT(4);
+        return result;
+    }
 
-    /* Build the result: list(server_name, protocol_version, transport, server_info) */
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+    /* Connected: build list(connected, server_name, protocol_version, transport, server_info) */
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 5));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 5));
 
-    SET_STRING_ELT(names, 0, Rf_mkChar("server_name"));
-    SET_STRING_ELT(names, 1, Rf_mkChar("protocol_version"));
-    SET_STRING_ELT(names, 2, Rf_mkChar("transport"));
-    SET_STRING_ELT(names, 3, Rf_mkChar("server_info"));
+    SET_STRING_ELT(names, 0, Rf_mkChar("connected"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("server_name"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("protocol_version"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("transport"));
+    SET_STRING_ELT(names, 4, Rf_mkChar("server_info"));
     Rf_setAttrib(result, R_NamesSymbol, names);
 
-    SEXP sname = PROTECT(Rf_mkString(st->server_name));
-    SEXP sproto = PROTECT(Rf_ScalarInteger(st->protocol_version));
-    SEXP strans = PROTECT(Rf_mkString(st->server_transport));
-    SET_VECTOR_ELT(result, 0, sname);
-    SET_VECTOR_ELT(result, 1, sproto);
-    SET_VECTOR_ELT(result, 2, strans);
+    SET_VECTOR_ELT(result, 0, PROTECT(Rf_ScalarLogical(1)));
+    SET_VECTOR_ELT(result, 1, PROTECT(Rf_mkString(st->server_name)));
+    SET_VECTOR_ELT(result, 2, PROTECT(Rf_ScalarInteger(st->protocol_version)));
+    SET_VECTOR_ELT(result, 3, PROTECT(Rf_mkString(st->server_transport)));
 
     /* Build named character vector from kv pairs */
     int np = st->n_info_pairs;
@@ -845,9 +872,9 @@ SEXP C_jgd_server_info(void) {
         SET_STRING_ELT(info, i, Rf_mkChar(st->server_info_pairs[i].val));
     }
     Rf_setAttrib(info, R_NamesSymbol, info_names);
-    SET_VECTOR_ELT(result, 3, info);
+    SET_VECTOR_ELT(result, 4, info);
 
-    UNPROTECT(7);
+    UNPROTECT(8);
     return result;
 }
 

@@ -16,10 +16,10 @@ Deno.test("server startup", async (t) => {
 
     await t.step("discovery file has correct schema", async () => {
       const disc = await server.readDiscovery();
+      assertEquals(typeof disc.serverName, "string");
+      assert(disc.serverName.length > 0, "serverName should be non-empty");
       assertEquals(typeof disc.socketPath, "string");
       assert(disc.socketPath.length > 0, "socketPath should be non-empty");
-      assertEquals(typeof disc.httpPort, "number");
-      assert(disc.httpPort > 0, "httpPort should be > 0");
       assertEquals(typeof disc.pid, "number");
       assert(disc.pid > 0, "pid should be > 0");
     });
@@ -29,9 +29,10 @@ Deno.test("server startup", async (t) => {
       assertEquals(disc.pid, server.pid);
     });
 
-    await t.step("discovery file httpPort matches server", async () => {
+    await t.step("discovery file serverInfo.httpUrl matches server", async () => {
       const disc = await server.readDiscovery();
-      assertEquals(disc.httpPort, server.httpPort);
+      assert(disc.serverInfo, "serverInfo should be present");
+      assertEquals(disc.serverInfo.httpUrl, `http://127.0.0.1:${server.httpPort}/`);
     });
 
     await t.step("discovery file socketPath matches server", async () => {

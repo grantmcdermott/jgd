@@ -354,6 +354,31 @@ extract_ops_by_type = function(msgs, op_type) {
   Filter(function(o) identical(o$op, op_type), ops)
 }
 
+# Write a discovery file to a temporary directory and mock jgd_cache_dir()
+# to point there. Returns the temporary cache dir path.
+write_test_discovery = function(json_content, envir = parent.frame()) {
+  cache_dir = withr::local_tempdir("jgd-cache-", .local_envir = envir)
+  jgd_dir = file.path(cache_dir, "jgd")
+  dir.create(jgd_dir, recursive = TRUE)
+  writeLines(json_content, file.path(jgd_dir, "discovery.json"))
+  testthat::local_mocked_bindings(
+    jgd_cache_dir = function() file.path(cache_dir, "jgd"),
+    .package = "jgd",
+    .env = envir
+  )
+  cache_dir
+}
+
+# Mock jgd_cache_dir() to return an empty directory (no discovery file).
+set_empty_discovery_env = function(envir = parent.frame()) {
+  empty_dir = withr::local_tempdir("jgd-empty-", .local_envir = envir)
+  testthat::local_mocked_bindings(
+    jgd_cache_dir = function() file.path(empty_dir, "jgd"),
+    .package = "jgd",
+    .env = envir
+  )
+}
+
 # Snapshot an R value as pretty-printed JSON matching jgd wire format
 expect_json_snapshot = function(x) {
   json = jsonlite::toJSON(x, auto_unbox = TRUE, pretty = TRUE)

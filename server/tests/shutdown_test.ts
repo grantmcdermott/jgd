@@ -49,7 +49,9 @@ Deno.test("graceful shutdown", async (t) => {
       }
 
       // Verify discovery file is cleaned up
-      const discPath = `${server.tmpDir}/jgd-discovery.json`;
+      // TODO: Use join() from @std/path instead of hard-coded "/" separator
+      // for Windows compatibility (tracked as part of cacheDir DI task).
+      const discPath = `${server.tmpDir}/jgd/discovery.json`;
       try {
         await Deno.readTextFile(discPath);
         assert(false, "Discovery file should be removed after shutdown");

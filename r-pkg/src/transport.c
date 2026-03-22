@@ -2,6 +2,7 @@
 #include "cJSON.h"
 
 #include <R.h>
+#include <Rinternals.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -115,55 +116,158 @@ void transport_init(jgd_transport_t *t) {
 #endif
 }
 
-static int discover_socket_path(char *out, size_t outsize) {
-    /* Scan discovery files in temp directories */
-    const char *tmpdirs[] = {
-        getenv("TMPDIR"),
-        getenv("TMP"),
-        getenv("TEMP"),
+/* Build the discovery file path: <cache_dir>/jgd/discovery.json
+ * - Linux:   $XDG_CACHE_HOME/jgd/discovery.json or ~/.cache/jgd/discovery.json
+ * - macOS:   ~/Library/Caches/jgd/discovery.json
+ * - Windows: %LOCALAPPDATA%/jgd/discovery.json
+ * Returns 0 on success, -1 if the path cannot be determined. */
+static int discovery_path(char *out, size_t outsize) {
+    int n;
 #ifdef _WIN32
-        getenv("USERPROFILE"),
+    const char *base = getenv("LOCALAPPDATA");
+    if (!base || !base[0]) {
+        const char *home = getenv("USERPROFILE");
+        if (!home || !home[0]) return -1;
+        n = snprintf(out, outsize, "%s\\AppData\\Local\\jgd\\discovery.json", home);
+    } else {
+        n = snprintf(out, outsize, "%s\\jgd\\discovery.json", base);
+    }
+#elif defined(__APPLE__)
+    const char *home = getenv("HOME");
+    if (!home || !home[0]) return -1;
+    n = snprintf(out, outsize, "%s/Library/Caches/jgd/discovery.json", home);
+#else
+    const char *xdg = getenv("XDG_CACHE_HOME");
+    if (xdg && xdg[0]) {
+        n = snprintf(out, outsize, "%s/jgd/discovery.json", xdg);
+    } else {
+        const char *home = getenv("HOME");
+        if (!home || !home[0]) return -1;
+        n = snprintf(out, outsize, "%s/.cache/jgd/discovery.json", home);
+    }
 #endif
-        "/tmp",
-    };
-    int n_tmpdirs = (int)(sizeof(tmpdirs) / sizeof(tmpdirs[0]));
+    if (n < 0 || (size_t)n >= outsize) return -1;
+    return 0;
+}
 
-    for (int t = 0; t < n_tmpdirs; t++) {
-        if (!tmpdirs[t] || !tmpdirs[t][0]) continue;
-        char discovery[1024];
-        snprintf(discovery, sizeof(discovery), "%s/jgd-discovery.json", tmpdirs[t]);
+/* Read a JSON file at the given path and return parsed cJSON, or NULL.
+   Caller must cJSON_Delete the result. */
+static cJSON *read_json_file(const char *path) {
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
 
-        FILE *f = fopen(discovery, "r");
-        if (!f) continue;
+    fseek(f, 0, SEEK_END);
+    long fsize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (fsize <= 0 || fsize > 65536) { fclose(f); return NULL; }
 
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        if (fsize <= 0 || fsize > 65536) { fclose(f); continue; }
+    char *content = (char *)malloc((size_t)fsize + 1);
+    if (!content) { fclose(f); return NULL; }
+    size_t nread = fread(content, 1, (size_t)fsize, f);
+    fclose(f);
+    content[nread] = '\0';
 
-        char *content = (char *)malloc((size_t)fsize + 1);
-        if (!content) { fclose(f); continue; }
-        size_t nread = fread(content, 1, (size_t)fsize, f);
-        fclose(f);
-        content[nread] = '\0';
+    cJSON *json = cJSON_Parse(content);
+    free(content);
+    return json;
+}
 
-        cJSON *json = cJSON_Parse(content);
-        free(content);
-        if (!json) continue;
+static int discover_socket_path(char *out, size_t outsize) {
+    char disc_path[1024];
+    if (discovery_path(disc_path, sizeof(disc_path)) != 0) return -1;
+    cJSON *json = read_json_file(disc_path);
+    if (!json) return -1;
 
-        cJSON *sp = cJSON_GetObjectItem(json, "socketPath");
-        if (cJSON_IsString(sp) && sp->valuestring) {
-            size_t plen = strlen(sp->valuestring);
-            if (plen > 0 && plen < outsize) {
-                memcpy(out, sp->valuestring, plen + 1);
-                cJSON_Delete(json);
-                return 0;
-            }
+    cJSON *sp = cJSON_GetObjectItem(json, "socketPath");
+    if (cJSON_IsString(sp) && sp->valuestring) {
+        size_t plen = strlen(sp->valuestring);
+        if (plen > 0 && plen < outsize) {
+            memcpy(out, sp->valuestring, plen + 1);
+            cJSON_Delete(json);
+            return 0;
         }
+    }
+    cJSON_Delete(json);
+    return -1;
+}
+
+/* Called from R: .Call(C_jgd_discover, path)
+   Reads the discovery file at the given path and returns all fields
+   as a named list, or NULL if the file is missing or invalid. */
+SEXP C_jgd_discover(SEXP s_path) {
+    if (TYPEOF(s_path) != STRSXP || Rf_length(s_path) != 1)
+        Rf_error("'path' must be a length-1 character vector");
+    if (STRING_ELT(s_path, 0) == NA_STRING)
+        Rf_error("'path' cannot be NA");
+    const char *path = CHAR(STRING_ELT(s_path, 0));
+    cJSON *json = read_json_file(path);
+    if (!json) return R_NilValue;
+
+    /* socketPath is required */
+    cJSON *sp = cJSON_GetObjectItem(json, "socketPath");
+    if (!cJSON_IsString(sp) || !sp->valuestring || !sp->valuestring[0]) {
         cJSON_Delete(json);
+        return R_NilValue;
     }
 
-    return -1;
+    /* serverName is required */
+    cJSON *sn = cJSON_GetObjectItem(json, "serverName");
+    if (!cJSON_IsString(sn) || !sn->valuestring || !sn->valuestring[0]) {
+        cJSON_Delete(json);
+        return R_NilValue;
+    }
+
+    /* pid is required and must be a positive integer */
+    cJSON *pidj = cJSON_GetObjectItem(json, "pid");
+    if (!cJSON_IsNumber(pidj) ||
+        pidj->valueint <= 0 ||
+        (double)pidj->valueint != pidj->valuedouble) {
+        cJSON_Delete(json);
+        return R_NilValue;
+    }
+
+    /* Build result: list(server_name, socket_path, pid, server_info) */
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+    SET_STRING_ELT(names, 0, Rf_mkChar("server_name"));
+    SET_STRING_ELT(names, 1, Rf_mkChar("socket_path"));
+    SET_STRING_ELT(names, 2, Rf_mkChar("pid"));
+    SET_STRING_ELT(names, 3, Rf_mkChar("server_info"));
+    Rf_setAttrib(result, R_NamesSymbol, names);
+
+    SET_VECTOR_ELT(result, 0, PROTECT(Rf_mkString(sn->valuestring)));
+    SET_VECTOR_ELT(result, 1, PROTECT(Rf_mkString(sp->valuestring)));
+    SET_VECTOR_ELT(result, 2, PROTECT(Rf_ScalarInteger(pidj->valueint)));
+
+    /* Build named character vector from serverInfo object */
+    cJSON *info = cJSON_GetObjectItem(json, "serverInfo");
+    if (cJSON_IsObject(info)) {
+        int np = 0;
+        cJSON *child = info->child;
+        while (child) { if (cJSON_IsString(child) && child->string && child->valuestring) np++; child = child->next; }
+
+        SEXP info_vec = PROTECT(Rf_allocVector(STRSXP, np));
+        SEXP info_names = PROTECT(Rf_allocVector(STRSXP, np));
+        int i = 0;
+        child = info->child;
+        while (child) {
+            if (cJSON_IsString(child) && child->string && child->valuestring) {
+                SET_STRING_ELT(info_names, i, Rf_mkChar(child->string));
+                SET_STRING_ELT(info_vec, i, Rf_mkChar(child->valuestring));
+                i++;
+            }
+            child = child->next;
+        }
+        Rf_setAttrib(info_vec, R_NamesSymbol, info_names);
+        SET_VECTOR_ELT(result, 3, info_vec);
+        UNPROTECT(7);
+    } else {
+        SET_VECTOR_ELT(result, 3, PROTECT(Rf_allocVector(STRSXP, 0)));
+        UNPROTECT(6);
+    }
+
+    cJSON_Delete(json);
+    return result;
 }
 
 static int try_connect(jgd_transport_t *t) {

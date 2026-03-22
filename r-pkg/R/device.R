@@ -39,15 +39,66 @@ jgd = function(
 
 #' Get server information
 #'
-#' Returns metadata about the server connected to the current jgd device,
-#' or `NULL` if no server information is available.
+#' Returns metadata about the jgd server. When a jgd device is open and
+#' connected, returns the welcome message information with `connected = TRUE`.
+#' Otherwise, falls back to reading the discovery file and returns information
+#' with `connected = FALSE`. Returns `NULL` if no information is available
+#' from either source.
 #'
-#' @return A named list with `server_name` (character), `protocol_version`
-#'   (integer), `transport` (character), and `server_info` (named character
-#'   vector), or `NULL`.
+#' @return A named list, or `NULL`. When connected:
+#'   `connected` (logical), `server_name` (character),
+#'   `protocol_version` (integer), `transport` (character),
+#'   `server_info` (named character vector).
+#'   When not connected (discovery file):
+#'   `connected` (logical), `server_name` (character),
+#'   `socket_path` (character), `pid` (integer),
+#'   `server_info` (named character vector).
 #' @export
 jgd_server_info = function() {
-  .Call(C_jgd_server_info)
+  path = file.path(jgd_cache_dir(), "discovery.json")
+  .Call(C_jgd_server_info, path)
+}
+
+# Return the platform-specific cache directory for jgd.
+# - Linux:   $XDG_CACHE_HOME/jgd or ~/.cache/jgd
+# - macOS:   ~/Library/Caches/jgd
+# - Windows: %LOCALAPPDATA%/jgd
+jgd_cache_dir = function() {
+  if (.Platform$OS.type == "windows") {
+    base = Sys.getenv("LOCALAPPDATA", unset = "")
+    if (nzchar(base)) return(file.path(base, "jgd"))
+    base = Sys.getenv("USERPROFILE", unset = "")
+    if (nzchar(base)) return(file.path(base, "AppData", "Local", "jgd"))
+    stop("Cannot determine cache directory: LOCALAPPDATA and USERPROFILE are both unset")
+  }
+  home = normalizePath("~", mustWork = FALSE)
+  if (!nzchar(home) || identical(home, "~")) {
+    stop("Cannot determine cache directory: HOME is unset")
+  }
+  if (Sys.info()[["sysname"]] == "Darwin") {
+    # On macOS, always use ~/Library/Caches/jgd to match server and tooling.
+    return(file.path(home, "Library", "Caches", "jgd"))
+  }
+  xdg = Sys.getenv("XDG_CACHE_HOME", unset = "")
+  if (nzchar(xdg)) return(file.path(xdg, "jgd"))
+  file.path(home, ".cache", "jgd")
+}
+
+#' Discover a running jgd server
+#'
+#' Reads the jgd discovery file from the platform cache directory
+#' (`~/.cache/jgd` on Linux, `~/Library/Caches/jgd` on macOS,
+#' `%LOCALAPPDATA%/jgd` on Windows) and returns its contents.
+#' This does not require an open jgd device — it simply reads the
+#' file that a running server has written.
+#'
+#' @return A named list with `server_name` (character), `socket_path`
+#'   (character), `pid` (integer), and `server_info` (named character
+#'   vector), or `NULL` if no discovery file is found.
+#' @export
+jgd_discover = function() {
+  path = file.path(jgd_cache_dir(), "discovery.json")
+  .Call(C_jgd_discover, path)
 }
 
 #' Set extended graphics context (experimental)

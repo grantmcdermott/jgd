@@ -6,6 +6,30 @@ import * as crypto from 'crypto';
 import { PlotHistory } from './plot-history';
 import { PlotWebviewProvider } from './webview-provider';
 
+const SERVER_NAME = 'jgd-vscode';
+
+/**
+ * Return the cache directory following platform conventions:
+ * - Linux:   $XDG_CACHE_HOME or ~/.cache
+ * - macOS:   ~/Library/Caches
+ * - Windows: %LOCALAPPDATA%
+ */
+// TODO: Make cacheDir injectable for test hermeticity (currently tests
+// use the real user cache directory).
+function cacheDir(): string {
+    if (process.platform === 'win32') {
+        return process.env['LOCALAPPDATA'] || path.join(os.homedir(), 'AppData', 'Local');
+    }
+    if (process.platform === 'darwin') {
+        return path.join(os.homedir(), 'Library', 'Caches');
+    }
+    return process.env['XDG_CACHE_HOME'] || path.join(os.homedir(), '.cache');
+}
+
+export function discoveryPath(): string {
+    return path.join(cacheDir(), 'jgd', 'discovery.json');
+}
+
 export type ConnectionChangeListener = (count: number) => void;
 
 interface RSession {
@@ -117,20 +141,19 @@ export class SocketServer {
 
     private writeDiscovery() {
         const socketPath = this.getSocketPath();
-        const discoveryContent = JSON.stringify({ socketPath, pid: process.pid });
+        const discoveryContent = JSON.stringify({
+            serverName: SERVER_NAME,
+            socketPath,
+            pid: process.pid,
+        });
 
-        const locations = [path.join(os.tmpdir(), 'jgd-discovery.json')];
-        if (!isWindows) {
-            locations.push('/tmp/jgd-discovery.json', '/private/tmp/jgd-discovery.json');
-        }
-
-        for (const loc of locations) {
-            try {
-                fs.writeFileSync(loc, discoveryContent);
-                console.log('jgd: wrote discovery file to', loc);
-            } catch (e) {
-                console.warn('jgd: failed to write discovery to', loc, e);
-            }
+        const loc = discoveryPath();
+        try {
+            fs.mkdirSync(path.dirname(loc), { recursive: true });
+            fs.writeFileSync(loc, discoveryContent);
+            console.log('jgd: wrote discovery file to', loc);
+        } catch (e) {
+            console.warn('jgd: failed to write discovery to', loc, e);
         }
 
         /* Set env vars for child processes */
@@ -150,10 +173,13 @@ export class SocketServer {
         if (!isWindows) {
             try { fs.unlinkSync(this.socketPath); } catch {}
         }
-        try { fs.unlinkSync(path.join(os.tmpdir(), 'jgd-discovery.json')); } catch {}
-        if (!isWindows) {
-            try { fs.unlinkSync('/tmp/jgd-discovery.json'); } catch {}
-        }
+        // Only remove discovery file if it belongs to this process
+        try {
+            const disc = JSON.parse(fs.readFileSync(discoveryPath(), 'utf-8'));
+            if (disc && disc.pid === process.pid) {
+                fs.unlinkSync(discoveryPath());
+            }
+        } catch { /* file missing or unreadable — ignore */ }
     }
 
     private handleConnection(socket: net.Socket) {
@@ -176,7 +202,7 @@ export class SocketServer {
                     session.welcomeSent = true;
                     const welcome = {
                         type: 'server_info',
-                        serverName: 'jgd-vscode',
+                        serverName: SERVER_NAME,
                         protocolVersion: 1,
                         transport: isWindows ? 'tcp' : 'unix',
                     };

@@ -88,7 +88,7 @@ export class TestServer {
       args: serverArgs,
       stdout: "piped",
       stderr: "piped",
-      env: { TMPDIR: this.tmpDir, TEMP: this.tmpDir, TMP: this.tmpDir },
+      env: { XDG_CACHE_HOME: this.tmpDir, LOCALAPPDATA: this.tmpDir, TMPDIR: this.tmpDir, TEMP: this.tmpDir, TMP: this.tmpDir },
     });
 
     this.#process = cmd.spawn();
@@ -179,7 +179,7 @@ export class TestServer {
 
   /** Read the discovery file written by the server. */
   async readDiscovery(): Promise<DiscoveryFile> {
-    const path = join(this.tmpDir, "jgd-discovery.json");
+    const path = join(this.tmpDir, "jgd", "discovery.json");
     const text = await Deno.readTextFile(path);
     return JSON.parse(text);
   }

@@ -1,6 +1,8 @@
 // Message types for the jgd protocol.
 // R → Server → Browser messages and Browser → Server → R messages.
 
+export const SERVER_NAME = "jgd-http-server";
+
 /** Frame message containing plot operations. */
 export interface FrameMessage {
   type: "frame";
