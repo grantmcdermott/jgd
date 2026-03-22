@@ -115,12 +115,11 @@ char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incrementa
     if (plot_number >= 0)
         cJSON_AddNumberToObject(frame, "plotNumber", plot_number);
 
-    /* Frame-level ext: included once per frame (not per gc). */
-    if (p->frame_ext) {
-        cJSON *ext = cJSON_Duplicate(p->frame_ext, 1);
-        if (ext)
-            cJSON_AddItemToObject(frame, "ext", ext);
-    }
+    /* Frame-level ext: included once per frame (not per gc).
+     * Use a reference (not a deep copy) since frame is deleted after
+     * serialization and cJSON_Delete does not free references. */
+    if (p->frame_ext)
+        cJSON_AddItemReferenceToObject(frame, "ext", p->frame_ext);
 
     cJSON *plot = cJSON_AddObjectToObject(frame, "plot");
     cJSON_AddNumberToObject(plot, "version", 1);

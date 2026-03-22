@@ -256,6 +256,236 @@ test_that("frame ext survives resize replay", {
   expect_equal(replay$ext$postEffects[[1]]$radius, 5)
 })
 
+# TCP mock server that sends a plotIndex=0 resize after receiving two
+# newPage frames, to test historical plot frame ext preservation.
+start_mock_server_frame_ext_plotindex = function() {
+  skip_if_not_installed("callr")
+  skip_if_not_installed("jsonlite")
+
+  port_file = tempfile(
+    pattern = "jgd-fext-pi-port-",
+    fileext = ".txt"
+  )
+
+  bg = callr::r_bg(
+    function(port_file) {
+      safe_write = function(conn, text) {
+        tryCatch(
+          {
+            writeLines(text, conn)
+            flush(conn)
+          },
+          error = function(e) invisible(NULL)
+        )
+      }
+
+      server = NULL
+      port = NULL
+      for (i in seq_len(20)) {
+        candidate = sample(10000L:60000L, 1L)
+        result = tryCatch(
+          serverSocket(candidate),
+          error = function(e) NULL
+        )
+        if (!is.null(result)) {
+          server = result
+          port = candidate
+          break
+        }
+      }
+      if (is.null(port)) stop("Could not find free port")
+      on.exit(close(server), add = TRUE)
+      writeLines(as.character(port), port_file)
+
+      conn = socketAccept(
+        server,
+        blocking = TRUE,
+        open = "r+"
+      )
+      on.exit(close(conn), add = TRUE)
+
+      messages = list()
+      new_page_count = 0L
+      resize_sent = FALSE
+
+      repeat {
+        ready = socketSelect(list(conn), timeout = 5)
+        if (!ready) next
+
+        line = tryCatch(
+          readLines(conn, n = 1),
+          error = function(e) character(0)
+        )
+        if (length(line) == 0 || !nzchar(line)) next
+
+        msg = tryCatch(
+          jsonlite::fromJSON(
+            line,
+            simplifyVector = FALSE
+          ),
+          error = function(e) NULL
+        )
+        if (is.null(msg)) next
+        messages = c(messages, list(msg))
+
+        if (identical(msg$type, "metrics_request")) {
+          id = msg$id
+          resp = if (identical(msg$kind, "strWidth")) {
+            str = if (is.null(msg$str)) "" else msg$str
+            list(
+              type = "metrics_response",
+              id = id,
+              width = nchar(str) * 8.0
+            )
+          } else {
+            list(
+              type = "metrics_response",
+              id = id,
+              ascent = 10.0,
+              descent = 3.0,
+              width = 8.0
+            )
+          }
+          safe_write(
+            conn,
+            jsonlite::toJSON(resp, auto_unbox = TRUE)
+          )
+        }
+
+        if (identical(msg$type, "frame") &&
+              isTRUE(msg$newPage)) {
+          new_page_count = new_page_count + 1L
+        }
+
+        # After 2 newPage frames, send plotIndex=0 resize
+        if (new_page_count >= 2L && !resize_sent) {
+          resize_sent = TRUE
+          safe_write(conn, jsonlite::toJSON(list(
+            type = "resize",
+            width = 500L,
+            height = 400L,
+            plotIndex = 0L
+          ), auto_unbox = TRUE))
+        }
+
+        if (identical(msg$type, "close")) break
+      }
+
+      messages
+    },
+    args = list(port_file = port_file),
+    supervise = TRUE
+  )
+
+  port = NULL
+  for (i in seq_len(50)) {
+    if (file.exists(port_file)) {
+      port_str = readLines(
+        port_file, n = 1,
+        warn = FALSE
+      )
+      if (length(port_str) > 0 && nzchar(port_str)) {
+        port = as.integer(port_str)
+        break
+      }
+    }
+    Sys.sleep(0.1)
+  }
+  if (is.null(port)) {
+    bg$kill()
+    skip("Mock server did not start in time")
+  }
+
+  list(
+    bg = bg,
+    socket_url = sprintf(
+      "tcp://127.0.0.1:%d",
+      port
+    ),
+    collect = function(timeout = 15000) {
+      bg$wait(timeout)
+      status = bg$get_exit_status()
+      if (!is.null(status) && status != 0) {
+        stop(
+          "Mock server exited with error: ",
+          bg$read_error()
+        )
+      }
+      if (is.null(status)) {
+        bg$kill()
+        skip("Mock server did not exit in time")
+      }
+      bg$get_result()
+    },
+    cleanup = function() {
+      if (bg$is_alive()) bg$kill()
+      unlink(port_file)
+    }
+  )
+}
+
+test_that("frame ext survives plotIndex resize replay", {
+  skip_on_cran()
+
+  server = start_mock_server_frame_ext_plotindex()
+  withr::defer(server$cleanup())
+
+  jgd(
+    width = 4, height = 3, dpi = 72,
+    socket = server$socket_url
+  )
+
+  # Plot 1: with frame ext "blur"
+  jgd_frame_ext(
+    '{"postEffects":[{"type":"blur","radius":5}]}'
+  )
+  plot(1:3)
+
+  # Plot 2: different frame ext "glow"
+  jgd_frame_ext(
+    '{"postEffects":[{"type":"glow"}]}'
+  )
+  plot(4:6)
+
+  # Wait for mock server to send plotIndex=0 resize
+  Sys.sleep(0.5)
+  .Call(jgd:::C_jgd_poll_resize)
+
+  dev.off()
+  msgs = server$collect()
+
+  frames = Filter(
+    function(m) identical(m$type, "frame"),
+    msgs
+  )
+  resize_frames = Filter(
+    function(f) {
+      isTRUE(f$resizeReplay) && identical(f$plotIndex, 0L)
+    },
+    frames
+  )
+  expect_true(
+    length(resize_frames) >= 1,
+    info = "Should have a plotIndex=0 resize replay frame"
+  )
+
+  replay = resize_frames[[1]]
+  expect_false(
+    is.null(replay$ext),
+    info = paste(
+      "plotIndex=0 replay should preserve",
+      "plot 1's frame ext"
+    )
+  )
+  expect_equal(
+    replay$ext$postEffects[[1]]$type, "blur",
+    info = "Should be plot 1's ext (blur), not plot 2's"
+  )
+  expect_equal(
+    replay$ext$postEffects[[1]]$radius, 5
+  )
+})
+
 # --- Independence test ---
 
 test_that("frame ext is independent of gc ext", {
