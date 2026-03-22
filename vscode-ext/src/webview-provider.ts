@@ -532,6 +532,13 @@ async function doReplay(plot, gen) {
         // Apply frame-level postEffects if present.
         if (plot.frameExt && plot.frameExt.postEffects) {
             ctx.restore();
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.filter = 'none';
             applyPostEffects(ctx, plot.frameExt.postEffects);
             ctx.save();
         }
