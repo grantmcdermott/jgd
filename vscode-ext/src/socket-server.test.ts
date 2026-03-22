@@ -130,12 +130,14 @@ describe('SocketServer', () => {
     let provider: MockWebviewProvider;
     let server: SocketServer;
     let clients: ClientHelper[];
+    let tmpCacheDir: string;
 
     beforeEach(async () => {
         plotCounter = 0;
+        tmpCacheDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jgd-test-'));
         history = new PlotHistory(50);
         provider = new MockWebviewProvider();
-        server = new SocketServer(history, provider as any);
+        server = new SocketServer(history, provider as any, tmpCacheDir);
         clients = [];
         server.start();
         // Wait for the server to be listening
@@ -145,6 +147,7 @@ describe('SocketServer', () => {
     afterEach(() => {
         for (const c of clients) c.close();
         server.stop();
+        try { fs.rmSync(tmpCacheDir, { recursive: true }); } catch {}
     });
 
     async function connect(): Promise<ClientHelper> {
@@ -320,7 +323,7 @@ describe('SocketServer', () => {
 
     describe('discovery file', () => {
         it('writes discovery file with correct schema', () => {
-            const discPath = discoveryPath();
+            const discPath = discoveryPath(tmpCacheDir);
             const content = JSON.parse(fs.readFileSync(discPath, 'utf-8'));
             expect(content.serverName).toBe('jgd-vscode');
             expect(content.socketPath).toBe(server.getSocketPath());
