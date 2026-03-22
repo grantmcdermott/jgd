@@ -688,11 +688,12 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         SEXP snap = VECTOR_ELT(st->snapshot_store, store_idx);
         SEXP current = PROTECT(GEcreateSnapshot(gdd));
 
-        if (st->debug_frames) {
+        /* Always log snapshot DL size for debugging plotIndex replay */
+        {
             REprintf("[jgd] poll_resize: plotIndex replay pi=%d store_idx=%d "
-                     "at %.0fx%.0f\n",
-                     pi, store_idx, st->width * st->dpi, st->height * st->dpi);
-            /* Log the display list size in the snapshot for debugging */
+                     "snap_count=%d at %.0fx%.0f\n",
+                     pi, store_idx, st->snapshot_count,
+                     st->width * st->dpi, st->height * st->dpi);
             if (TYPEOF(snap) == VECSXP && LENGTH(snap) >= 1) {
                 SEXP dl = VECTOR_ELT(snap, 0);
                 if (dl != R_NilValue && TYPEOF(dl) == LISTSXP) {
@@ -704,6 +705,9 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
                     REprintf("[jgd] poll_resize: snapshot DL is NULL or type=%d\n",
                              dl == R_NilValue ? 0 : TYPEOF(dl));
                 }
+            } else {
+                REprintf("[jgd] poll_resize: snap type=%d len=%d\n",
+                         TYPEOF(snap), LENGTH(snap));
             }
         }
 

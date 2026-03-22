@@ -76,6 +76,7 @@ typedef struct {
     /* Per-snapshot ext, parallel to snapshot_store.  Stored when a snapshot
      * is saved so that plotIndex replay can restore the correct ext. */
     char *snapshot_ext[JGD_MAX_SNAPSHOTS];
+    int holdflush_captured;   /* 1 if cb_holdflush already captured a good snapshot */
     int group_depth;          /* nesting depth of beginGroup/endGroup ops */
     /* Frame-level extension fields.  Similar lifecycle to ext_json/page_ext_json
      * but included once per frame (not per gc).  Set via C_jgd_set_frame_ext,

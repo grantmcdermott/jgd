@@ -120,9 +120,16 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
      * incomplete (dlIndex <= 1).  If grid's DL is already complete
      * or no grid state exists, keep the flush-time snapshot to
      * preserve base DL content (important for base-only and mixed
-     * base+grid plots). */
+     * base+grid plots).
+     *
+     * Skip if cb_holdflush already captured a complete snapshot: at
+     * dev.hold time the display list is fully populated, whereas here
+     * (after GENewPage) the base DL is already NULL.  Re-capturing
+     * now would overwrite the good snapshot with an empty one. */
+    REprintf("[jgd] cb_newPage: grid-recapture check: page_count=%d replaying=%d last_snap=%d holdflush=%d\n",
+             st->page_count, st->replaying, st->last_snapshot != R_NilValue, st->holdflush_captured);
     if (st->page_count > 0 && !st->replaying &&
-        st->last_snapshot != R_NilValue) {
+        st->last_snapshot != R_NilValue && !st->holdflush_captured) {
         SEXP gs = find_grid_state(st->last_snapshot);
         if (gs != R_NilValue) {
             SEXP idx = VECTOR_ELT(gs, 1);
@@ -133,6 +140,7 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
                 jgd_capture_snapshot(st);
         }
     }
+    st->holdflush_captured = 0;
     /* Store last_snapshot into snapshot_store for historical plot resizing.
      * This guard duplicates the one above intentionally: jgd_capture_snapshot
      * may have replaced last_snapshot, so we re-check that it is still valid. */
@@ -675,7 +683,10 @@ static int cb_holdflush(pDevDesc dd, int level) {
      * NULL (cleared by GENewPage).  After updating, clear last_snapshot
      * so cb_newPage does not re-store the stale snapshot. */
     if (old == 0 && new_level > 0) {
+        REprintf("[jgd] holdflush: dev.hold 0->1, capturing snapshot page_count=%d\n",
+                 st->page_count);
         jgd_capture_snapshot(st);
+        st->holdflush_captured = 1;
     }
     /* When transitioning from held to unheld, send accumulated frame. */
     if (old > 0 && new_level == 0) {
