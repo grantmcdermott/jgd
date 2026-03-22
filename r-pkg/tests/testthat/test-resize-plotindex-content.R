@@ -187,3 +187,87 @@ test_that("plotIndex resize replay contains the historical plot's content, not t
       "plotIndex=0 resize replay should NOT contain plot 2's title 'PLOT_ZZZ'. ",
       "Text ops found: [", paste(text_strings, collapse = ", "), "]"))
 })
+
+test_that("plotIndex resize replay preserves lines() added after plot()", {
+  # Regression test for jgd-c0f: plot(1:10); lines(1:10, col="red")
+  # followed by hist() — navigating back to plot 1 and resizing should
+  # preserve the lines() polyline ops, not just the initial plot() ops.
+  skip_on_cran()
+
+  server = start_mock_server_plotindex_content()
+  withr::defer(server$cleanup())
+
+  jgd(width = 4, height = 3, dpi = 72, socket = server$socket_url)
+
+  # Plot 1: plot + lines (two drawing calls on the same page)
+  plot(1:10)
+  lines(1:10, col = "red", lwd = 3)
+
+  # Plot 2: hist (new page)
+  hist(rnorm(1000), col = "steelblue")
+
+  # Wait for the mock server to send the plotIndex=0 resize
+  Sys.sleep(1.5)
+
+  # Process the plotIndex=0 resize
+  .Call(jgd:::C_jgd_poll_resize)
+
+  dev.off()
+  msgs = server$collect()
+
+  # Find resize replay frames with plotIndex=0
+  frames = Filter(function(m) identical(m$type, "frame"), msgs)
+  resize_frames = Filter(
+    function(f) isTRUE(f$resizeReplay) && identical(f$plotIndex, 0L),
+    frames
+  )
+  expect_true(length(resize_frames) >= 1,
+    info = "Should have at least 1 plotIndex=0 resize replay frame")
+
+  # Collect all ops from the replay (including incremental frames)
+  replay_ops = resize_frames[[1]]$plot$ops
+  replay_idx = which(vapply(frames, function(f) {
+    isTRUE(f$resizeReplay) && identical(f$plotIndex, 0L)
+  }, logical(1)))[1]
+  if (replay_idx < length(frames)) {
+    for (j in (replay_idx + 1):length(frames)) {
+      if (isTRUE(frames[[j]]$incremental)) {
+        replay_ops = c(replay_ops, frames[[j]]$plot$ops)
+      } else {
+        break
+      }
+    }
+  }
+
+  op_types = vapply(
+    replay_ops,
+    function(o) if (is.null(o$op)) "" else o$op,
+    character(1)
+  )
+
+  # The replay must contain polyline ops from lines()
+  expect_true("polyline" %in% op_types,
+    info = paste0(
+      "plotIndex=0 resize replay should contain polyline ops from lines(). ",
+      "Ops found: [", paste(unique(op_types), collapse = ", "), "]"))
+
+  # Verify the polyline has the red color from lines(col="red")
+  polyline_ops = Filter(function(o) identical(o$op, "polyline"), replay_ops)
+  expect_true(length(polyline_ops) >= 1,
+    info = "Should have at least 1 polyline op")
+
+  # Check that at least one polyline has a red-ish color
+  has_red = any(vapply(polyline_ops, function(o) {
+    col = o$gc$col
+    if (is.null(col)) return(FALSE)
+    # R's "red" is "#FF0000FF" or similar
+    grepl("^#[Ff][Ff]0000", col)
+  }, logical(1)))
+  expect_true(has_red,
+    info = paste0(
+      "plotIndex=0 replay should have a red polyline from lines(col='red'). ",
+      "polyline colors: [",
+      paste(vapply(polyline_ops, function(o) {
+        if (is.null(o$gc$col)) "NULL" else o$gc$col
+      }, character(1)), collapse = ", "), "]"))
+})
