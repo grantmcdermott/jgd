@@ -151,7 +151,11 @@ async function main(): Promise<void> {
 
   // Write discovery file before announcing readiness so clients can
   // find the socket immediately after parsing the readiness message.
-  const discoveryPaths = await writeDiscovery(socketPath, httpPort);
+  const discoveryPaths = await writeDiscovery(
+    socketPath,
+    "jgd-http-server",
+    { httpUrl: `http://127.0.0.1:${httpPort}/` },
+  );
 
   // Install signal listener BEFORE announcing readiness so that
   // SIGTERM sent immediately after "ready" is handled gracefully.

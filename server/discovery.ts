@@ -3,9 +3,10 @@ import { join, dirname } from "jsr:@std/path@1";
 const DISCOVERY_FILENAME = "jgd-discovery.json";
 
 interface DiscoveryInfo {
+  serverName: string;
   socketPath: string;
-  httpPort: number;
   pid: number;
+  serverInfo?: Record<string, string>;
 }
 
 /** Atomic file write via temp file + rename. */
@@ -47,12 +48,14 @@ function discoveryLocations(): string[] {
  */
 export async function writeDiscovery(
   socketPath: string,
-  httpPort: number,
+  serverName: string,
+  serverInfo?: Record<string, string>,
 ): Promise<string[]> {
   const disc: DiscoveryInfo = {
+    serverName,
     socketPath,
-    httpPort,
     pid: Deno.pid,
+    ...(serverInfo && { serverInfo }),
   };
   const content = new TextEncoder().encode(JSON.stringify(disc));
   const locations = discoveryLocations();

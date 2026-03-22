@@ -61,9 +61,10 @@ export interface PongMessage {
 }
 
 export interface DiscoveryFile {
+  serverName: string;
   socketPath: string;
-  httpPort: number;
   pid: number;
+  serverInfo?: Record<string, string>;
 }
 
 export type ServerMessage =
