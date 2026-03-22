@@ -14,12 +14,6 @@ const SERVER_NAME = 'jgd-vscode';
  * - macOS:   ~/Library/Caches
  * - Windows: %LOCALAPPDATA%
  */
-/**
- * Return the cache directory following platform conventions:
- * - Linux:   $XDG_CACHE_HOME or ~/.cache
- * - macOS:   ~/Library/Caches
- * - Windows: %LOCALAPPDATA%
- */
 function cacheDir(): string {
     if (process.platform === 'win32') {
         return process.env['LOCALAPPDATA'] || path.join(os.homedir(), 'AppData', 'Local');
