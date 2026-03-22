@@ -76,6 +76,13 @@ typedef struct {
     /* Per-snapshot ext, parallel to snapshot_store.  Stored when a snapshot
      * is saved so that plotIndex replay can restore the correct ext. */
     char *snapshot_ext[JGD_MAX_SNAPSHOTS];
+    /* Frame-level extension fields.  Similar lifecycle to ext_json/page_ext_json
+     * but included once per frame (not per gc).  Set via C_jgd_set_frame_ext,
+     * captured at cb_newPage time into page_frame_ext_json. */
+    char *frame_ext_json;
+    char *page_frame_ext_json;
+    /* Per-snapshot frame ext, parallel to snapshot_store. */
+    char *snapshot_frame_ext[JGD_MAX_SNAPSHOTS];
 } jgd_state_t;
 
 /* Flush the current frame over the transport. */

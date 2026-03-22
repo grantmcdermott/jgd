@@ -304,6 +304,114 @@ SEXP C_jgd_set_ext(SEXP s_json) {
     return R_NilValue;
 }
 
+/* Called from R: .Call(C_jgd_set_frame_ext, json_string_or_null) */
+SEXP C_jgd_set_frame_ext(SEXP s_json) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) Rf_error("no active graphics device");
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) Rf_error("current device is not a jgd device");
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st) Rf_error("jgd device state is NULL");
+
+    if (s_json == R_NilValue) {
+        free(st->frame_ext_json);
+        st->frame_ext_json = NULL;
+        return R_NilValue;
+    }
+
+    if (TYPEOF(s_json) != STRSXP || LENGTH(s_json) != 1)
+        Rf_error("frame_ext must be a single JSON string or NULL");
+
+    const char *json = CHAR(STRING_ELT(s_json, 0));
+
+    if (!json[0]) {
+        free(st->frame_ext_json);
+        st->frame_ext_json = NULL;
+        return R_NilValue;
+    }
+
+    cJSON *parsed = cJSON_Parse(json);
+    if (!parsed) {
+        const char *err = cJSON_GetErrorPtr();
+        if (err && err >= json) {
+            long pos = (long)(err - json);
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                     "invalid JSON in frame_ext at position %ld", pos);
+            return Rf_mkString(buf);
+        }
+        return Rf_mkString("invalid JSON in frame_ext");
+    }
+    cJSON_Delete(parsed);
+
+    size_t len = strlen(json);
+    char *new_ext = (char *)malloc(len + 1);
+    if (!new_ext) Rf_error("failed to allocate frame_ext_json");
+    memcpy(new_ext, json, len + 1);
+
+    free(st->frame_ext_json);
+    st->frame_ext_json = new_ext;
+
+    return R_NilValue;
+}
+
+/* Called from R: .Call(C_jgd_begin_group, ext_json_string_or_null) */
+SEXP C_jgd_begin_group(SEXP s_ext) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) Rf_error("no active graphics device");
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) Rf_error("current device is not a jgd device");
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st) Rf_error("jgd device state is NULL");
+
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "beginGroup");
+
+    if (s_ext != R_NilValue && TYPEOF(s_ext) == STRSXP && LENGTH(s_ext) == 1) {
+        const char *json = CHAR(STRING_ELT(s_ext, 0));
+        if (json[0]) {
+            cJSON *ext = cJSON_Parse(json);
+            if (!ext) {
+                cJSON_Delete(op);
+                const char *err = cJSON_GetErrorPtr();
+                if (err && err >= json) {
+                    long pos = (long)(err - json);
+                    char buf[128];
+                    snprintf(buf, sizeof(buf),
+                             "invalid JSON in group ext at position %ld", pos);
+                    return Rf_mkString(buf);
+                }
+                return Rf_mkString("invalid JSON in group ext");
+            }
+            cJSON_AddItemToObject(op, "ext", ext);
+        }
+    }
+
+    page_add_op(&st->page, op);
+    return R_NilValue;
+}
+
+/* Called from R: .Call(C_jgd_end_group) */
+SEXP C_jgd_end_group(void) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) Rf_error("no active graphics device");
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) Rf_error("current device is not a jgd device");
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st) Rf_error("jgd device state is NULL");
+
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "endGroup");
+    page_add_op(&st->page, op);
+    return R_NilValue;
+}
+
 /* ---- Snapshot replay ---- */
 
 /**
@@ -552,11 +660,16 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         char *saved_ext = st->ext_json;
         char *current_page_ext = st->page_ext_json
                                      ? strdup(st->page_ext_json) : NULL;
+        char *saved_frame_ext = st->frame_ext_json;
+        char *current_page_frame_ext = st->page_frame_ext_json
+                                           ? strdup(st->page_frame_ext_json) : NULL;
 
-        /* Set ext_json to the historical snapshot's ext so that
+        /* Set ext_json/frame_ext_json to the historical snapshot's ext so that
          * cb_newPage (during replay) captures the correct page_ext_json. */
         st->ext_json = st->snapshot_ext[store_idx]
                            ? strdup(st->snapshot_ext[store_idx]) : NULL;
+        st->frame_ext_json = st->snapshot_frame_ext[store_idx]
+                                 ? strdup(st->snapshot_frame_ext[store_idx]) : NULL;
 
         replay_snapshot(st, snap, gdd);
 
@@ -581,14 +694,18 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * cleanup) so cb_newPage captures the correct page_ext_json. */
         free(st->ext_json);
         st->ext_json = current_page_ext;
+        free(st->frame_ext_json);
+        st->frame_ext_json = current_page_frame_ext;
 
         if (current != R_NilValue) {
             replay_snapshot(st, current, gdd);
         }
 
-        /* Now restore ext_json to its real value (what the user last set). */
+        /* Now restore ext_json/frame_ext_json to their real values. */
         free(st->ext_json);
         st->ext_json = saved_ext;
+        free(st->frame_ext_json);
+        st->frame_ext_json = saved_frame_ext;
 
         /* Suppress re-flushing the restored current plot */
         st->last_flushed_ops = st->page.op_count;
@@ -601,10 +718,13 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
             REprintf("[jgd] poll_resize: current plot replay at %.0fx%.0f\n",
                      st->width * st->dpi, st->height * st->dpi);
 
-        /* Temporarily restore ext_json from page_ext_json so that
+        /* Temporarily restore ext_json/frame_ext_json from page copies so that
          * cb_newPage (during replay) captures the correct ext. */
         char *saved_ext = st->ext_json;
         st->ext_json = st->page_ext_json ? strdup(st->page_ext_json) : NULL;
+        char *saved_frame_ext = st->frame_ext_json;
+        st->frame_ext_json = st->page_frame_ext_json
+                                 ? strdup(st->page_frame_ext_json) : NULL;
 
         /* Replay the display list at new dimensions.
          * All intermediate flushes (cb_holdflush, cb_mode) are suppressed while
@@ -615,9 +735,11 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         Rboolean ok = R_ToplevelExec(do_play_display_list, gdd);
         st->replaying = 0;
 
-        /* Restore ext_json to what it was before the replay. */
+        /* Restore ext_json/frame_ext_json to what they were before the replay. */
         free(st->ext_json);
         st->ext_json = saved_ext;
+        free(st->frame_ext_json);
+        st->frame_ext_json = saved_frame_ext;
 
         if (!ok) {
             REprintf("[jgd] poll_resize: GEplayDisplayList failed (longjmp caught)\n");

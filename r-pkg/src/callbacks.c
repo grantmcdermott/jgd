@@ -126,21 +126,27 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         if (st->snapshot_count >= JGD_MAX_SNAPSHOTS) {
             /* Shift snapshots and their ext strings left by one */
             free(st->snapshot_ext[0]);
+            free(st->snapshot_frame_ext[0]);
             for (int i = 0; i < JGD_MAX_SNAPSHOTS - 1; i++) {
                 SET_VECTOR_ELT(st->snapshot_store, i,
                                VECTOR_ELT(st->snapshot_store, i + 1));
                 st->snapshot_ext[i] = st->snapshot_ext[i + 1];
+                st->snapshot_frame_ext[i] = st->snapshot_frame_ext[i + 1];
             }
             SET_VECTOR_ELT(st->snapshot_store, JGD_MAX_SNAPSHOTS - 1,
                            st->last_snapshot);
             st->snapshot_ext[JGD_MAX_SNAPSHOTS - 1] =
                 st->page_ext_json ? strdup(st->page_ext_json) : NULL;
+            st->snapshot_frame_ext[JGD_MAX_SNAPSHOTS - 1] =
+                st->page_frame_ext_json ? strdup(st->page_frame_ext_json) : NULL;
             st->evicted_count++;
         } else {
             SET_VECTOR_ELT(st->snapshot_store, st->snapshot_count,
                            st->last_snapshot);
             st->snapshot_ext[st->snapshot_count] =
                 st->page_ext_json ? strdup(st->page_ext_json) : NULL;
+            st->snapshot_frame_ext[st->snapshot_count] =
+                st->page_frame_ext_json ? strdup(st->page_frame_ext_json) : NULL;
             st->snapshot_count++;
         }
         R_ReleaseObject(st->last_snapshot);
@@ -173,6 +179,14 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     st->page_ext_parsed = (st->page_ext_json && st->page_ext_json[0])
                               ? cJSON_Parse(st->page_ext_json)
                               : NULL;
+
+    /* Capture frame-level ext similarly. */
+    free(st->page_frame_ext_json);
+    st->page_frame_ext_json = st->frame_ext_json ? strdup(st->frame_ext_json) : NULL;
+    cJSON_Delete(st->page.frame_ext);
+    st->page.frame_ext = (st->page_frame_ext_json && st->page_frame_ext_json[0])
+                              ? cJSON_Parse(st->page_frame_ext_json)
+                              : NULL;
 }
 
 static void cb_close(pDevDesc dd) {
@@ -197,8 +211,12 @@ static void cb_close(pDevDesc dd) {
     free(st->ext_json);
     free(st->page_ext_json);
     cJSON_Delete(st->page_ext_parsed);
-    for (int i = 0; i < st->snapshot_count; i++)
+    free(st->frame_ext_json);
+    free(st->page_frame_ext_json);
+    for (int i = 0; i < st->snapshot_count; i++) {
         free(st->snapshot_ext[i]);
+        free(st->snapshot_frame_ext[i]);
+    }
     free(st);
     dd->deviceSpecific = NULL;
 }

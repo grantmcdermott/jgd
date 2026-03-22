@@ -23,6 +23,7 @@ void page_init(jgd_page_t *p, double width, double height, double dpi, int bg) {
     p->height = height;
     p->dpi = dpi;
     p->bg = bg;
+    p->frame_ext = NULL;
 }
 
 void page_free(jgd_page_t *p) {
@@ -30,6 +31,8 @@ void page_free(jgd_page_t *p) {
     p->ops = NULL;
     p->ops_tail = NULL;
     p->last_flush_tail = NULL;
+    cJSON_Delete(p->frame_ext);
+    p->frame_ext = NULL;
 }
 
 void page_add_op(jgd_page_t *p, cJSON *op) {
@@ -111,6 +114,13 @@ char *page_serialize_frame(jgd_page_t *p, const char *session_id, int incrementa
         cJSON_AddNumberToObject(frame, "plotIndex", plot_index);
     if (plot_number >= 0)
         cJSON_AddNumberToObject(frame, "plotNumber", plot_number);
+
+    /* Frame-level ext: included once per frame (not per gc). */
+    if (p->frame_ext) {
+        cJSON *ext = cJSON_Duplicate(p->frame_ext, 1);
+        if (ext)
+            cJSON_AddItemToObject(frame, "ext", ext);
+    }
 
     cJSON *plot = cJSON_AddObjectToObject(frame, "plot");
     cJSON_AddNumberToObject(plot, "version", 1);

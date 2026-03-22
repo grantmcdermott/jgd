@@ -15,6 +15,7 @@ typedef struct {
     double height;
     double dpi;
     int bg;
+    cJSON *frame_ext;       /* pre-parsed frame-level ext, or NULL */
 } jgd_page_t;
 
 void page_init(jgd_page_t *p, double width, double height, double dpi, int bg);

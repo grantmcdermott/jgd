@@ -6,12 +6,18 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket);
 SEXP C_jgd_poll_resize(void);
 SEXP C_jgd_server_info(void);
 SEXP C_jgd_set_ext(SEXP s_json);
+SEXP C_jgd_set_frame_ext(SEXP s_json);
+SEXP C_jgd_begin_group(SEXP s_ext);
+SEXP C_jgd_end_group(void);
 
 static const R_CallMethodDef CallEntries[] = {
-    {"C_jgd",             (DL_FUNC) &C_jgd,             4},
-    {"C_jgd_poll_resize", (DL_FUNC) &C_jgd_poll_resize, 0},
-    {"C_jgd_server_info", (DL_FUNC) &C_jgd_server_info, 0},
-    {"C_jgd_set_ext",     (DL_FUNC) &C_jgd_set_ext,     1},
+    {"C_jgd",               (DL_FUNC) &C_jgd,               4},
+    {"C_jgd_poll_resize",   (DL_FUNC) &C_jgd_poll_resize,   0},
+    {"C_jgd_server_info",   (DL_FUNC) &C_jgd_server_info,   0},
+    {"C_jgd_set_ext",       (DL_FUNC) &C_jgd_set_ext,       1},
+    {"C_jgd_set_frame_ext", (DL_FUNC) &C_jgd_set_frame_ext, 1},
+    {"C_jgd_begin_group",   (DL_FUNC) &C_jgd_begin_group,   1},
+    {"C_jgd_end_group",     (DL_FUNC) &C_jgd_end_group,     0},
     {NULL, NULL, 0}
 };
 
