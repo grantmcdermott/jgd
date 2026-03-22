@@ -166,6 +166,7 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     if (!st->replaying)
         st->page_count++;
     st->last_flushed_ops = 0;
+    st->group_depth = 0;
     if (!st->replaying)
         st->new_page = 1;
     /* Always capture ext_json at page creation time.  During normal

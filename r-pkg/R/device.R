@@ -154,9 +154,21 @@ jgd_begin_group = function(ext = NULL) {
   if (!is.null(ext)) {
     stopifnot(is.character(ext), length(ext) == 1L)
   }
-  result = .Call(C_jgd_begin_group, ext)
-  if (is.character(result))
-    stop(result, call. = FALSE)
+  # Unlike gc.ext (jgd_ext), which is device state embedded into every
+
+  # drawing op by the C callbacks, group ops are standalone markers in the
+  # ops stream that are not produced by any R graphics engine callback.
+  # We use recordGraphics() so the .Call is recorded in R's display list
+  # and replayed on resize.  recordGraphics() also executes immediately.
+  recordGraphics(
+    {
+      result = .Call(C_jgd_begin_group, ext)
+      if (is.character(result))
+        stop(result, call. = FALSE)
+    },
+    list(ext = ext),
+    env = getNamespace("jgd")
+  )
   invisible()
 }
 
@@ -170,7 +182,12 @@ jgd_begin_group = function(ext = NULL) {
 #' **Experimental.** This API may change in future versions.
 #' @export
 jgd_end_group = function() {
-  .Call(C_jgd_end_group)
+  # See jgd_begin_group for why recordGraphics is used here.
+  recordGraphics(
+    .Call(C_jgd_end_group),
+    list(),
+    env = getNamespace("jgd")
+  )
   invisible()
 }
 

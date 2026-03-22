@@ -394,6 +394,7 @@ SEXP C_jgd_begin_group(SEXP s_ext) {
     }
 
     page_add_op(&st->page, op);
+    st->group_depth++;
     return R_NilValue;
 }
 
@@ -408,9 +409,13 @@ SEXP C_jgd_end_group(void) {
     jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
     if (!st) Rf_error("jgd device state is NULL");
 
+    if (st->group_depth <= 0)
+        Rf_error("endGroup without matching beginGroup");
+
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "endGroup");
     page_add_op(&st->page, op);
+    st->group_depth--;
     return R_NilValue;
 }
 

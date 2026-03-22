@@ -148,6 +148,15 @@ test_that("jgd_begin_group rejects non-string input", {
   expect_error(jgd_begin_group(list(a = 1)))
 })
 
+test_that("jgd_end_group errors without matching beginGroup", {
+  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd()
+  on.exit({ graphics.off() }, add = TRUE)
+
+  plot.new()
+  expect_error(jgd_end_group(), "endGroup without matching beginGroup")
+})
+
 test_that("group ops errors when no jgd device is active", {
   graphics.off()
   expect_error(jgd_begin_group('{"opacity":0.5}'))
