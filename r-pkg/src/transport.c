@@ -143,12 +143,9 @@ static int discovery_path(char *out, size_t outsize) {
     return 0;
 }
 
-/* Read the discovery file and return parsed JSON, or NULL.
+/* Read a JSON file at the given path and return parsed cJSON, or NULL.
    Caller must cJSON_Delete the result. */
-static cJSON *read_discovery_json(void) {
-    char path[1024];
-    if (discovery_path(path, sizeof(path)) != 0) return NULL;
-
+static cJSON *read_json_file(const char *path) {
     FILE *f = fopen(path, "r");
     if (!f) return NULL;
 
@@ -169,7 +166,9 @@ static cJSON *read_discovery_json(void) {
 }
 
 static int discover_socket_path(char *out, size_t outsize) {
-    cJSON *json = read_discovery_json();
+    char disc_path[1024];
+    if (discovery_path(disc_path, sizeof(disc_path)) != 0) return -1;
+    cJSON *json = read_json_file(disc_path);
     if (!json) return -1;
 
     cJSON *sp = cJSON_GetObjectItem(json, "socketPath");
@@ -185,11 +184,12 @@ static int discover_socket_path(char *out, size_t outsize) {
     return -1;
 }
 
-/* Called from R: .Call(C_jgd_discover)
-   Reads the discovery file and returns all fields as a named list,
-   or NULL if no valid discovery file is found. */
-SEXP C_jgd_discover(void) {
-    cJSON *json = read_discovery_json();
+/* Called from R: .Call(C_jgd_discover, path)
+   Reads the discovery file at the given path and returns all fields
+   as a named list, or NULL if the file is missing or invalid. */
+SEXP C_jgd_discover(SEXP s_path) {
+    const char *path = CHAR(STRING_ELT(s_path, 0));
+    cJSON *json = read_json_file(path);
     if (!json) return R_NilValue;
 
     /* socketPath is required */

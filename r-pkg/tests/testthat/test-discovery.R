@@ -11,16 +11,10 @@ test_that("explicit socket= does not fall back to discovery file", {
   withr::defer(server$cleanup())
 
   # Write a discovery file pointing to the mock server.
-  cache_dir = write_test_discovery(
+  write_test_discovery(
     sprintf('{"serverName":"test","socketPath":"%s","pid":1}', server$socket_url)
   )
-
-  # Point XDG_CACHE_HOME at our dir so C-side discover_socket_path()
-  # would find it.  Clear other env vars to avoid interference.
-  withr::local_envvar(
-    XDG_CACHE_HOME = cache_dir,
-    JGD_SOCKET = NA
-  )
+  withr::local_envvar(JGD_SOCKET = NA)
   withr::local_options(jgd.socket = NULL)
 
   # Open jgd with an explicit bogus socket (nothing listens on port 1).
@@ -42,10 +36,9 @@ test_that("explicit socket= does not fall back to discovery file", {
 })
 
 test_that("jgd_discover reads all discovery file fields", {
-  cache_dir = write_test_discovery(
+  write_test_discovery(
     '{"serverName":"test-server","socketPath":"unix:///tmp/test.sock","pid":12345,"serverInfo":{"httpUrl":"http://127.0.0.1:8080/"}}'
   )
-  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   info = jgd_discover()
   expect_type(info, "list")
@@ -56,25 +49,21 @@ test_that("jgd_discover reads all discovery file fields", {
 })
 
 test_that("jgd_discover returns NULL when no discovery file", {
-  cache_dir = withr::local_tempdir("jgd-empty-")
-  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
-
+  set_empty_discovery_env()
   expect_null(jgd_discover())
 })
 
 test_that("jgd_discover returns NULL for invalid discovery file", {
-  cache_dir = write_test_discovery('{"socketPath":"unix:///tmp/test.sock"}')
-  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
+  write_test_discovery('{"socketPath":"unix:///tmp/test.sock"}')
 
   # Missing serverName → invalid
   expect_null(jgd_discover())
 })
 
 test_that("jgd_discover handles missing serverInfo gracefully", {
-  cache_dir = write_test_discovery(
+  write_test_discovery(
     '{"serverName":"test","socketPath":"unix:///tmp/test.sock","pid":1}'
   )
-  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   info = jgd_discover()
   expect_type(info, "list")

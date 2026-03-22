@@ -55,13 +55,32 @@ jgd = function(
 #'   `server_info` (named character vector).
 #' @export
 jgd_server_info = function() {
-  .Call(C_jgd_server_info)
+  path = file.path(jgd_cache_dir(), "discovery.json")
+  .Call(C_jgd_server_info, path)
+}
+
+# Return the platform-specific cache directory for jgd.
+# - Linux:   $XDG_CACHE_HOME/jgd or ~/.cache/jgd
+# - macOS:   ~/Library/Caches/jgd
+# - Windows: %LOCALAPPDATA%/jgd
+jgd_cache_dir = function() {
+  if (.Platform$OS.type == "windows") {
+    base = Sys.getenv("LOCALAPPDATA", unset = "")
+    if (nzchar(base)) return(file.path(base, "jgd"))
+    return(file.path(Sys.getenv("USERPROFILE"), "AppData", "Local", "jgd"))
+  }
+  if (Sys.info()[["sysname"]] == "Darwin") {
+    return(file.path(Sys.getenv("HOME"), "Library", "Caches", "jgd"))
+  }
+  xdg = Sys.getenv("XDG_CACHE_HOME", unset = "")
+  if (nzchar(xdg)) return(file.path(xdg, "jgd"))
+  file.path(Sys.getenv("HOME"), ".cache", "jgd")
 }
 
 #' Discover a running jgd server
 #'
-#' Reads the jgd discovery file from the standard temporary directory
-#' locations and returns its contents. This does not require an open jgd
+#' Reads the jgd discovery file from the standard cache directory
+#' and returns its contents. This does not require an open jgd
 #' device — it simply reads the file that a running server has written.
 #'
 #' @return A named list with `server_name` (character), `socket_path`
@@ -69,7 +88,8 @@ jgd_server_info = function() {
 #'   vector), or `NULL` if no discovery file is found.
 #' @export
 jgd_discover = function() {
-  .Call(C_jgd_discover)
+  path = file.path(jgd_cache_dir(), "discovery.json")
+  .Call(C_jgd_discover, path)
 }
 
 #' Set extended graphics context (experimental)

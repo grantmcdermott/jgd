@@ -666,10 +666,10 @@ SEXP C_jgd_poll_resize(void) {
 }
 
 /* Defined in transport.c */
-SEXP C_jgd_discover(void);
+SEXP C_jgd_discover(SEXP s_path);
 
-/* Called from R: .Call(C_jgd_server_info) */
-SEXP C_jgd_server_info(void) {
+/* Called from R: .Call(C_jgd_server_info, path) */
+SEXP C_jgd_server_info(SEXP s_path) {
     pGEDevDesc gdd = GEcurrentDevice();
     int have_device = gdd && gdd->dev && jgd_is_jgd_device(gdd->dev);
     jgd_state_t *st = NULL;
@@ -683,7 +683,7 @@ SEXP C_jgd_server_info(void) {
 
     if (!have_device) {
         /* Fall back to discovery file, prepend connected=FALSE */
-        SEXP disc = PROTECT(C_jgd_discover());
+        SEXP disc = PROTECT(C_jgd_discover(s_path));
         if (disc == R_NilValue) {
             UNPROTECT(1);
             return R_NilValue;
