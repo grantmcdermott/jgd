@@ -405,6 +405,8 @@ describe('PlotHistory', () => {
             const accepted = history.replaceLatest('s1', makePlot('A-resized', 800, 600), 0);
             expect(accepted).toBe(true);
             expect(history.currentPlot()?.device.width).toBe(800);
+            // rIndex should be assigned from expectedRIndex when old plot lacks it
+            expect(history.currentPlot()?.rIndex).toBe(0);
         });
 
         it('does not emit change when rejected by expectedRIndex guard', () => {
