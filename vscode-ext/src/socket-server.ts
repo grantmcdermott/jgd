@@ -117,7 +117,11 @@ export class SocketServer {
 
     private writeDiscovery() {
         const socketPath = this.getSocketPath();
-        const discoveryContent = JSON.stringify({ socketPath, pid: process.pid });
+        const discoveryContent = JSON.stringify({
+            serverName: 'jgd-vscode',
+            socketPath,
+            pid: process.pid,
+        });
 
         const locations = [path.join(os.tmpdir(), 'jgd-discovery.json')];
         if (!isWindows) {
