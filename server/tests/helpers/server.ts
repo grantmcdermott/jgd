@@ -88,7 +88,7 @@ export class TestServer {
       args: serverArgs,
       stdout: "piped",
       stderr: "piped",
-      env: { XDG_CACHE_HOME: this.tmpDir, TMPDIR: this.tmpDir, TEMP: this.tmpDir, TMP: this.tmpDir },
+      env: { XDG_CACHE_HOME: this.tmpDir, LOCALAPPDATA: this.tmpDir, TMPDIR: this.tmpDir, TEMP: this.tmpDir, TMP: this.tmpDir },
     });
 
     this.#process = cmd.spawn();
