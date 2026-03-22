@@ -1,4 +1,4 @@
-test_that("jgd_server_info() returns server metadata when welcome is sent", {
+test_that("jgd_server_info() returns connected=TRUE with welcome metadata", {
   skip_on_os("windows")
 
   server = start_mock_server_local(send_welcome = TRUE)
@@ -8,6 +8,7 @@ test_that("jgd_server_info() returns server metadata when welcome is sent", {
 
   info = jgd_server_info()
   expect_type(info, "list")
+  expect_true(info$connected)
   expect_identical(info$server_name, "jgd-mock")
   expect_identical(info$protocol_version, 1L)
   expect_identical(info$transport, "unix")
@@ -18,7 +19,7 @@ test_that("jgd_server_info() returns server metadata when welcome is sent", {
   server$collect()
 })
 
-test_that("jgd_server_info() returns server metadata over TCP", {
+test_that("jgd_server_info() returns connected=TRUE over TCP", {
   server = start_mock_server_tcp(send_welcome = TRUE)
   withr::defer(server$cleanup())
 
@@ -26,6 +27,7 @@ test_that("jgd_server_info() returns server metadata over TCP", {
 
   info = jgd_server_info()
   expect_type(info, "list")
+  expect_true(info$connected)
   expect_identical(info$server_name, "jgd-mock")
   expect_identical(info$protocol_version, 1L)
   expect_identical(info$transport, "tcp")
@@ -35,37 +37,62 @@ test_that("jgd_server_info() returns server metadata over TCP", {
   server$collect()
 })
 
-test_that("jgd_server_info() returns NULL when server sends no welcome", {
+test_that("jgd_server_info() falls back to discovery file when no welcome", {
   skip_on_os("windows")
 
   server = start_mock_server_local(send_welcome = FALSE)
   withr::defer(server$cleanup())
 
+  # Write a discovery file
+  discovery_dir = withr::local_tempdir("jgd-disc-info-")
+  writeLines(
+    '{"serverName":"disc-server","socketPath":"unix:///tmp/test.sock","pid":999}',
+    file.path(discovery_dir, "jgd-discovery.json")
+  )
+  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+
   jgd(width = 4, height = 3, dpi = 72, socket = server$socket_path)
 
   info = jgd_server_info()
-  expect_null(info)
+  expect_type(info, "list")
+  expect_false(info$connected)
+  expect_identical(info$server_name, "disc-server")
+  expect_identical(info$socket_path, "unix:///tmp/test.sock")
+  expect_identical(info$pid, 999L)
 
   dev.off()
   server$collect()
 })
 
-test_that("jgd_server_info() returns NULL for non-jgd device", {
+test_that("jgd_server_info() returns NULL for non-jgd device with no discovery", {
+  discovery_dir = withr::local_tempdir("jgd-empty-info-")
+  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+
   pdf(tempfile(fileext = ".pdf"))
   withr::defer(dev.off())
 
   expect_null(jgd_server_info())
 })
 
-test_that("jgd_server_info() returns NULL when not connected", {
+test_that("jgd_server_info() returns discovery fallback when not connected", {
   skip_on_os("windows")
+
+  discovery_dir = withr::local_tempdir("jgd-disc-nc-")
+  writeLines(
+    '{"serverName":"fallback","socketPath":"unix:///tmp/fb.sock","pid":42}',
+    file.path(discovery_dir, "jgd-discovery.json")
+  )
+  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+
   expect_warning(
     jgd(socket = "unix:///nonexistent-jgd-info-test.sock"),
     "could not connect"
   )
 
   info = jgd_server_info()
-  expect_null(info)
+  expect_type(info, "list")
+  expect_false(info$connected)
+  expect_identical(info$server_name, "fallback")
 
   dev.off()
 })

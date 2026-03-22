@@ -7,11 +7,19 @@
 jgd_server_info()
 }
 \value{
-A named list with \code{server_name} (character), \code{protocol_version}
-(integer), \code{transport} (character), and \code{server_info} (named character
-vector), or \code{NULL}.
+A named list, or \code{NULL}. When connected:
+\code{connected} (logical), \code{server_name} (character),
+\code{protocol_version} (integer), \code{transport} (character),
+\code{server_info} (named character vector).
+When not connected (discovery file):
+\code{connected} (logical), \code{server_name} (character),
+\code{socket_path} (character), \code{pid} (integer),
+\code{server_info} (named character vector).
 }
 \description{
-Returns metadata about the server connected to the current jgd device,
-or \code{NULL} if no server information is available.
+Returns metadata about the jgd server. When a jgd device is open and
+connected, returns the welcome message information with \code{connected = TRUE}.
+Otherwise, falls back to reading the discovery file and returns information
+with \code{connected = FALSE}. Returns \code{NULL} if no information is available
+from either source.
 }

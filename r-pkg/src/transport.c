@@ -2,6 +2,7 @@
 #include "cJSON.h"
 
 #include <R.h>
+#include <Rinternals.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -164,6 +165,112 @@ static int discover_socket_path(char *out, size_t outsize) {
     }
 
     return -1;
+}
+
+/* Called from R: .Call(C_jgd_discover)
+   Reads the discovery file and returns all fields as a named list,
+   or NULL if no valid discovery file is found. */
+SEXP C_jgd_discover(void) {
+    const char *tmpdirs[] = {
+        getenv("TMPDIR"),
+        getenv("TMP"),
+        getenv("TEMP"),
+#ifdef _WIN32
+        getenv("USERPROFILE"),
+#endif
+        "/tmp",
+    };
+    int n_tmpdirs = (int)(sizeof(tmpdirs) / sizeof(tmpdirs[0]));
+
+    for (int t = 0; t < n_tmpdirs; t++) {
+        if (!tmpdirs[t] || !tmpdirs[t][0]) continue;
+        char discovery[1024];
+        snprintf(discovery, sizeof(discovery), "%s/jgd-discovery.json", tmpdirs[t]);
+
+        FILE *f = fopen(discovery, "r");
+        if (!f) continue;
+
+        fseek(f, 0, SEEK_END);
+        long fsize = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        if (fsize <= 0 || fsize > 65536) { fclose(f); continue; }
+
+        char *content = (char *)malloc((size_t)fsize + 1);
+        if (!content) { fclose(f); continue; }
+        size_t nread = fread(content, 1, (size_t)fsize, f);
+        fclose(f);
+        content[nread] = '\0';
+
+        cJSON *json = cJSON_Parse(content);
+        free(content);
+        if (!json) continue;
+
+        /* socketPath is required */
+        cJSON *sp = cJSON_GetObjectItem(json, "socketPath");
+        if (!cJSON_IsString(sp) || !sp->valuestring || !sp->valuestring[0]) {
+            cJSON_Delete(json);
+            continue;
+        }
+
+        /* serverName is required */
+        cJSON *sn = cJSON_GetObjectItem(json, "serverName");
+        if (!cJSON_IsString(sn) || !sn->valuestring || !sn->valuestring[0]) {
+            cJSON_Delete(json);
+            continue;
+        }
+
+        /* pid is required */
+        cJSON *pidj = cJSON_GetObjectItem(json, "pid");
+        if (!cJSON_IsNumber(pidj)) {
+            cJSON_Delete(json);
+            continue;
+        }
+
+        /* Build result: list(server_name, socket_path, pid, server_info) */
+        SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
+        SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+        SET_STRING_ELT(names, 0, Rf_mkChar("server_name"));
+        SET_STRING_ELT(names, 1, Rf_mkChar("socket_path"));
+        SET_STRING_ELT(names, 2, Rf_mkChar("pid"));
+        SET_STRING_ELT(names, 3, Rf_mkChar("server_info"));
+        Rf_setAttrib(result, R_NamesSymbol, names);
+
+        SET_VECTOR_ELT(result, 0, PROTECT(Rf_mkString(sn->valuestring)));
+        SET_VECTOR_ELT(result, 1, PROTECT(Rf_mkString(sp->valuestring)));
+        SET_VECTOR_ELT(result, 2, PROTECT(Rf_ScalarInteger((int)pidj->valuedouble)));
+
+        /* Build named character vector from serverInfo object */
+        cJSON *info = cJSON_GetObjectItem(json, "serverInfo");
+        if (cJSON_IsObject(info)) {
+            int np = 0;
+            cJSON *child = info->child;
+            while (child) { if (cJSON_IsString(child)) np++; child = child->next; }
+
+            SEXP info_vec = PROTECT(Rf_allocVector(STRSXP, np));
+            SEXP info_names = PROTECT(Rf_allocVector(STRSXP, np));
+            int i = 0;
+            child = info->child;
+            while (child) {
+                if (cJSON_IsString(child) && child->string) {
+                    SET_STRING_ELT(info_names, i, Rf_mkChar(child->string));
+                    SET_STRING_ELT(info_vec, i, Rf_mkChar(child->valuestring));
+                    i++;
+                }
+                child = child->next;
+            }
+            Rf_setAttrib(info_vec, R_NamesSymbol, info_names);
+            SET_VECTOR_ELT(result, 3, info_vec);
+            UNPROTECT(7);
+        } else {
+            SET_VECTOR_ELT(result, 3, PROTECT(Rf_allocVector(STRSXP, 0)));
+            UNPROTECT(6);
+        }
+
+        cJSON_Delete(json);
+        return result;
+    }
+
+    return R_NilValue;
 }
 
 static int try_connect(jgd_transport_t *t) {

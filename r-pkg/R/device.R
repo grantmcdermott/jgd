@@ -39,15 +39,37 @@ jgd = function(
 
 #' Get server information
 #'
-#' Returns metadata about the server connected to the current jgd device,
-#' or `NULL` if no server information is available.
+#' Returns metadata about the jgd server. When a jgd device is open and
+#' connected, returns the welcome message information with `connected = TRUE`.
+#' Otherwise, falls back to reading the discovery file and returns information
+#' with `connected = FALSE`. Returns `NULL` if no information is available
+#' from either source.
 #'
-#' @return A named list with `server_name` (character), `protocol_version`
-#'   (integer), `transport` (character), and `server_info` (named character
-#'   vector), or `NULL`.
+#' @return A named list, or `NULL`. When connected:
+#'   `connected` (logical), `server_name` (character),
+#'   `protocol_version` (integer), `transport` (character),
+#'   `server_info` (named character vector).
+#'   When not connected (discovery file):
+#'   `connected` (logical), `server_name` (character),
+#'   `socket_path` (character), `pid` (integer),
+#'   `server_info` (named character vector).
 #' @export
 jgd_server_info = function() {
   .Call(C_jgd_server_info)
+}
+
+#' Discover a running jgd server
+#'
+#' Reads the jgd discovery file from the standard temporary directory
+#' locations and returns its contents. This does not require an open jgd
+#' device — it simply reads the file that a running server has written.
+#'
+#' @return A named list with `server_name` (character), `socket_path`
+#'   (character), `pid` (integer), and `server_info` (named character
+#'   vector), or `NULL` if no discovery file is found.
+#' @export
+jgd_discover = function() {
+  .Call(C_jgd_discover)
 }
 
 #' Set extended graphics context (experimental)
