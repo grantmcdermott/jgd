@@ -119,6 +119,9 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
                 jgd_capture_snapshot(st);
         }
     }
+    /* Store last_snapshot into snapshot_store for historical plot resizing.
+     * This guard duplicates the one above intentionally: jgd_capture_snapshot
+     * may have replaced last_snapshot, so we re-check that it is still valid. */
     if (st->page_count > 0 && !st->replaying && st->last_snapshot != R_NilValue) {
         if (st->snapshot_count >= JGD_MAX_SNAPSHOTS) {
             /* Shift snapshots and their ext strings left by one */

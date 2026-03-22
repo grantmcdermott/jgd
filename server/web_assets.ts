@@ -322,13 +322,13 @@ export const assets: Record<string, { body: string; type: string }> = {
             } else {
                 // Normal resize replay — use plotNumber to verify the replay
                 // targets the latest plot and not one that was superseded.
-                var expectedRIndex = (typeof msg.plotNumber === 'number' && isFinite(msg.plotNumber)) ? msg.plotNumber : undefined;
+                var expectedRIndex = (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) ? msg.plotNumber : undefined;
                 history.replaceLatest(sessionId, plot, expectedRIndex);
             }
         } else if (msg.incremental) {
             history.appendOps(sessionId, plot);
         } else {
-            if (typeof msg.plotNumber === 'number' && isFinite(msg.plotNumber)) {
+            if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
                 plot._rIndex = msg.plotNumber;
             }
             history.addPlot(sessionId, plot);
