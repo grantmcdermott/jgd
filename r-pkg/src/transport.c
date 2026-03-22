@@ -220,8 +220,8 @@ SEXP C_jgd_discover(SEXP s_path) {
     /* pid is required and must be a positive integer */
     cJSON *pidj = cJSON_GetObjectItem(json, "pid");
     if (!cJSON_IsNumber(pidj) ||
-        pidj->valuedouble != (double)(int)pidj->valuedouble ||
-        pidj->valuedouble <= 0) {
+        pidj->valueint <= 0 ||
+        (double)pidj->valueint != pidj->valuedouble) {
         cJSON_Delete(json);
         return R_NilValue;
     }
@@ -237,7 +237,7 @@ SEXP C_jgd_discover(SEXP s_path) {
 
     SET_VECTOR_ELT(result, 0, PROTECT(Rf_mkString(sn->valuestring)));
     SET_VECTOR_ELT(result, 1, PROTECT(Rf_mkString(sp->valuestring)));
-    SET_VECTOR_ELT(result, 2, PROTECT(Rf_ScalarInteger((int)pidj->valuedouble)));
+    SET_VECTOR_ELT(result, 2, PROTECT(Rf_ScalarInteger(pidj->valueint)));
 
     /* Build named character vector from serverInfo object */
     cJSON *info = cJSON_GetObjectItem(json, "serverInfo");
