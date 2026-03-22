@@ -6,6 +6,8 @@ import * as crypto from 'crypto';
 import { PlotHistory } from './plot-history';
 import { PlotWebviewProvider } from './webview-provider';
 
+const SERVER_NAME = 'jgd-vscode';
+
 export type ConnectionChangeListener = (count: number) => void;
 
 interface RSession {
@@ -118,7 +120,7 @@ export class SocketServer {
     private writeDiscovery() {
         const socketPath = this.getSocketPath();
         const discoveryContent = JSON.stringify({
-            serverName: 'jgd-vscode',
+            serverName: SERVER_NAME,
             socketPath,
             pid: process.pid,
         });
@@ -180,7 +182,7 @@ export class SocketServer {
                     session.welcomeSent = true;
                     const welcome = {
                         type: 'server_info',
-                        serverName: 'jgd-vscode',
+                        serverName: SERVER_NAME,
                         protocolVersion: 1,
                         transport: isWindows ? 'tcp' : 'unix',
                     };

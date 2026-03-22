@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "jsr:@std/path@1";
 import { Hub } from "./hub.ts";
 import { RSession } from "./r_session.ts";
 import { writeDiscovery, removeDiscovery } from "./discovery.ts";
+import { SERVER_NAME } from "./types.ts";
 import { handleWebSocket } from "./websocket.ts";
 import { serveStaticFile } from "./static.ts";
 import { assets } from "./web_assets.ts";
@@ -151,9 +152,11 @@ async function main(): Promise<void> {
 
   // Write discovery file before announcing readiness so clients can
   // find the socket immediately after parsing the readiness message.
+  // TODO: httpUrl should use the configured --http host instead of
+  // hardcoding 127.0.0.1 (with special-case for wildcard 0.0.0.0/::).
   const discoveryPaths = await writeDiscovery(
     socketPath,
-    "jgd-http-server",
+    SERVER_NAME,
     { httpUrl: `http://127.0.0.1:${httpPort}/` },
   );
 

@@ -1,4 +1,5 @@
 import type { Hub } from "./hub.ts";
+import { SERVER_NAME } from "./types.ts";
 import type { ServerInfoMessage } from "./types.ts";
 
 /**
@@ -101,9 +102,11 @@ export class RSession {
           // side works avoids this race entirely.
           if (!welcomeSent) {
             welcomeSent = true;
+            // TODO: httpUrl should use the configured --http host instead of
+            // hardcoding 127.0.0.1 (with special-case for wildcard 0.0.0.0/::).
             const welcome: ServerInfoMessage = {
               type: "server_info",
-              serverName: "jgd-http-server",
+              serverName: SERVER_NAME,
               protocolVersion: 1,
               transport: this.hub.transport,
               serverInfo: {

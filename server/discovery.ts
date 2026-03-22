@@ -51,6 +51,16 @@ export async function writeDiscovery(
   serverName: string,
   serverInfo?: Record<string, string>,
 ): Promise<string[]> {
+  if (!serverName) {
+    throw new Error("serverName must be a non-empty string");
+  }
+  if (serverInfo) {
+    for (const [k, v] of Object.entries(serverInfo)) {
+      if (typeof v !== "string") {
+        throw new Error(`serverInfo value for "${k}" must be a string, got ${typeof v}`);
+      }
+    }
+  }
   const disc: DiscoveryInfo = {
     serverName,
     socketPath,
