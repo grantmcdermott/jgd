@@ -229,11 +229,14 @@ export class SocketServer {
                             accepted = this.history.replaceLatest(session.id, msg.plot, plotNumber);
                         } else if (msg.incremental) {
                             accepted = this.history.appendOps(session.id, msg.plot);
-                        } else {
+                        } else if (msg.newPage) {
                             if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
                                 msg.plot.rIndex = msg.plotNumber;
                             }
                             this.history.addPlot(session.id, msg.plot);
+                        } else {
+                            // Complete frame for current page (dev.flush) — replace, not add
+                            this.history.replaceCurrent(session.id, msg.plot);
                         }
                         if (accepted) this.webviewProvider.showPlot(msg.plot);
                     }

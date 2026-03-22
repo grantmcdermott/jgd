@@ -57,9 +57,11 @@ function makePlotMsg(label: string, width = 400, height = 300, extra: Record<str
         },
         ...extra,
     };
-    // Auto-assign plotNumber for new plots (not resize replays)
-    if (!extra.resizeReplay && msg.plotNumber === undefined) {
+    // Auto-assign plotNumber and newPage for new plots (not resize replays
+    // or incremental frames).
+    if (!extra.resizeReplay && !extra.incremental && msg.plotNumber === undefined) {
         msg.plotNumber = plotCounter++;
+        if (msg.newPage === undefined) msg.newPage = true;
     }
     return msg;
 }

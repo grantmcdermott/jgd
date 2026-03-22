@@ -328,11 +328,16 @@ export const assets: Record<string, { body: string; type: string }> = {
             }
         } else if (msg.incremental) {
             history.appendOps(sessionId, plot);
-        } else {
+        } else if (msg.newPage) {
             if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
                 plot._rIndex = msg.plotNumber;
             }
             history.addPlot(sessionId, plot);
+        } else {
+            // Complete frame for the current page (e.g. dev.flush() after
+            // hold period) — replace the current plot rather than creating
+            // a duplicate history entry.
+            history.replaceCurrent(sessionId, plot);
         }
         scheduleRender();
     }
@@ -414,7 +419,7 @@ export const assets: Record<string, { body: string; type: string }> = {
     }
 
     var resizeObserver = new ResizeObserver(function() {
-        replayCurrentPlot();
+        scheduleRender();
         scheduleResizeMessage();
     });
     resizeObserver.observe(container);
@@ -603,14 +608,27 @@ function applyPostEffects(ctx, effects) {
 // Generation counter to detect superseded renders — incremented each
 // time replay() starts.  If a newer render begins while an async op
 // (raster image decode) is pending, the older render aborts.
+// Serialized replay — each render waits for the previous one to finish
+// (or abort) before starting, preventing overlapping ctx.restore() calls
+// and group stack corruption from concurrent renders.
 var _renderGen = 0;
+var _replayChain = Promise.resolve();
 
-async function replay(canvas, container, plot) {
+function replay(canvas, container, plot) {
     var gen = ++_renderGen;
+    var run = function() { return doReplay(canvas, container, plot, gen); };
+    _replayChain = _replayChain.then(run, run);
+    return _replayChain;
+}
+
+async function doReplay(canvas, container, plot, gen) {
+    if (_renderGen !== gen) return;
     var ctx = canvas.getContext('2d');
     var dpr = window.devicePixelRatio || 1;
     var containerW = container.clientWidth;
     var containerH = container.clientHeight;
+
+    if (containerW <= 0 || containerH <= 0) return;
 
     var plotW = plot.device.width;
     var plotH = plot.device.height;
@@ -630,33 +648,34 @@ async function replay(canvas, container, plot) {
     ctx.scale(dpr * scale, dpr * scale);
 
     ctx.save();
+    try {
+        if (plot.device.bg) {
+            ctx.fillStyle = plot.device.bg;
+            ctx.fillRect(0, 0, plotW, plotH);
+        } else {
+            ctx.clearRect(0, 0, plotW, plotH);
+        }
 
-    if (plot.device.bg) {
-        ctx.fillStyle = plot.device.bg;
-        ctx.fillRect(0, 0, plotW, plotH);
-    } else {
-        ctx.clearRect(0, 0, plotW, plotH);
-    }
+        var ops = plot.ops;
+        _groupStack = [];
+        _currentClip = null;
+        for (var i = 0; i < ops.length; i++) {
+            if (_renderGen !== gen) return;
+            var currentCtx = _groupStack.length > 0 ? _groupStack[_groupStack.length - 1].ctx : ctx;
+            await renderOp(currentCtx, ops[i], plotH);
+            if (_renderGen !== gen) return;
+        }
 
-    var ops = plot.ops;
-    _groupStack = [];
-    _currentClip = null;
-    for (var i = 0; i < ops.length; i++) {
-        var currentCtx = _groupStack.length > 0 ? _groupStack[_groupStack.length - 1].ctx : ctx;
-        await renderOp(currentCtx, ops[i], plotH);
-        // Abort if a newer render has started (prevents overlap from
-        // async raster image decoding interleaving with a new render).
-        if (_renderGen !== gen) { _groupStack = []; ctx.restore(); return; }
-    }
-
-    // Apply frame-level postEffects if present.
-    if (plot._frameExt && plot._frameExt.postEffects) {
+        // Apply frame-level postEffects if present.
+        if (plot._frameExt && plot._frameExt.postEffects) {
+            ctx.restore();
+            applyPostEffects(ctx, plot._frameExt.postEffects);
+            ctx.save();
+        }
+    } finally {
+        _groupStack = [];
         ctx.restore();
-        applyPostEffects(ctx, plot._frameExt.postEffects);
-        ctx.save();
     }
-
-    ctx.restore();
 }
 
 async function renderOp(ctx, op, plotH) {
@@ -782,7 +801,6 @@ async function renderOp(ctx, op, plotH) {
                     if (group.ext.shadow.offsetY != null) parentCtx.shadowOffsetY = group.ext.shadow.offsetY;
                 }
             }
-            var savedTransform = parentCtx.getTransform();
             parentCtx.setTransform(1, 0, 0, 1, 0, 0);
             parentCtx.drawImage(group.canvas, 0, 0);
             parentCtx.restore();

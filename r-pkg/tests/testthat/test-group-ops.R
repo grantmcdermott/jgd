@@ -1,12 +1,24 @@
 # Tests for beginGroup/endGroup operations in the drawing stream
 
-# Extract ops from the last complete (non-incremental) frame only,
-# avoiding double-counting from intermediate flushes.
+# Collect all ops for the last page by combining the last complete
+# (non-incremental) frame with any subsequent incremental frames.
+# endGroup triggers its own incremental flush, so a single page's
+# ops may span multiple frames.
 last_complete_ops = function(msgs) {
   frames = extract_frames(msgs)
-  full = Filter(function(f) !isTRUE(f$incremental), frames)
-  if (length(full) == 0) return(list())
-  full[[length(full)]]$plot$ops
+  full_idx = which(!vapply(frames, function(f) isTRUE(f$incremental), logical(1)))
+  if (length(full_idx) == 0) return(list())
+  last_full = max(full_idx)
+  # Start from the complete frame's ops, then append any incremental deltas
+  all_ops = frames[[last_full]]$plot$ops
+  if (last_full < length(frames)) {
+    for (i in (last_full + 1):length(frames)) {
+      if (isTRUE(frames[[i]]$incremental)) {
+        all_ops = c(all_ops, frames[[i]]$plot$ops)
+      }
+    }
+  }
+  all_ops
 }
 
 test_that("jgd_begin_group and jgd_end_group emit ops", {

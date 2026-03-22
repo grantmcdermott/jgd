@@ -416,6 +416,20 @@ SEXP C_jgd_end_group(void) {
     cJSON_AddStringToObject(op, "op", "endGroup");
     page_add_op(&st->page, op);
     st->group_depth--;
+
+    /* recordGraphics() does not trigger cb_mode(0), so the endGroup op
+     * would stay unflushed until the next graphics primitive or page
+     * boundary.  Flush immediately so the renderer receives the complete
+     * group sequence (beginGroup … endGroup) without delay.
+     * Snapshot capture is omitted here — the next cb_mode(0) or
+     * cb_holdflush will capture the snapshot if needed. */
+    if (!st->replaying && st->hold_level == 0 &&
+        st->page.op_count > st->last_flushed_ops) {
+        int incr = (st->last_flushed_ops > 0) ? 1 : 0;
+        jgd_flush_frame(st, incr);
+        st->last_flushed_ops = st->page.op_count;
+    }
+
     return R_NilValue;
 }
 
