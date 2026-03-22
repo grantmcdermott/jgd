@@ -1,4 +1,4 @@
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { writeDiscovery, removeDiscovery } from "../discovery.ts";
 import { join } from "@std/path";
 
@@ -17,7 +17,7 @@ Deno.test("discovery file lifecycle", async (t) => {
   try {
     await t.step("removeDiscovery skips file owned by another PID", async () => {
       // Write a discovery file with the current process's PID
-      const paths = await writeDiscovery("unix:///tmp/test.sock", 9999);
+      const paths = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
       assert(paths.length > 0, "should write at least one discovery file");
 
       const discPath = join(tmpDir, "jgd-discovery.json");
@@ -31,7 +31,7 @@ Deno.test("discovery file lifecycle", async (t) => {
       for (const p of paths) {
         await Deno.writeTextFile(
           p,
-          JSON.stringify({ socketPath: "unix:///tmp/other.sock", httpPort: 8888, pid: otherPid }),
+          JSON.stringify({ serverName: "jgd-other", socketPath: "unix:///tmp/other.sock", pid: otherPid }),
         );
       }
 
@@ -40,7 +40,7 @@ Deno.test("discovery file lifecycle", async (t) => {
 
       const after = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(after.pid, otherPid, "file should still exist with other PID");
-      assertEquals(after.httpPort, 8888);
+      assertEquals(after.serverName, "jgd-other");
 
       // Clean up all paths
       for (const p of paths) {
@@ -48,8 +48,83 @@ Deno.test("discovery file lifecycle", async (t) => {
       }
     });
 
+    await t.step("discovery file contains serverName and serverInfo", async () => {
+      const paths = await writeDiscovery(
+        "unix:///tmp/test.sock",
+        "jgd-test",
+        { httpUrl: "http://127.0.0.1:8080/" },
+      );
+      assert(paths.length > 0);
+
+      const discPath = join(tmpDir, "jgd-discovery.json");
+      const content = JSON.parse(await Deno.readTextFile(discPath));
+      assertEquals(content.serverName, "jgd-test");
+      assertEquals(content.socketPath, "unix:///tmp/test.sock");
+      assertEquals(content.pid, Deno.pid);
+      assertEquals(content.serverInfo.httpUrl, "http://127.0.0.1:8080/");
+
+      // Clean up for next step
+      for (const p of paths) {
+        try { await Deno.remove(p); } catch { /* ignore */ }
+      }
+    });
+
+    await t.step("serverInfo is omitted when not provided", async () => {
+      const paths = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
+      assert(paths.length > 0);
+
+      const discPath = join(tmpDir, "jgd-discovery.json");
+      const content = JSON.parse(await Deno.readTextFile(discPath));
+      assertEquals(content.serverName, "jgd-test");
+      assertEquals(content.serverInfo, undefined);
+
+      // Clean up for next step
+      for (const p of paths) {
+        try { await Deno.remove(p); } catch { /* ignore */ }
+      }
+    });
+
+    await t.step("writeDiscovery rejects invalid serverInfo", async () => {
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "jgd-test", null as unknown as Record<string, string>),
+        Error,
+        "serverInfo must be a plain object",
+      );
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "jgd-test", [1, 2] as unknown as Record<string, string>),
+        Error,
+        "serverInfo must be a plain object",
+      );
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "jgd-test", "string" as unknown as Record<string, string>),
+        Error,
+        "serverInfo must be a plain object",
+      );
+    });
+
+    await t.step("writeDiscovery rejects non-string serverInfo values", async () => {
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "jgd-test", { key: 123 } as unknown as Record<string, string>),
+        Error,
+        'serverInfo value for "key" must be a string',
+      );
+    });
+
+    await t.step("writeDiscovery rejects empty serverName", async () => {
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", ""),
+        Error,
+        "serverName must be a non-empty string",
+      );
+      await assertRejects(
+        () => writeDiscovery("unix:///tmp/test.sock", "   "),
+        Error,
+        "serverName must be a non-empty string",
+      );
+    });
+
     await t.step("removeDiscovery deletes file owned by current PID", async () => {
-      const paths = await writeDiscovery("unix:///tmp/test.sock", 9999);
+      const paths = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
       assert(paths.length > 0);
 
       const discPath = join(tmpDir, "jgd-discovery.json");

@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as net from 'net';
+import * as os from 'os';
+import * as path from 'path';
+import * as fs from 'fs';
 import { PlotHistory, PlotFrame } from './plot-history';
 import { SocketServer } from './socket-server';
 
@@ -310,6 +313,19 @@ describe('SocketServer', () => {
             expect(msg.type).toBe('resize');
             expect(msg.width).toBe(500);
             expect(msg.height).toBe(400);
+        });
+    });
+
+    // ---- Discovery file ----
+
+    describe('discovery file', () => {
+        it('writes discovery file with correct schema', () => {
+            const discPath = path.join(os.tmpdir(), 'jgd-discovery.json');
+            const content = JSON.parse(fs.readFileSync(discPath, 'utf-8'));
+            expect(content.serverName).toBe('jgd-vscode');
+            expect(content.socketPath).toBe(server.getSocketPath());
+            expect(content.pid).toBe(process.pid);
+            expect(content).not.toHaveProperty('serverInfo');
         });
     });
 
