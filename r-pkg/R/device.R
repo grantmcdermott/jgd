@@ -155,7 +155,6 @@ jgd_begin_group = function(ext = NULL) {
     stopifnot(is.character(ext), length(ext) == 1L)
   }
   # Unlike gc.ext (jgd_ext), which is device state embedded into every
-
   # drawing op by the C callbacks, group ops are standalone markers in the
   # ops stream that are not produced by any R graphics engine callback.
   # We use recordGraphics() so the .Call is recorded in R's display list
