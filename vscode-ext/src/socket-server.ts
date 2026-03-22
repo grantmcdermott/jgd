@@ -224,12 +224,12 @@ export class SocketServer {
                         if (isResizeReplay && plotIndex !== undefined) {
                             accepted = this.history.replaceAtIndex(session.id, plotIndex, msg.plot);
                         } else if (isResizeReplay) {
-                            const plotNumber = typeof msg.plotNumber === 'number' ? msg.plotNumber : undefined;
+                            const plotNumber = (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) ? msg.plotNumber : undefined;
                             accepted = this.history.replaceLatest(session.id, msg.plot, plotNumber);
                         } else if (msg.incremental) {
                             accepted = this.history.appendOps(session.id, msg.plot);
                         } else {
-                            if (typeof msg.plotNumber === 'number') {
+                            if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
                                 msg.plot.rIndex = msg.plotNumber;
                             }
                             this.history.addPlot(session.id, msg.plot);

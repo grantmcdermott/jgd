@@ -447,6 +447,7 @@ async function doReplay(plot, gen) {
         }
     } finally {
         ctx.restore();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 }
 
