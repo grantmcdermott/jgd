@@ -366,10 +366,14 @@ SEXP C_jgd_begin_group(SEXP s_ext) {
     jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
     if (!st) Rf_error("jgd device state is NULL");
 
+    if (s_ext != R_NilValue &&
+        (TYPEOF(s_ext) != STRSXP || LENGTH(s_ext) != 1))
+        Rf_error("group ext must be a single JSON string or NULL");
+
     cJSON *op = cJSON_CreateObject();
     cJSON_AddStringToObject(op, "op", "beginGroup");
 
-    if (s_ext != R_NilValue && TYPEOF(s_ext) == STRSXP && LENGTH(s_ext) == 1) {
+    if (s_ext != R_NilValue) {
         const char *json = CHAR(STRING_ELT(s_ext, 0));
         if (json[0]) {
             cJSON *ext = cJSON_Parse(json);
