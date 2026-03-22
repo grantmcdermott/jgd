@@ -89,6 +89,9 @@ typedef struct {
 /* Flush the current frame over the transport. */
 void jgd_flush_frame(jgd_state_t *st, int incremental);
 
+/* Capture a display list snapshot for historical plot resizing. */
+void jgd_capture_snapshot(jgd_state_t *st);
+
 /* Register/remove the R input handler that watches the transport socket
    for incoming resize messages.  Called from C_jgd (open) and cb_close. */
 void jgd_register_input_handler(jgd_state_t *st);

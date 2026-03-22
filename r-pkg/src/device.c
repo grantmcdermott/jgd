@@ -420,9 +420,7 @@ SEXP C_jgd_end_group(void) {
     /* recordGraphics() does not trigger cb_mode(0), so the endGroup op
      * would stay unflushed until the next graphics primitive or page
      * boundary.  Flush immediately so the renderer receives the complete
-     * group sequence (beginGroup … endGroup) without delay.
-     * Snapshot capture is omitted here — the next cb_mode(0) or
-     * cb_holdflush will capture the snapshot if needed. */
+     * group sequence (beginGroup … endGroup) without delay. */
     if (!st->replaying && st->hold_level == 0 &&
         st->page.op_count > st->last_flushed_ops) {
         int incr = (st->last_flushed_ops > 0) ? 1 : 0;
@@ -430,6 +428,26 @@ SEXP C_jgd_end_group(void) {
         st->last_flushed_ops = st->page.op_count;
     }
 
+    return R_NilValue;
+}
+
+/* Called from R after recordGraphics(jgd_end_group) to update the
+ * snapshot.  The snapshot captured by cb_mode(0) during the last
+ * drawing primitive (before endGroup) does not include the endGroup
+ * recordGraphics entry, because R adds it to the display list only
+ * after the callback finishes.  This function re-captures the
+ * snapshot so plotIndex resize replay includes the complete group. */
+SEXP C_jgd_update_snapshot(void) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) return R_NilValue;
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) return R_NilValue;
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st || st->replaying) return R_NilValue;
+
+    jgd_capture_snapshot(st);
     return R_NilValue;
 }
 

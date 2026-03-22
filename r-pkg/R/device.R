@@ -238,6 +238,11 @@ jgd_end_group = function() {
     list(),
     env = getNamespace("jgd")
   )
+  # Update the snapshot after recordGraphics has added the endGroup entry
+  # to the display list.  Without this, the snapshot (captured by cb_mode(0)
+  # during the last drawing primitive) would not include the endGroup,
+  # causing blank plots on plotIndex resize replay.
+  .Call(C_jgd_update_snapshot)
   invisible()
 }
 

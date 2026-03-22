@@ -21,7 +21,7 @@ static jgd_state_t *get_state(pDevDesc dd) {
 }
 
 /** Capture a display list snapshot for historical plot resizing. */
-static void jgd_capture_snapshot(jgd_state_t *st) {
+void jgd_capture_snapshot(jgd_state_t *st) {
     pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
     SEXP snap = GEcreateSnapshot(gdd);
     if (snap != R_NilValue) {
