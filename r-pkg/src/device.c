@@ -688,10 +688,24 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         SEXP snap = VECTOR_ELT(st->snapshot_store, store_idx);
         SEXP current = PROTECT(GEcreateSnapshot(gdd));
 
-        if (st->debug_frames)
+        if (st->debug_frames) {
             REprintf("[jgd] poll_resize: plotIndex replay pi=%d store_idx=%d "
                      "at %.0fx%.0f\n",
                      pi, store_idx, st->width * st->dpi, st->height * st->dpi);
+            /* Log the display list size in the snapshot for debugging */
+            if (TYPEOF(snap) == VECSXP && LENGTH(snap) >= 1) {
+                SEXP dl = VECTOR_ELT(snap, 0);
+                if (dl != R_NilValue && TYPEOF(dl) == LISTSXP) {
+                    int dl_len = 0;
+                    for (SEXP p = dl; p != R_NilValue; p = CDR(p)) dl_len++;
+                    REprintf("[jgd] poll_resize: snapshot DL pairlist entries=%d\n",
+                             dl_len);
+                } else {
+                    REprintf("[jgd] poll_resize: snapshot DL is NULL or type=%d\n",
+                             dl == R_NilValue ? 0 : TYPEOF(dl));
+                }
+            }
+        }
 
         /* Save current page ext before the historical replay overwrites
          * page_ext_json.  We need this to restore the current plot's ext

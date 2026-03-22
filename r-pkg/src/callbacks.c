@@ -27,12 +27,13 @@ void jgd_capture_snapshot(jgd_state_t *st) {
     if (snap != R_NilValue) {
         PROTECT(snap);
         if (st->debug_frames) {
+            REprintf("[jgd] capture_snapshot: page_count=%d ops=%d\n",
+                     st->page_count, st->page.op_count);
             SEXP gs = find_grid_state(snap);
             if (gs != R_NilValue) {
                 SEXP idx = VECTOR_ELT(gs, 1);
-                REprintf("[jgd] capture_snapshot: grid DL index=%d page_count=%d ops=%d\n",
-                         (idx != R_NilValue && TYPEOF(idx) == INTSXP) ? INTEGER(idx)[0] : -1,
-                         st->page_count, st->page.op_count);
+                REprintf("[jgd] capture_snapshot: grid DL index=%d\n",
+                         (idx != R_NilValue && TYPEOF(idx) == INTSXP) ? INTEGER(idx)[0] : -1);
             }
         }
         if (st->last_snapshot != R_NilValue)
@@ -128,7 +129,7 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
             int dlIndex = (idx != R_NilValue && TYPEOF(idx) == INTSXP &&
                            LENGTH(idx) > 0)
                               ? INTEGER(idx)[0] : -1;
-            if (dlIndex <= 1)
+            if (dlIndex >= 0 && dlIndex <= 1)
                 jgd_capture_snapshot(st);
         }
     }
@@ -651,12 +652,31 @@ static void cb_mode(int mode, pDevDesc dd) {
 
 static int cb_holdflush(pDevDesc dd, int level) {
     jgd_state_t *st = get_state(dd);
+    if (st->debug_frames)
+        REprintf("[jgd] cb_holdflush: level=%d hold=%d replaying=%d\n",
+                 level, st->hold_level, st->replaying);
     if (st->replaying) return st->hold_level;
     int old = st->hold_level;
     /* R passes level as a delta: dev.hold() passes +1, dev.flush() passes -1. */
     int new_level = old + level;
     if (new_level < 0) new_level = 0;
     st->hold_level = new_level;
+    /* When transitioning from unheld to held (dev.hold), re-capture the
+     * snapshot and update the latest snapshot_store entry.  The previous
+     * snapshot from cb_mode(0) may miss the last display list entry because
+     * R's GE engine adds it after the mode(0) callback.  At this point
+     * (next plot's dev.hold) all prior drawing is complete and the display
+     * list is fully populated.
+     *
+     * This must update snapshot_store directly because cb_newPage (which
+     * stores last_snapshot into snapshot_store) runs *after* dev.hold()
+     * within the same plot.new() call sequence (dev.hold → plot.new →
+     * cb_newPage), and by cb_newPage time the display list is already
+     * NULL (cleared by GENewPage).  After updating, clear last_snapshot
+     * so cb_newPage does not re-store the stale snapshot. */
+    if (old == 0 && new_level > 0) {
+        jgd_capture_snapshot(st);
+    }
     /* When transitioning from held to unheld, send accumulated frame. */
     if (old > 0 && new_level == 0) {
         if (st->page.op_count > st->last_flushed_ops) {

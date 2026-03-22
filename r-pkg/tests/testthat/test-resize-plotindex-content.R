@@ -245,6 +245,18 @@ test_that("plotIndex resize replay preserves lines() added after plot()", {
     character(1)
   )
 
+  # Debug: show all frames info
+  for (fi in seq_along(frames)) {
+    ff = frames[[fi]]
+    ff_ops = vapply(ff$plot$ops, function(o) if (is.null(o$op)) "?" else o$op, character(1))
+    message(sprintf("  Frame %d: nP=%s rR=%s pI=%s nops=%d ops=[%s]",
+      fi, isTRUE(ff$newPage), isTRUE(ff$resizeReplay),
+      if (is.null(ff$plotIndex)) "NA" else as.character(ff$plotIndex),
+      length(ff$plot$ops), paste(unique(ff_ops), collapse=",")))
+  }
+  message(sprintf("  replay_ops count=%d unique=[%s]",
+    length(replay_ops), paste(unique(op_types), collapse=",")))
+
   # The replay must contain polyline ops from lines()
   expect_true("polyline" %in% op_types,
     info = paste0(
@@ -257,11 +269,11 @@ test_that("plotIndex resize replay preserves lines() added after plot()", {
     info = "Should have at least 1 polyline op")
 
   # Check that at least one polyline has a red-ish color
+  # jgd may serialize as "#FF0000FF" or "rgba(255,0,0,1)"
   has_red = any(vapply(polyline_ops, function(o) {
     col = o$gc$col
     if (is.null(col)) return(FALSE)
-    # R's "red" is "#FF0000FF" or similar
-    grepl("^#[Ff][Ff]0000", col)
+    grepl("^#[Ff][Ff]0000", col) || grepl("rgba\\(255,\\s*0,\\s*0", col)
   }, logical(1)))
   expect_true(has_red,
     info = paste0(
