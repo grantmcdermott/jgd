@@ -33,7 +33,8 @@ async function atomicWrite(path: string, data: Uint8Array): Promise<void> {
  * - Windows: %LOCALAPPDATA%
  */
 // TODO: Make cacheDir injectable for test hermeticity (currently tests
-// override XDG_CACHE_HOME which only works on Linux).
+// override XDG_CACHE_HOME on Linux and LOCALAPPDATA on Windows;
+// macOS always uses ~/Library/Caches and ignores XDG_CACHE_HOME).
 function cacheDir(): string {
   if (Deno.build.os === "windows") {
     const localAppData = Deno.env.get("LOCALAPPDATA");
