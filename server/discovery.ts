@@ -88,9 +88,14 @@ export async function writeDiscovery(
   };
   const content = new TextEncoder().encode(JSON.stringify(disc));
   const loc = discoveryLocation();
-  await Deno.mkdir(dirname(loc), { recursive: true });
-  await atomicWrite(loc, content);
-  console.error(`wrote discovery file: ${loc}`);
+  try {
+    await Deno.mkdir(dirname(loc), { recursive: true });
+    await atomicWrite(loc, content);
+    console.error(`wrote discovery file: ${loc}`);
+  } catch (e) {
+    console.error(`warning: failed to write discovery to ${loc}: ${e}`);
+    return "";
+  }
   return loc;
 }
 

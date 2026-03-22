@@ -24,7 +24,7 @@ function cacheDir(): string {
     return process.env['XDG_CACHE_HOME'] || path.join(os.homedir(), '.cache');
 }
 
-function discoveryPath(): string {
+export function discoveryPath(): string {
     return path.join(cacheDir(), 'jgd', 'discovery.json');
 }
 
@@ -171,7 +171,13 @@ export class SocketServer {
         if (!isWindows) {
             try { fs.unlinkSync(this.socketPath); } catch {}
         }
-        try { fs.unlinkSync(discoveryPath()); } catch {}
+        // Only remove discovery file if it belongs to this process
+        try {
+            const disc = JSON.parse(fs.readFileSync(discoveryPath(), 'utf-8'));
+            if (disc && disc.pid === process.pid) {
+                fs.unlinkSync(discoveryPath());
+            }
+        } catch { /* file missing or unreadable — ignore */ }
     }
 
     private handleConnection(socket: net.Socket) {

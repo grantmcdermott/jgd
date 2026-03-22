@@ -4,7 +4,7 @@ import * as os from 'os';
 import * as path from 'path';
 import * as fs from 'fs';
 import { PlotHistory, PlotFrame } from './plot-history';
-import { SocketServer } from './socket-server';
+import { SocketServer, discoveryPath } from './socket-server';
 
 // Minimal mock that satisfies the SocketServer's usage of PlotWebviewProvider.
 // We only need the methods SocketServer actually calls.
@@ -320,8 +320,7 @@ describe('SocketServer', () => {
 
     describe('discovery file', () => {
         it('writes discovery file with correct schema', () => {
-            const cacheBase = process.env['XDG_CACHE_HOME'] || path.join(os.homedir(), '.cache');
-            const discPath = path.join(cacheBase, 'jgd', 'discovery.json');
+            const discPath = discoveryPath();
             const content = JSON.parse(fs.readFileSync(discPath, 'utf-8'));
             expect(content.serverName).toBe('jgd-vscode');
             expect(content.socketPath).toBe(server.getSocketPath());
