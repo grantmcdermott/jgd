@@ -14,6 +14,8 @@ const SERVER_NAME = 'jgd-vscode';
  * - macOS:   ~/Library/Caches
  * - Windows: %LOCALAPPDATA%
  */
+// TODO: Make cacheDir injectable for test hermeticity (currently tests
+// use the real user cache directory).
 function cacheDir(): string {
     if (process.platform === 'win32') {
         return process.env['LOCALAPPDATA'] || path.join(os.homedir(), 'AppData', 'Local');

@@ -79,9 +79,11 @@ jgd_cache_dir = function() {
 
 #' Discover a running jgd server
 #'
-#' Reads the jgd discovery file from the standard cache directory
-#' and returns its contents. This does not require an open jgd
-#' device — it simply reads the file that a running server has written.
+#' Reads the jgd discovery file from the platform cache directory
+#' (`~/.cache/jgd` on Linux, `~/Library/Caches/jgd` on macOS,
+#' `%LOCALAPPDATA%/jgd` on Windows) and returns its contents.
+#' This does not require an open jgd device — it simply reads the
+#' file that a running server has written.
 #'
 #' @return A named list with `server_name` (character), `socket_path`
 #'   (character), `pid` (integer), and `server_info` (named character

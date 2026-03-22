@@ -124,8 +124,13 @@ void transport_init(jgd_transport_t *t) {
 static int discovery_path(char *out, size_t outsize) {
 #ifdef _WIN32
     const char *base = getenv("LOCALAPPDATA");
-    if (!base || !base[0]) return -1;
-    snprintf(out, outsize, "%s\\jgd\\discovery.json", base);
+    if (!base || !base[0]) {
+        const char *home = getenv("USERPROFILE");
+        if (!home || !home[0]) return -1;
+        snprintf(out, outsize, "%s\\AppData\\Local\\jgd\\discovery.json", home);
+    } else {
+        snprintf(out, outsize, "%s\\jgd\\discovery.json", base);
+    }
 #elif defined(__APPLE__)
     const char *home = getenv("HOME");
     if (!home || !home[0]) return -1;
@@ -231,14 +236,14 @@ SEXP C_jgd_discover(SEXP s_path) {
     if (cJSON_IsObject(info)) {
         int np = 0;
         cJSON *child = info->child;
-        while (child) { if (cJSON_IsString(child)) np++; child = child->next; }
+        while (child) { if (cJSON_IsString(child) && child->string && child->valuestring) np++; child = child->next; }
 
         SEXP info_vec = PROTECT(Rf_allocVector(STRSXP, np));
         SEXP info_names = PROTECT(Rf_allocVector(STRSXP, np));
         int i = 0;
         child = info->child;
         while (child) {
-            if (cJSON_IsString(child) && child->string) {
+            if (cJSON_IsString(child) && child->string && child->valuestring) {
                 SET_STRING_ELT(info_names, i, Rf_mkChar(child->string));
                 SET_STRING_ELT(info_vec, i, Rf_mkChar(child->valuestring));
                 i++;

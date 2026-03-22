@@ -12,7 +12,9 @@ A named list with \code{server_name} (character), \code{socket_path}
 vector), or \code{NULL} if no discovery file is found.
 }
 \description{
-Reads the jgd discovery file from the standard cache directory
-and returns its contents. This does not require an open jgd
-device — it simply reads the file that a running server has written.
+Reads the jgd discovery file from the platform cache directory
+(\verb{~/.cache/jgd} on Linux, \verb{~/Library/Caches/jgd} on macOS,
+\verb{\%LOCALAPPDATA\%/jgd} on Windows) and returns its contents.
+This does not require an open jgd device — it simply reads the
+file that a running server has written.
 }

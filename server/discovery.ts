@@ -32,6 +32,8 @@ async function atomicWrite(path: string, data: Uint8Array): Promise<void> {
  * - macOS:   ~/Library/Caches
  * - Windows: %LOCALAPPDATA%
  */
+// TODO: Make cacheDir injectable for test hermeticity (currently tests
+// override XDG_CACHE_HOME which only works on Linux).
 function cacheDir(): string {
   if (Deno.build.os === "windows") {
     const localAppData = Deno.env.get("LOCALAPPDATA");
@@ -66,7 +68,7 @@ export async function writeDiscovery(
   socketPath: string,
   serverName: string,
   serverInfo?: Record<string, string>,
-): Promise<string> {
+): Promise<string | null> {
   if (typeof serverName !== "string" || serverName.trim().length === 0) {
     throw new Error("serverName must be a non-empty string");
   }
@@ -94,14 +96,15 @@ export async function writeDiscovery(
     console.error(`wrote discovery file: ${loc}`);
   } catch (e) {
     console.error(`warning: failed to write discovery to ${loc}: ${e}`);
-    return "";
+    return null;
   }
   return loc;
 }
 
 /** Remove the discovery file written during startup, but only if it
  *  still belongs to this process (another instance may have overwritten). */
-export async function removeDiscovery(path: string): Promise<void> {
+export async function removeDiscovery(path: string | null): Promise<void> {
+  if (!path) return;
   let info: DiscoveryInfo;
   try {
     const raw = await Deno.readTextFile(path);

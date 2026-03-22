@@ -2,6 +2,17 @@ import { assert, assertEquals, assertRejects } from "@std/assert";
 import { writeDiscovery, removeDiscovery } from "../discovery.ts";
 import { join } from "@std/path";
 
+/** Write discovery and assert it succeeded. */
+async function writeDiscoveryOrFail(
+  socketPath: string,
+  serverName: string,
+  serverInfo?: Record<string, string>,
+): Promise<string> {
+  const path = await writeDiscovery(socketPath, serverName, serverInfo);
+  assert(path !== null, "writeDiscovery should succeed");
+  return path;
+}
+
 Deno.test("discovery file lifecycle", async (t) => {
   const cacheDir = Deno.makeTempDirSync({ prefix: "jgd-disc-test-" });
 
@@ -16,8 +27,7 @@ Deno.test("discovery file lifecycle", async (t) => {
     const discPath = join(cacheDir, "jgd", "discovery.json");
 
     await t.step("removeDiscovery skips file owned by another PID", async () => {
-      const path = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
-      assert(path.length > 0, "should return a path");
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
 
       const before = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(before.pid, Deno.pid);
@@ -40,7 +50,7 @@ Deno.test("discovery file lifecycle", async (t) => {
     });
 
     await t.step("discovery file contains serverName and serverInfo", async () => {
-      const path = await writeDiscovery(
+      const path = await writeDiscoveryOrFail(
         "unix:///tmp/test.sock",
         "jgd-test",
         { httpUrl: "http://127.0.0.1:8080/" },
@@ -56,7 +66,7 @@ Deno.test("discovery file lifecycle", async (t) => {
     });
 
     await t.step("serverInfo is omitted when not provided", async () => {
-      const path = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
 
       const content = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(content.serverName, "jgd-test");
@@ -105,7 +115,7 @@ Deno.test("discovery file lifecycle", async (t) => {
     });
 
     await t.step("removeDiscovery deletes file owned by current PID", async () => {
-      const path = await writeDiscovery("unix:///tmp/test.sock", "jgd-test");
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
 
       const content = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(content.pid, Deno.pid);
