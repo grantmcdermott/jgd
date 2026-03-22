@@ -320,7 +320,8 @@ describe('SocketServer', () => {
 
     describe('discovery file', () => {
         it('writes discovery file with correct schema', () => {
-            const discPath = path.join(os.tmpdir(), 'jgd-discovery.json');
+            const cacheBase = process.env['XDG_CACHE_HOME'] || path.join(os.homedir(), '.cache');
+            const discPath = path.join(cacheBase, 'jgd', 'discovery.json');
             const content = JSON.parse(fs.readFileSync(discPath, 'utf-8'));
             expect(content.serverName).toBe('jgd-vscode');
             expect(content.socketPath).toBe(server.getSocketPath());

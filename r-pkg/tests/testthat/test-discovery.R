@@ -11,18 +11,14 @@ test_that("explicit socket= does not fall back to discovery file", {
   withr::defer(server$cleanup())
 
   # Write a discovery file pointing to the mock server.
-  discovery_dir = withr::local_tempdir("jgd-disc-")
-  writeLines(
-    sprintf('{"socketPath": "%s"}', server$socket_url),
-    file.path(discovery_dir, "jgd-discovery.json")
+  cache_dir = write_test_discovery(
+    sprintf('{"serverName":"test","socketPath":"%s","pid":1}', server$socket_url)
   )
 
-  # Point TMPDIR at our discovery dir so C-side discover_socket_path()
+  # Point XDG_CACHE_HOME at our dir so C-side discover_socket_path()
   # would find it.  Clear other env vars to avoid interference.
   withr::local_envvar(
-    TMPDIR = discovery_dir,
-    TMP = NA,
-    TEMP = NA,
+    XDG_CACHE_HOME = cache_dir,
     JGD_SOCKET = NA
   )
   withr::local_options(jgd.socket = NULL)
@@ -46,12 +42,10 @@ test_that("explicit socket= does not fall back to discovery file", {
 })
 
 test_that("jgd_discover reads all discovery file fields", {
-  discovery_dir = withr::local_tempdir("jgd-disc-")
-  writeLines(
-    '{"serverName":"test-server","socketPath":"unix:///tmp/test.sock","pid":12345,"serverInfo":{"httpUrl":"http://127.0.0.1:8080/"}}',
-    file.path(discovery_dir, "jgd-discovery.json")
+  cache_dir = write_test_discovery(
+    '{"serverName":"test-server","socketPath":"unix:///tmp/test.sock","pid":12345,"serverInfo":{"httpUrl":"http://127.0.0.1:8080/"}}'
   )
-  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   info = jgd_discover()
   expect_type(info, "list")
@@ -62,29 +56,25 @@ test_that("jgd_discover reads all discovery file fields", {
 })
 
 test_that("jgd_discover returns NULL when no discovery file", {
-  discovery_dir = withr::local_tempdir("jgd-empty-")
-  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+  cache_dir = withr::local_tempdir("jgd-empty-")
+  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   expect_null(jgd_discover())
 })
 
 test_that("jgd_discover returns NULL for invalid discovery file", {
-  discovery_dir = withr::local_tempdir("jgd-bad-")
-  writeLines('{"socketPath":"unix:///tmp/test.sock"}',
-    file.path(discovery_dir, "jgd-discovery.json"))
-  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+  cache_dir = write_test_discovery('{"socketPath":"unix:///tmp/test.sock"}')
+  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   # Missing serverName → invalid
   expect_null(jgd_discover())
 })
 
 test_that("jgd_discover handles missing serverInfo gracefully", {
-  discovery_dir = withr::local_tempdir("jgd-noinfo-")
-  writeLines(
-    '{"serverName":"test","socketPath":"unix:///tmp/test.sock","pid":1}',
-    file.path(discovery_dir, "jgd-discovery.json")
+  cache_dir = write_test_discovery(
+    '{"serverName":"test","socketPath":"unix:///tmp/test.sock","pid":1}'
   )
-  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   info = jgd_discover()
   expect_type(info, "list")

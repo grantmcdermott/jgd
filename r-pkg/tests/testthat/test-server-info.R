@@ -44,12 +44,10 @@ test_that("jgd_server_info() falls back to discovery file when no welcome", {
   withr::defer(server$cleanup())
 
   # Write a discovery file
-  discovery_dir = withr::local_tempdir("jgd-disc-info-")
-  writeLines(
-    '{"serverName":"disc-server","socketPath":"unix:///tmp/test.sock","pid":999}',
-    file.path(discovery_dir, "jgd-discovery.json")
+  cache_dir = write_test_discovery(
+    '{"serverName":"disc-server","socketPath":"unix:///tmp/test.sock","pid":999}'
   )
-  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   jgd(width = 4, height = 3, dpi = 72, socket = server$socket_path)
 
@@ -65,8 +63,8 @@ test_that("jgd_server_info() falls back to discovery file when no welcome", {
 })
 
 test_that("jgd_server_info() returns NULL for non-jgd device with no discovery", {
-  discovery_dir = withr::local_tempdir("jgd-empty-info-")
-  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+  cache_dir = withr::local_tempdir("jgd-empty-info-")
+  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   pdf(tempfile(fileext = ".pdf"))
   withr::defer(dev.off())
@@ -77,12 +75,10 @@ test_that("jgd_server_info() returns NULL for non-jgd device with no discovery",
 test_that("jgd_server_info() returns discovery fallback when not connected", {
   skip_on_os("windows")
 
-  discovery_dir = withr::local_tempdir("jgd-disc-nc-")
-  writeLines(
-    '{"serverName":"fallback","socketPath":"unix:///tmp/fb.sock","pid":42}',
-    file.path(discovery_dir, "jgd-discovery.json")
+  cache_dir = write_test_discovery(
+    '{"serverName":"fallback","socketPath":"unix:///tmp/fb.sock","pid":42}'
   )
-  withr::local_envvar(TMPDIR = discovery_dir, TMP = NA, TEMP = NA)
+  withr::local_envvar(XDG_CACHE_HOME = cache_dir)
 
   expect_warning(
     jgd(socket = "unix:///nonexistent-jgd-info-test.sock"),

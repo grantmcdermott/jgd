@@ -116,44 +116,56 @@ void transport_init(jgd_transport_t *t) {
 #endif
 }
 
-/* Scan temp directories for jgd-discovery.json and return the first
-   valid parsed JSON, or NULL if none found.  Caller must cJSON_Delete. */
-static cJSON *read_discovery_json(void) {
-    const char *tmpdirs[] = {
-        getenv("TMPDIR"),
-        getenv("TMP"),
-        getenv("TEMP"),
+/* Build the discovery file path: <cache_dir>/jgd/discovery.json
+ * - Linux:   $XDG_CACHE_HOME/jgd/discovery.json or ~/.cache/jgd/discovery.json
+ * - macOS:   ~/Library/Caches/jgd/discovery.json
+ * - Windows: %LOCALAPPDATA%/jgd/discovery.json
+ * Returns 0 on success, -1 if the path cannot be determined. */
+static int discovery_path(char *out, size_t outsize) {
 #ifdef _WIN32
-        getenv("USERPROFILE"),
-#endif
-        "/tmp",
-    };
-    int n_tmpdirs = (int)(sizeof(tmpdirs) / sizeof(tmpdirs[0]));
-
-    for (int t = 0; t < n_tmpdirs; t++) {
-        if (!tmpdirs[t] || !tmpdirs[t][0]) continue;
-        char discovery[1024];
-        snprintf(discovery, sizeof(discovery), "%s/jgd-discovery.json", tmpdirs[t]);
-
-        FILE *f = fopen(discovery, "r");
-        if (!f) continue;
-
-        fseek(f, 0, SEEK_END);
-        long fsize = ftell(f);
-        fseek(f, 0, SEEK_SET);
-        if (fsize <= 0 || fsize > 65536) { fclose(f); continue; }
-
-        char *content = (char *)malloc((size_t)fsize + 1);
-        if (!content) { fclose(f); continue; }
-        size_t nread = fread(content, 1, (size_t)fsize, f);
-        fclose(f);
-        content[nread] = '\0';
-
-        cJSON *json = cJSON_Parse(content);
-        free(content);
-        if (json) return json;
+    const char *base = getenv("LOCALAPPDATA");
+    if (!base || !base[0]) return -1;
+    snprintf(out, outsize, "%s\\jgd\\discovery.json", base);
+#elif defined(__APPLE__)
+    const char *home = getenv("HOME");
+    if (!home || !home[0]) return -1;
+    snprintf(out, outsize, "%s/Library/Caches/jgd/discovery.json", home);
+#else
+    const char *xdg = getenv("XDG_CACHE_HOME");
+    if (xdg && xdg[0]) {
+        snprintf(out, outsize, "%s/jgd/discovery.json", xdg);
+    } else {
+        const char *home = getenv("HOME");
+        if (!home || !home[0]) return -1;
+        snprintf(out, outsize, "%s/.cache/jgd/discovery.json", home);
     }
-    return NULL;
+#endif
+    return 0;
+}
+
+/* Read the discovery file and return parsed JSON, or NULL.
+   Caller must cJSON_Delete the result. */
+static cJSON *read_discovery_json(void) {
+    char path[1024];
+    if (discovery_path(path, sizeof(path)) != 0) return NULL;
+
+    FILE *f = fopen(path, "r");
+    if (!f) return NULL;
+
+    fseek(f, 0, SEEK_END);
+    long fsize = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (fsize <= 0 || fsize > 65536) { fclose(f); return NULL; }
+
+    char *content = (char *)malloc((size_t)fsize + 1);
+    if (!content) { fclose(f); return NULL; }
+    size_t nread = fread(content, 1, (size_t)fsize, f);
+    fclose(f);
+    content[nread] = '\0';
+
+    cJSON *json = cJSON_Parse(content);
+    free(content);
+    return json;
 }
 
 static int discover_socket_path(char *out, size_t outsize) {

@@ -154,7 +154,7 @@ async function main(): Promise<void> {
   // find the socket immediately after parsing the readiness message.
   // TODO: httpUrl should use the configured --http host instead of
   // hardcoding 127.0.0.1 (with special-case for wildcard 0.0.0.0/::).
-  const discoveryPaths = await writeDiscovery(
+  const discoveryPath = await writeDiscovery(
     socketPath,
     SERVER_NAME,
     { httpUrl: `http://127.0.0.1:${httpPort}/` },
@@ -177,7 +177,7 @@ async function main(): Promise<void> {
   console.error(`received signal ${sig}, shutting down...`);
 
   // 1. Remove discovery file immediately so new clients stop discovering us
-  await removeDiscovery(discoveryPaths);
+  await removeDiscovery(discoveryPath);
 
   // 2. Close R listener (stop accepting new connections)
   rListener.close();

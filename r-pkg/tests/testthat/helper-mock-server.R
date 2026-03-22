@@ -354,6 +354,16 @@ extract_ops_by_type = function(msgs, op_type) {
   Filter(function(o) identical(o$op, op_type), ops)
 }
 
+# Write a discovery file under a temporary XDG_CACHE_HOME.
+# Returns the cache base dir (set XDG_CACHE_HOME to this).
+write_test_discovery = function(json_content, envir = parent.frame()) {
+  cache_dir = withr::local_tempdir("jgd-cache-", .local_envir = envir)
+  jgd_dir = file.path(cache_dir, "jgd")
+  dir.create(jgd_dir, recursive = TRUE)
+  writeLines(json_content, file.path(jgd_dir, "discovery.json"))
+  cache_dir
+}
+
 # Snapshot an R value as pretty-printed JSON matching jgd wire format
 expect_json_snapshot = function(x) {
   json = jsonlite::toJSON(x, auto_unbox = TRUE, pretty = TRUE)
