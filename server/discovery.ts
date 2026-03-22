@@ -51,7 +51,7 @@ export async function writeDiscovery(
   serverName: string,
   serverInfo?: Record<string, string>,
 ): Promise<string[]> {
-  if (!serverName) {
+  if (typeof serverName !== "string" || serverName.trim().length === 0) {
     throw new Error("serverName must be a non-empty string");
   }
   if (serverInfo) {
