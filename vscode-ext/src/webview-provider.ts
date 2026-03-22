@@ -418,15 +418,15 @@ function makeRenderCtx() {
 
 function effectToFilter(effect) {
     switch (effect.type) {
-        case 'blur': return 'blur(' + (effect.radius || 0) + 'px)';
-        case 'brightness': return 'brightness(' + (effect.value || 1) + ')';
-        case 'contrast': return 'contrast(' + (effect.value || 1) + ')';
-        case 'grayscale': return 'grayscale(' + (effect.value || 1) + ')';
-        case 'saturate': return 'saturate(' + (effect.value || 1) + ')';
-        case 'sepia': return 'sepia(' + (effect.value || 1) + ')';
-        case 'hue-rotate': return 'hue-rotate(' + (effect.angle || 0) + 'deg)';
-        case 'invert': return 'invert(' + (effect.value || 1) + ')';
-        default: return effect.filter || '';
+        case 'blur': return 'blur(' + (effect.radius ?? 0) + 'px)';
+        case 'brightness': return 'brightness(' + (effect.value ?? 1) + ')';
+        case 'contrast': return 'contrast(' + (effect.value ?? 1) + ')';
+        case 'grayscale': return 'grayscale(' + (effect.value ?? 1) + ')';
+        case 'saturate': return 'saturate(' + (effect.value ?? 1) + ')';
+        case 'sepia': return 'sepia(' + (effect.value ?? 1) + ')';
+        case 'hue-rotate': return 'hue-rotate(' + (effect.angle ?? 0) + 'deg)';
+        case 'invert': return 'invert(' + (effect.value ?? 1) + ')';
+        default: return effect.filter ?? '';
     }
 }
 
@@ -439,7 +439,7 @@ function applyGlowEffect(ctx, effect) {
     tmpCanvas.getContext('2d').drawImage(ctx.canvas, 0, 0);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.filter = 'blur(' + (effect.radius || 3) + 'px) brightness(' + (effect.brightness || 1.5) + ')';
+    ctx.filter = 'blur(' + (effect.radius ?? 3) + 'px) brightness(' + (effect.brightness ?? 1.5) + ')';
     ctx.globalCompositeOperation = 'lighter';
     ctx.drawImage(tmpCanvas, 0, 0);
     ctx.restore();
@@ -912,7 +912,7 @@ function plotToSvg(plot, exportW, exportH) {
                 let gAttrs = '';
                 if (op.ext) {
                     if (op.ext.opacity != null) gAttrs += ' opacity="' + op.ext.opacity + '"';
-                    if (op.ext.filter != null) gAttrs += ' filter="' + svgEsc(op.ext.filter) + '"';
+                    if (op.ext.filter != null) gAttrs += ' style="filter:' + svgEsc(op.ext.filter) + '"';
                 }
                 s += svgTag('g', gAttrs) + '\\n';
                 svgGroupDepth++;

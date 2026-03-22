@@ -1,16 +1,16 @@
 # Tests for frame-level ext field
 
 test_that("jgd_frame_ext adds ext to frame message", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     jgd_frame_ext('{"postEffects":[{"type":"blur","radius":5}]}')
     plot.new()
     rect(0, 0, 1, 1)
   })
 
-  frames = extract_frames(msgs)
+  frames <- extract_frames(msgs)
   expect_true(length(frames) >= 1)
 
-  frame = frames[[1]]
+  frame <- frames[[1]]
   expect_false(is.null(frame$ext))
   expect_length(frame$ext$postEffects, 1)
   expect_equal(frame$ext$postEffects[[1]]$type, "blur")
@@ -18,18 +18,18 @@ test_that("jgd_frame_ext adds ext to frame message", {
 })
 
 test_that("frame ext is absent when not set", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     rect(0, 0, 1, 1)
   })
 
-  frames = extract_frames(msgs)
+  frames <- extract_frames(msgs)
   expect_true(length(frames) >= 1)
   expect_null(frames[[1]]$ext)
 })
 
 test_that("jgd_frame_ext(NULL) clears frame ext", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     jgd_frame_ext('{"postEffects":[{"type":"blur"}]}')
     plot.new()
     rect(0, 0, 1, 1)
@@ -39,20 +39,20 @@ test_that("jgd_frame_ext(NULL) clears frame ext", {
     rect(0, 0, 0.5, 0.5)
   })
 
-  frames = extract_frames(msgs)
+  frames <- extract_frames(msgs)
   expect_true(length(frames) >= 2)
 
   # First frame should have ext
   expect_false(is.null(frames[[1]]$ext))
 
   # Find the second full (non-incremental) frame
-  full_frames = Filter(function(f) !isTRUE(f$incremental), frames)
+  full_frames <- Filter(function(f) !isTRUE(f$incremental), frames)
   expect_true(length(full_frames) >= 2)
   expect_null(full_frames[[2]]$ext)
 })
 
 test_that("with_jgd_frame_ext scopes frame ext", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     with_jgd_frame_ext('{"postEffects":[{"type":"glow"}]}', {
       plot.new()
       rect(0, 0, 1, 1)
@@ -62,8 +62,8 @@ test_that("with_jgd_frame_ext scopes frame ext", {
     rect(0, 0, 0.5, 0.5)
   })
 
-  frames = extract_frames(msgs)
-  full_frames = Filter(function(f) !isTRUE(f$incremental), frames)
+  frames <- extract_frames(msgs)
+  full_frames <- Filter(function(f) !isTRUE(f$incremental), frames)
   expect_true(length(full_frames) >= 2)
 
   expect_false(is.null(full_frames[[1]]$ext))
@@ -71,16 +71,16 @@ test_that("with_jgd_frame_ext scopes frame ext", {
 })
 
 test_that("with_jgd_frame_ext returns expr result", {
-  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd <- function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
   open_jgd()
   on.exit(dev.off(), add = TRUE)
 
-  result = with_jgd_frame_ext('{"postEffects":[]}', 42L)
+  result <- with_jgd_frame_ext('{"postEffects":[]}', 42L)
   expect_equal(result, 42L)
 })
 
 test_that("jgd_frame_ext rejects invalid JSON", {
-  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd <- function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
   open_jgd()
   on.exit({ graphics.off() }, add = TRUE)
 
@@ -91,7 +91,7 @@ test_that("jgd_frame_ext rejects invalid JSON", {
 })
 
 test_that("jgd_frame_ext rejects non-string input", {
-  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd <- function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
   open_jgd()
   on.exit({ graphics.off() }, add = TRUE)
 
@@ -108,55 +108,55 @@ test_that("jgd_frame_ext errors when no jgd device is active", {
 
 # TCP mock server that sends a resize after the first newPage frame,
 # then collects messages including the replay frame.
-start_mock_server_frame_ext_resize = function() {
+start_mock_server_frame_ext_resize <- function() {
   skip_if_not_installed("callr")
   skip_if_not_installed("jsonlite")
 
-  port_file = tempfile(pattern = "jgd-fext-resize-port-", fileext = ".txt")
+  port_file <- tempfile(pattern = "jgd-fext-resize-port-", fileext = ".txt")
 
-  bg = callr::r_bg(
+  bg <- callr::r_bg(
     function(port_file) {
-      `%||%` = function(x, y) if (is.null(x)) y else x
-      safe_write = function(conn, text) {
+      `%||%` <- function(x, y) if (is.null(x)) y else x
+      safe_write <- function(conn, text) {
         tryCatch(
           { writeLines(text, conn); flush(conn) },
           error = function(e) invisible(NULL)
         )
       }
 
-      server = NULL; port = NULL
+      server <- NULL; port <- NULL
       for (i in seq_len(20)) {
-        candidate = sample(10000L:60000L, 1L)
-        result = tryCatch(serverSocket(candidate), error = function(e) NULL)
-        if (!is.null(result)) { server = result; port = candidate; break }
+        candidate <- sample(10000L:60000L, 1L)
+        result <- tryCatch(serverSocket(candidate), error = function(e) NULL)
+        if (!is.null(result)) { server <- result; port <- candidate; break }
       }
       if (is.null(port)) stop("Could not find free port")
       on.exit(close(server), add = TRUE)
       writeLines(as.character(port), port_file)
 
-      conn = socketAccept(server, blocking = TRUE, open = "r+")
+      conn <- socketAccept(server, blocking = TRUE, open = "r+")
       on.exit(close(conn), add = TRUE)
 
-      messages = list()
-      new_page_count = 0L
-      resize_sent = FALSE
+      messages <- list()
+      new_page_count <- 0L
+      resize_sent <- FALSE
 
       repeat {
-        ready = socketSelect(list(conn), timeout = 5)
+        ready <- socketSelect(list(conn), timeout = 5)
         if (!ready) next
 
-        line = tryCatch(readLines(conn, n = 1), error = function(e) character(0))
+        line <- tryCatch(readLines(conn, n = 1), error = function(e) character(0))
         if (length(line) == 0 || !nzchar(line)) next
 
-        msg = tryCatch(
+        msg <- tryCatch(
           jsonlite::fromJSON(line, simplifyVector = FALSE),
           error = function(e) NULL
         )
         if (is.null(msg)) next
-        messages = c(messages, list(msg))
+        messages <- c(messages, list(msg))
 
         if (identical(msg$type, "metrics_request")) {
-          resp = if (identical(msg$kind, "strWidth")) {
+          resp <- if (identical(msg$kind, "strWidth")) {
             list(type = "metrics_response", id = msg$id,
                  width = nchar(msg$str %||% "") * 8.0)
           } else {
@@ -167,12 +167,12 @@ start_mock_server_frame_ext_resize = function() {
         }
 
         if (identical(msg$type, "frame") && isTRUE(msg$newPage)) {
-          new_page_count = new_page_count + 1L
+          new_page_count <- new_page_count + 1L
         }
 
         # After first newPage frame, send a normal resize
         if (new_page_count >= 1L && !resize_sent) {
-          resize_sent = TRUE
+          resize_sent <- TRUE
           safe_write(conn, jsonlite::toJSON(list(
             type = "resize", width = 500L, height = 400L
           ), auto_unbox = TRUE))
@@ -187,12 +187,12 @@ start_mock_server_frame_ext_resize = function() {
     supervise = TRUE
   )
 
-  port = NULL
+  port <- NULL
   for (i in seq_len(50)) {
     if (file.exists(port_file)) {
-      port_str = readLines(port_file, n = 1, warn = FALSE)
+      port_str <- readLines(port_file, n = 1, warn = FALSE)
       if (length(port_str) > 0 && nzchar(port_str)) {
-        port = as.integer(port_str); break
+        port <- as.integer(port_str); break
       }
     }
     Sys.sleep(0.1)
@@ -204,7 +204,7 @@ start_mock_server_frame_ext_resize = function() {
     socket_url = sprintf("tcp://127.0.0.1:%d", port),
     collect = function(timeout = 15000) {
       bg$wait(timeout)
-      status = bg$get_exit_status()
+      status <- bg$get_exit_status()
       if (!is.null(status) && status != 0) {
         stop("Mock server exited with error: ", bg$read_error())
       }
@@ -224,7 +224,7 @@ start_mock_server_frame_ext_resize = function() {
 test_that("frame ext survives resize replay", {
   skip_on_cran()
 
-  server = start_mock_server_frame_ext_resize()
+  server <- start_mock_server_frame_ext_resize()
   withr::defer(server$cleanup())
 
   jgd(width = 4, height = 3, dpi = 72, socket = server$socket_url)
@@ -239,17 +239,17 @@ test_that("frame ext survives resize replay", {
   .Call(jgd:::C_jgd_poll_resize)
 
   dev.off()
-  msgs = server$collect()
+  msgs <- server$collect()
 
-  frames = Filter(function(m) identical(m$type, "frame"), msgs)
+  frames <- Filter(function(m) identical(m$type, "frame"), msgs)
 
   # Should have the original frame and a resize replay frame
-  resize_frames = Filter(function(f) isTRUE(f$resizeReplay), frames)
+  resize_frames <- Filter(function(f) isTRUE(f$resizeReplay), frames)
   expect_true(length(resize_frames) >= 1,
     info = "Should have at least 1 resize replay frame")
 
   # The resize replay frame must preserve the frame-level ext
-  replay = resize_frames[[1]]
+  replay <- resize_frames[[1]]
   expect_false(is.null(replay$ext),
     info = "Resize replay frame should preserve frame-level ext")
   expect_equal(replay$ext$postEffects[[1]]$type, "blur")
@@ -258,18 +258,18 @@ test_that("frame ext survives resize replay", {
 
 # TCP mock server that sends a plotIndex=0 resize after receiving two
 # newPage frames, to test historical plot frame ext preservation.
-start_mock_server_frame_ext_plotindex = function() {
+start_mock_server_frame_ext_plotindex <- function() {
   skip_if_not_installed("callr")
   skip_if_not_installed("jsonlite")
 
-  port_file = tempfile(
+  port_file <- tempfile(
     pattern = "jgd-fext-pi-port-",
     fileext = ".txt"
   )
 
-  bg = callr::r_bg(
+  bg <- callr::r_bg(
     function(port_file) {
-      safe_write = function(conn, text) {
+      safe_write <- function(conn, text) {
         tryCatch(
           {
             writeLines(text, conn)
@@ -279,17 +279,17 @@ start_mock_server_frame_ext_plotindex = function() {
         )
       }
 
-      server = NULL
-      port = NULL
+      server <- NULL
+      port <- NULL
       for (i in seq_len(20)) {
-        candidate = sample(10000L:60000L, 1L)
-        result = tryCatch(
+        candidate <- sample(10000L:60000L, 1L)
+        result <- tryCatch(
           serverSocket(candidate),
           error = function(e) NULL
         )
         if (!is.null(result)) {
-          server = result
-          port = candidate
+          server <- result
+          port <- candidate
           break
         }
       }
@@ -297,28 +297,28 @@ start_mock_server_frame_ext_plotindex = function() {
       on.exit(close(server), add = TRUE)
       writeLines(as.character(port), port_file)
 
-      conn = socketAccept(
+      conn <- socketAccept(
         server,
         blocking = TRUE,
         open = "r+"
       )
       on.exit(close(conn), add = TRUE)
 
-      messages = list()
-      new_page_count = 0L
-      resize_sent = FALSE
+      messages <- list()
+      new_page_count <- 0L
+      resize_sent <- FALSE
 
       repeat {
-        ready = socketSelect(list(conn), timeout = 5)
+        ready <- socketSelect(list(conn), timeout = 5)
         if (!ready) next
 
-        line = tryCatch(
+        line <- tryCatch(
           readLines(conn, n = 1),
           error = function(e) character(0)
         )
         if (length(line) == 0 || !nzchar(line)) next
 
-        msg = tryCatch(
+        msg <- tryCatch(
           jsonlite::fromJSON(
             line,
             simplifyVector = FALSE
@@ -326,12 +326,12 @@ start_mock_server_frame_ext_plotindex = function() {
           error = function(e) NULL
         )
         if (is.null(msg)) next
-        messages = c(messages, list(msg))
+        messages <- c(messages, list(msg))
 
         if (identical(msg$type, "metrics_request")) {
-          id = msg$id
-          resp = if (identical(msg$kind, "strWidth")) {
-            str = if (is.null(msg$str)) "" else msg$str
+          id <- msg$id
+          resp <- if (identical(msg$kind, "strWidth")) {
+            str <- if (is.null(msg$str)) "" else msg$str
             list(
               type = "metrics_response",
               id = id,
@@ -354,12 +354,12 @@ start_mock_server_frame_ext_plotindex = function() {
 
         if (identical(msg$type, "frame") &&
               isTRUE(msg$newPage)) {
-          new_page_count = new_page_count + 1L
+          new_page_count <- new_page_count + 1L
         }
 
         # After 2 newPage frames, send plotIndex=0 resize
         if (new_page_count >= 2L && !resize_sent) {
-          resize_sent = TRUE
+          resize_sent <- TRUE
           safe_write(conn, jsonlite::toJSON(list(
             type = "resize",
             width = 500L,
@@ -377,15 +377,15 @@ start_mock_server_frame_ext_plotindex = function() {
     supervise = TRUE
   )
 
-  port = NULL
+  port <- NULL
   for (i in seq_len(50)) {
     if (file.exists(port_file)) {
-      port_str = readLines(
+      port_str <- readLines(
         port_file, n = 1,
         warn = FALSE
       )
       if (length(port_str) > 0 && nzchar(port_str)) {
-        port = as.integer(port_str)
+        port <- as.integer(port_str)
         break
       }
     }
@@ -404,7 +404,7 @@ start_mock_server_frame_ext_plotindex = function() {
     ),
     collect = function(timeout = 15000) {
       bg$wait(timeout)
-      status = bg$get_exit_status()
+      status <- bg$get_exit_status()
       if (!is.null(status) && status != 0) {
         stop(
           "Mock server exited with error: ",
@@ -427,7 +427,7 @@ start_mock_server_frame_ext_plotindex = function() {
 test_that("frame ext survives plotIndex resize replay", {
   skip_on_cran()
 
-  server = start_mock_server_frame_ext_plotindex()
+  server <- start_mock_server_frame_ext_plotindex()
   withr::defer(server$cleanup())
 
   jgd(
@@ -452,13 +452,13 @@ test_that("frame ext survives plotIndex resize replay", {
   .Call(jgd:::C_jgd_poll_resize)
 
   dev.off()
-  msgs = server$collect()
+  msgs <- server$collect()
 
-  frames = Filter(
+  frames <- Filter(
     function(m) identical(m$type, "frame"),
     msgs
   )
-  resize_frames = Filter(
+  resize_frames <- Filter(
     function(f) {
       isTRUE(f$resizeReplay) && identical(f$plotIndex, 0L)
     },
@@ -469,7 +469,7 @@ test_that("frame ext survives plotIndex resize replay", {
     info = "Should have a plotIndex=0 resize replay frame"
   )
 
-  replay = resize_frames[[1]]
+  replay <- resize_frames[[1]]
   expect_false(
     is.null(replay$ext),
     info = paste(
@@ -486,27 +486,84 @@ test_that("frame ext survives plotIndex resize replay", {
   )
 })
 
+test_that("plotIndex replay preserves ext when later plot clears it", {
+  skip_on_cran()
+
+  server <- start_mock_server_frame_ext_plotindex()
+  withr::defer(server$cleanup())
+
+  jgd(
+    width = 4, height = 3, dpi = 72,
+    socket = server$socket_url
+  )
+
+  # Plot 1: with frame ext "blur"
+  jgd_frame_ext(
+    '{"postEffects":[{"type":"blur","radius":3}]}'
+  )
+  plot(1:3)
+
+  # Plot 2: clear frame ext
+  jgd_frame_ext(NULL)
+  plot(4:6)
+
+  # Wait for mock server to send plotIndex=0 resize
+  Sys.sleep(0.5)
+  .Call(jgd:::C_jgd_poll_resize)
+
+  dev.off()
+  msgs <- server$collect()
+
+  frames <- Filter(
+    function(m) identical(m$type, "frame"),
+    msgs
+  )
+  resize_frames <- Filter(
+    function(f) {
+      isTRUE(f$resizeReplay) && identical(f$plotIndex, 0L)
+    },
+    frames
+  )
+  expect_true(
+    length(resize_frames) >= 1,
+    info = "Should have a plotIndex=0 resize replay frame"
+  )
+
+  replay <- resize_frames[[1]]
+  expect_false(
+    is.null(replay$ext),
+    info = "plotIndex=0 replay should preserve plot 1's ext even when plot 2 cleared it"
+  )
+  expect_equal(
+    replay$ext$postEffects[[1]]$type, "blur",
+    info = "Should be plot 1's ext (blur)"
+  )
+  expect_equal(
+    replay$ext$postEffects[[1]]$radius, 3
+  )
+})
+
 # --- Independence test ---
 
 test_that("frame ext is independent of gc ext", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     jgd_frame_ext('{"postEffects":[{"type":"blur"}]}')
     jgd_ext('{"blendMode":"multiply"}')
     plot.new()
     rect(0, 0, 1, 1)
   })
 
-  frames = extract_frames(msgs)
-  frame = frames[[1]]
+  frames <- extract_frames(msgs)
+  frame <- frames[[1]]
 
   # Frame-level ext
   expect_false(is.null(frame$ext))
   expect_equal(frame$ext$postEffects[[1]]$type, "blur")
 
   # gc-level ext on drawing ops
-  rect_ops = extract_ops_by_type(msgs, "rect")
+  rect_ops <- extract_ops_by_type(msgs, "rect")
   expect_true(length(rect_ops) >= 1)
-  gc_ext = rect_ops[[1]]$gc$ext
+  gc_ext <- rect_ops[[1]]$gc$ext
   expect_false(is.null(gc_ext))
   expect_equal(gc_ext$blendMode, "multiply")
 })

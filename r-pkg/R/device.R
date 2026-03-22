@@ -212,7 +212,7 @@ with_jgd_group = function(ext, expr) {
         # (cb_newPage resets group_depth), the cleanup endGroup would
         # fail with "endGroup without matching beginGroup".  Suppress
         # that specific error so the original error (if any) propagates.
-        if (!identical(conditionMessage(e), "endGroup without matching beginGroup"))
+        if (!grepl("endGroup without matching beginGroup", conditionMessage(e), fixed = TRUE))
           stop(e)
       }
     )

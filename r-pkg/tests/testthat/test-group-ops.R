@@ -4,17 +4,17 @@
 # (non-incremental) frame with any subsequent incremental frames.
 # endGroup triggers its own incremental flush, so a single page's
 # ops may span multiple frames.
-last_complete_ops = function(msgs) {
-  frames = extract_frames(msgs)
-  full_idx = which(!vapply(frames, function(f) isTRUE(f$incremental), logical(1)))
+last_complete_ops <- function(msgs) {
+  frames <- extract_frames(msgs)
+  full_idx <- which(!vapply(frames, function(f) isTRUE(f$incremental), logical(1)))
   if (length(full_idx) == 0) return(list())
-  last_full = max(full_idx)
+  last_full <- max(full_idx)
   # Start from the complete frame's ops, then append any incremental deltas
-  all_ops = frames[[last_full]]$plot$ops
+  all_ops <- frames[[last_full]]$plot$ops
   if (last_full < length(frames)) {
     for (i in (last_full + 1):length(frames)) {
       if (isTRUE(frames[[i]]$incremental)) {
-        all_ops = c(all_ops, frames[[i]]$plot$ops)
+        all_ops <- c(all_ops, frames[[i]]$plot$ops)
       }
     }
   }
@@ -22,15 +22,15 @@ last_complete_ops = function(msgs) {
 }
 
 test_that("jgd_begin_group and jgd_end_group emit ops", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     jgd_begin_group('{"filter":"blur(5px)"}')
     rect(0, 0, 1, 1)
     jgd_end_group()
   })
 
-  ops = last_complete_ops(msgs)
-  op_types = vapply(ops, function(o) o$op, character(1))
+  ops <- last_complete_ops(msgs)
+  op_types <- vapply(ops, function(o) o$op, character(1))
 
   expect_true("beginGroup" %in% op_types)
   expect_true("endGroup" %in% op_types)
@@ -39,51 +39,51 @@ test_that("jgd_begin_group and jgd_end_group emit ops", {
 })
 
 test_that("beginGroup includes ext field", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     jgd_begin_group('{"filter":"blur(5px)","opacity":0.8}')
     rect(0, 0, 1, 1)
     jgd_end_group()
   })
 
-  ops = last_complete_ops(msgs)
-  begin_ops = Filter(function(o) identical(o$op, "beginGroup"), ops)
+  ops <- last_complete_ops(msgs)
+  begin_ops <- Filter(function(o) identical(o$op, "beginGroup"), ops)
   expect_length(begin_ops, 1)
 
-  ext = begin_ops[[1]]$ext
+  ext <- begin_ops[[1]]$ext
   expect_false(is.null(ext))
   expect_equal(ext$filter, "blur(5px)")
   expect_equal(ext$opacity, 0.8)
 })
 
 test_that("beginGroup with NULL ext has no ext field", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     jgd_begin_group(NULL)
     rect(0, 0, 1, 1)
     jgd_end_group()
   })
 
-  ops = last_complete_ops(msgs)
-  begin_ops = Filter(function(o) identical(o$op, "beginGroup"), ops)
+  ops <- last_complete_ops(msgs)
+  begin_ops <- Filter(function(o) identical(o$op, "beginGroup"), ops)
   expect_length(begin_ops, 1)
   expect_null(begin_ops[[1]]$ext)
 })
 
 test_that("with_jgd_group emits beginGroup and endGroup around expr", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     with_jgd_group('{"filter":"blur(3px)"}', {
       rect(0, 0, 1, 1)
     })
   })
 
-  ops = last_complete_ops(msgs)
-  op_types = vapply(ops, function(o) o$op, character(1))
+  ops <- last_complete_ops(msgs)
+  op_types <- vapply(ops, function(o) o$op, character(1))
 
-  bg_idx = which(op_types == "beginGroup")
-  eg_idx = which(op_types == "endGroup")
-  rect_idx = which(op_types == "rect")
+  bg_idx <- which(op_types == "beginGroup")
+  eg_idx <- which(op_types == "endGroup")
+  rect_idx <- which(op_types == "rect")
 
   expect_equal(length(bg_idx), 1)
   expect_equal(length(eg_idx), 1)
@@ -93,16 +93,16 @@ test_that("with_jgd_group emits beginGroup and endGroup around expr", {
 })
 
 test_that("with_jgd_group returns expr result", {
-  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd <- function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
   open_jgd()
   on.exit(dev.off(), add = TRUE)
 
-  result = with_jgd_group('{"opacity":0.5}', 42L)
+  result <- with_jgd_group('{"opacity":0.5}', 42L)
   expect_equal(result, 42L)
 })
 
 test_that("with_jgd_group emits endGroup even on error", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     tryCatch(
       with_jgd_group('{"opacity":0.5}', {
@@ -113,8 +113,8 @@ test_that("with_jgd_group emits endGroup even on error", {
     )
   })
 
-  ops = last_complete_ops(msgs)
-  op_types = vapply(ops, function(o) o$op, character(1))
+  ops <- last_complete_ops(msgs)
+  op_types <- vapply(ops, function(o) o$op, character(1))
 
   expect_equal(sum(op_types == "beginGroup"), 1)
   expect_equal(sum(op_types == "endGroup"), 1)
@@ -141,7 +141,7 @@ test_that("with_jgd_group re-throws non-matching endGroup errors", {
   # jgd_begin_group must succeed so we reach the on.exit cleanup.
   # Then we close the device inside expr, so jgd_end_group fails with
   # "no active graphics device" — a non-matching error that must propagate.
-  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd <- function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
   open_jgd()
   on.exit(graphics.off(), add = TRUE)
 
@@ -154,7 +154,7 @@ test_that("with_jgd_group re-throws non-matching endGroup errors", {
 })
 
 test_that("nested groups produce correct op sequence", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     jgd_begin_group('{"filter":"blur(5px)"}')
     rect(0, 0, 1, 1)
@@ -164,9 +164,9 @@ test_that("nested groups produce correct op sequence", {
     jgd_end_group()
   })
 
-  ops = last_complete_ops(msgs)
-  begin_ops = Filter(function(o) identical(o$op, "beginGroup"), ops)
-  end_ops = Filter(function(o) identical(o$op, "endGroup"), ops)
+  ops <- last_complete_ops(msgs)
+  begin_ops <- Filter(function(o) identical(o$op, "beginGroup"), ops)
+  end_ops <- Filter(function(o) identical(o$op, "endGroup"), ops)
 
   expect_length(begin_ops, 2)
   expect_length(end_ops, 2)
@@ -178,18 +178,18 @@ test_that("nested groups produce correct op sequence", {
 # --- Resize replay test ---
 
 # TCP mock server that sends a resize after the first newPage frame.
-start_mock_server_group_resize = function() {
+start_mock_server_group_resize <- function() {
   skip_if_not_installed("callr")
   skip_if_not_installed("jsonlite")
 
-  port_file = tempfile(
+  port_file <- tempfile(
     pattern = "jgd-grp-resize-port-",
     fileext = ".txt"
   )
 
-  bg = callr::r_bg(
+  bg <- callr::r_bg(
     function(port_file) {
-      safe_write = function(conn, text) {
+      safe_write <- function(conn, text) {
         tryCatch(
           {
             writeLines(text, conn)
@@ -199,17 +199,17 @@ start_mock_server_group_resize = function() {
         )
       }
 
-      server = NULL
-      port = NULL
+      server <- NULL
+      port <- NULL
       for (i in seq_len(20)) {
-        candidate = sample(10000L:60000L, 1L)
-        result = tryCatch(
+        candidate <- sample(10000L:60000L, 1L)
+        result <- tryCatch(
           serverSocket(candidate),
           error = function(e) NULL
         )
         if (!is.null(result)) {
-          server = result
-          port = candidate
+          server <- result
+          port <- candidate
           break
         }
       }
@@ -217,28 +217,28 @@ start_mock_server_group_resize = function() {
       on.exit(close(server), add = TRUE)
       writeLines(as.character(port), port_file)
 
-      conn = socketAccept(
+      conn <- socketAccept(
         server,
         blocking = TRUE,
         open = "r+"
       )
       on.exit(close(conn), add = TRUE)
 
-      messages = list()
-      new_page_count = 0L
-      resize_sent = FALSE
+      messages <- list()
+      new_page_count <- 0L
+      resize_sent <- FALSE
 
       repeat {
-        ready = socketSelect(list(conn), timeout = 5)
+        ready <- socketSelect(list(conn), timeout = 5)
         if (!ready) next
 
-        line = tryCatch(
+        line <- tryCatch(
           readLines(conn, n = 1),
           error = function(e) character(0)
         )
         if (length(line) == 0 || !nzchar(line)) next
 
-        msg = tryCatch(
+        msg <- tryCatch(
           jsonlite::fromJSON(
             line,
             simplifyVector = FALSE
@@ -246,12 +246,12 @@ start_mock_server_group_resize = function() {
           error = function(e) NULL
         )
         if (is.null(msg)) next
-        messages = c(messages, list(msg))
+        messages <- c(messages, list(msg))
 
         if (identical(msg$type, "metrics_request")) {
-          id = msg$id
-          resp = if (identical(msg$kind, "strWidth")) {
-            str = if (is.null(msg$str)) "" else msg$str
+          id <- msg$id
+          resp <- if (identical(msg$kind, "strWidth")) {
+            str <- if (is.null(msg$str)) "" else msg$str
             list(
               type = "metrics_response",
               id = id,
@@ -274,11 +274,11 @@ start_mock_server_group_resize = function() {
 
         if (identical(msg$type, "frame") &&
               isTRUE(msg$newPage)) {
-          new_page_count = new_page_count + 1L
+          new_page_count <- new_page_count + 1L
         }
 
         if (new_page_count >= 1L && !resize_sent) {
-          resize_sent = TRUE
+          resize_sent <- TRUE
           safe_write(conn, jsonlite::toJSON(list(
             type = "resize",
             width = 500L,
@@ -295,15 +295,15 @@ start_mock_server_group_resize = function() {
     supervise = TRUE
   )
 
-  port = NULL
+  port <- NULL
   for (i in seq_len(50)) {
     if (file.exists(port_file)) {
-      port_str = readLines(
+      port_str <- readLines(
         port_file, n = 1,
         warn = FALSE
       )
       if (length(port_str) > 0 && nzchar(port_str)) {
-        port = as.integer(port_str)
+        port <- as.integer(port_str)
         break
       }
     }
@@ -322,7 +322,7 @@ start_mock_server_group_resize = function() {
     ),
     collect = function(timeout = 15000) {
       bg$wait(timeout)
-      status = bg$get_exit_status()
+      status <- bg$get_exit_status()
       if (!is.null(status) && status != 0) {
         stop(
           "Mock server exited with error: ",
@@ -345,7 +345,7 @@ start_mock_server_group_resize = function() {
 test_that("group ops survive resize replay via recordGraphics", {
   skip_on_cran()
 
-  server = start_mock_server_group_resize()
+  server <- start_mock_server_group_resize()
   withr::defer(server$cleanup())
 
   jgd(
@@ -362,13 +362,13 @@ test_that("group ops survive resize replay via recordGraphics", {
   .Call(jgd:::C_jgd_poll_resize)
 
   dev.off()
-  msgs = server$collect()
+  msgs <- server$collect()
 
-  frames = Filter(
+  frames <- Filter(
     function(m) identical(m$type, "frame"),
     msgs
   )
-  resize_frames = Filter(
+  resize_frames <- Filter(
     function(f) isTRUE(f$resizeReplay),
     frames
   )
@@ -377,8 +377,8 @@ test_that("group ops survive resize replay via recordGraphics", {
     info = "Should have at least 1 resize replay frame"
   )
 
-  replay_ops = resize_frames[[1]]$plot$ops
-  op_types = vapply(
+  replay_ops <- resize_frames[[1]]$plot$ops
+  op_types <- vapply(
     replay_ops,
     function(o) if (is.null(o$op)) "" else o$op,
     character(1)
@@ -393,7 +393,7 @@ test_that("group ops survive resize replay via recordGraphics", {
     info = "endGroup should survive resize replay"
   )
 
-  begin_ops = Filter(
+  begin_ops <- Filter(
     function(o) identical(o$op, "beginGroup"),
     replay_ops
   )
@@ -406,7 +406,7 @@ test_that("group ops survive resize replay via recordGraphics", {
 # --- Input validation tests ---
 
 test_that("jgd_begin_group rejects invalid JSON", {
-  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd <- function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
   open_jgd()
   on.exit({ graphics.off() }, add = TRUE)
 
@@ -415,7 +415,7 @@ test_that("jgd_begin_group rejects invalid JSON", {
 })
 
 test_that("jgd_begin_group rejects non-string input", {
-  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd <- function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
   open_jgd()
   on.exit({ graphics.off() }, add = TRUE)
 
@@ -424,7 +424,7 @@ test_that("jgd_begin_group rejects non-string input", {
 })
 
 test_that("jgd_end_group errors without matching beginGroup", {
-  open_jgd = function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
+  open_jgd <- function() suppressWarnings(jgd(socket = "tcp://127.0.0.1:1"))
   open_jgd()
   on.exit({ graphics.off() }, add = TRUE)
 
@@ -435,7 +435,7 @@ test_that("jgd_end_group errors without matching beginGroup", {
 # --- Auto-close tests ---
 
 test_that("unclosed group is auto-closed at new page with warning", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     jgd_begin_group('{"opacity":0.5}')
     rect(0, 0, 1, 1)
@@ -446,25 +446,25 @@ test_that("unclosed group is auto-closed at new page with warning", {
 
   # Collect all ops from frames before the second page's first complete frame.
   # The auto-closed endGroup may be in an incremental frame.
-  frames = extract_frames(msgs)
-  full_frames = Filter(function(f) !isTRUE(f$incremental), frames)
+  frames <- extract_frames(msgs)
+  full_frames <- Filter(function(f) !isTRUE(f$incremental), frames)
   expect_true(length(full_frames) >= 2)
 
   # All ops up to (but not including) the second complete frame belong
   # to the first page (including auto-close incremental frames).
-  second_idx = which(vapply(
+  second_idx <- which(vapply(
     frames,
     function(f) !isTRUE(f$incremental),
     logical(1)
   ))[2]
-  first_page_frames = frames[seq_len(second_idx - 1)]
-  all_ops = unlist(
+  first_page_frames <- frames[seq_len(second_idx - 1)]
+  all_ops <- unlist(
     lapply(first_page_frames, function(f) f$plot$ops),
     recursive = FALSE
   )
-  op_types = vapply(all_ops, function(o) o$op, character(1))
-  begin_count = sum(op_types == "beginGroup")
-  end_count = sum(op_types == "endGroup")
+  op_types <- vapply(all_ops, function(o) o$op, character(1))
+  begin_count <- sum(op_types == "beginGroup")
+  end_count <- sum(op_types == "endGroup")
   expect_equal(begin_count, end_count,
     info = "Auto-close should balance beginGroup/endGroup")
 })
@@ -482,7 +482,7 @@ test_that("unclosed group is auto-closed at device close with warning", {
 })
 
 test_that("multiple unclosed groups are all auto-closed", {
-  msgs = with_mock_jgd({
+  msgs <- with_mock_jgd({
     plot.new()
     jgd_begin_group('{"opacity":0.5}')
     jgd_begin_group('{"filter":"blur(3px)"}')
@@ -493,19 +493,19 @@ test_that("multiple unclosed groups are all auto-closed", {
   })
 
   # Collect all first-page ops (including auto-close incremental frames)
-  frames = extract_frames(msgs)
-  full_indices = which(vapply(
+  frames <- extract_frames(msgs)
+  full_indices <- which(vapply(
     frames,
     function(f) !isTRUE(f$incremental),
     logical(1)
   ))
   expect_true(length(full_indices) >= 2)
-  first_page_frames = frames[seq_len(full_indices[2] - 1)]
-  all_ops = unlist(
+  first_page_frames <- frames[seq_len(full_indices[2] - 1)]
+  all_ops <- unlist(
     lapply(first_page_frames, function(f) f$plot$ops),
     recursive = FALSE
   )
-  op_types = vapply(all_ops, function(o) o$op, character(1))
+  op_types <- vapply(all_ops, function(o) o$op, character(1))
   expect_equal(
     sum(op_types == "beginGroup"),
     sum(op_types == "endGroup"),

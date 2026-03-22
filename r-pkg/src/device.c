@@ -375,7 +375,7 @@ SEXP C_jgd_begin_group(SEXP s_ext) {
 
     if (s_ext != R_NilValue) {
         const char *json = CHAR(STRING_ELT(s_ext, 0));
-        if (json[0]) {
+        if (json[0]) {  /* empty string "" treated as no-ext, same as NULL */
             cJSON *ext = cJSON_Parse(json);
             if (!ext) {
                 cJSON_Delete(op);
