@@ -89,6 +89,19 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
                  st->replaying, st->new_page);
     }
 
+    /* Auto-close unclosed groups before flushing the previous page.
+     * Rf_error is unsafe here (would corrupt device state during replay),
+     * so we warn and emit the missing endGroup ops into the current page. */
+    if (st->group_depth > 0 && st->page_count > 0 && !st->replaying) {
+        Rf_warning("jgd: %d unclosed group(s) at new page", st->group_depth);
+        while (st->group_depth > 0) {
+            cJSON *op = cJSON_CreateObject();
+            cJSON_AddStringToObject(op, "op", "endGroup");
+            page_add_op(&st->page, op);
+            st->group_depth--;
+        }
+    }
+
     if (st->page_count > 0 && st->page.op_count > st->last_flushed_ops && !st->replaying) {
         if (st->debug_frames)
             REprintf("[jgd] cb_newPage: flushing %d unflushed ops\n",
@@ -196,6 +209,17 @@ static void cb_close(pDevDesc dd) {
 
     /* Remove R input handler before closing the transport fd */
     jgd_remove_input_handler(st);
+
+    /* Auto-close unclosed groups before the final flush. */
+    if (st->group_depth > 0) {
+        Rf_warning("jgd: %d unclosed group(s) at device close", st->group_depth);
+        while (st->group_depth > 0) {
+            cJSON *op = cJSON_CreateObject();
+            cJSON_AddStringToObject(op, "op", "endGroup");
+            page_add_op(&st->page, op);
+            st->group_depth--;
+        }
+    }
 
     if (st->page.op_count > st->last_flushed_ops) {
         jgd_flush_frame(st, 0);
