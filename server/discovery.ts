@@ -54,7 +54,10 @@ export async function writeDiscovery(
   if (typeof serverName !== "string" || serverName.trim().length === 0) {
     throw new Error("serverName must be a non-empty string");
   }
-  if (serverInfo) {
+  if (serverInfo !== undefined) {
+    if (typeof serverInfo !== "object" || serverInfo === null || Array.isArray(serverInfo)) {
+      throw new Error("serverInfo must be a plain object");
+    }
     for (const [k, v] of Object.entries(serverInfo)) {
       if (typeof v !== "string") {
         throw new Error(`serverInfo value for "${k}" must be a string, got ${typeof v}`);
@@ -65,7 +68,7 @@ export async function writeDiscovery(
     serverName,
     socketPath,
     pid: Deno.pid,
-    ...(serverInfo && { serverInfo }),
+    ...(serverInfo !== undefined && { serverInfo }),
   };
   const content = new TextEncoder().encode(JSON.stringify(disc));
   const locations = discoveryLocations();
