@@ -32,10 +32,7 @@ async function atomicWrite(path: string, data: Uint8Array): Promise<void> {
  * - macOS:   ~/Library/Caches
  * - Windows: %LOCALAPPDATA%
  */
-// TODO: Make cacheDir injectable for test hermeticity (currently tests
-// override XDG_CACHE_HOME on Linux and LOCALAPPDATA on Windows;
-// macOS always uses ~/Library/Caches and ignores XDG_CACHE_HOME).
-function cacheDir(): string {
+export function cacheDir(): string {
   if (Deno.build.os === "windows") {
     const localAppData = Deno.env.get("LOCALAPPDATA");
     if (localAppData) return localAppData;
@@ -57,8 +54,9 @@ function cacheDir(): string {
 }
 
 /** Return the single discovery file path: <cache_dir>/jgd/discovery.json */
-function discoveryLocation(): string {
-  return join(cacheDir(), DISCOVERY_DIR, DISCOVERY_FILENAME);
+export function discoveryLocation(cacheDirOverride?: string): string {
+  const base = cacheDirOverride ?? cacheDir();
+  return join(base, DISCOVERY_DIR, DISCOVERY_FILENAME);
 }
 
 /**
@@ -69,6 +67,7 @@ export async function writeDiscovery(
   socketPath: string,
   serverName: string,
   serverInfo?: Record<string, string>,
+  cacheDirOverride?: string,
 ): Promise<string | null> {
   if (typeof serverName !== "string" || serverName.trim().length === 0) {
     throw new Error("serverName must be a non-empty string");
@@ -91,7 +90,7 @@ export async function writeDiscovery(
   };
   const content = new TextEncoder().encode(JSON.stringify(disc));
   try {
-    const loc = discoveryLocation();
+    const loc = discoveryLocation(cacheDirOverride);
     await Deno.mkdir(dirname(loc), { recursive: true });
     await atomicWrite(loc, content);
     console.error(`wrote discovery file: ${loc}`);

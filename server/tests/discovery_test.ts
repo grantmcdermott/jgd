@@ -7,27 +7,21 @@ async function writeDiscoveryOrFail(
   socketPath: string,
   serverName: string,
   serverInfo?: Record<string, string>,
+  cacheDirOverride?: string,
 ): Promise<string> {
-  const path = await writeDiscovery(socketPath, serverName, serverInfo);
+  const path = await writeDiscovery(socketPath, serverName, serverInfo, cacheDirOverride);
   assert(path !== null, "writeDiscovery should succeed");
   return path;
 }
 
 Deno.test("discovery file lifecycle", async (t) => {
-  const cacheDir = Deno.makeTempDirSync({ prefix: "jgd-disc-test-" });
-
-  // Override cache dir env vars so discovery writes to our test directory.
-  // XDG_CACHE_HOME for Linux, LOCALAPPDATA for Windows.
-  const origXdg = Deno.env.get("XDG_CACHE_HOME");
-  const origLocalAppData = Deno.env.get("LOCALAPPDATA");
-  Deno.env.set("XDG_CACHE_HOME", cacheDir);
-  Deno.env.set("LOCALAPPDATA", cacheDir);
+  const tmpCacheDir = Deno.makeTempDirSync({ prefix: "jgd-disc-test-" });
 
   try {
-    const discPath = join(cacheDir, "jgd", "discovery.json");
+    const discPath = join(tmpCacheDir, "jgd", "discovery.json");
 
     await t.step("removeDiscovery skips file owned by another PID", async () => {
-      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test", undefined, tmpCacheDir);
 
       const before = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(before.pid, Deno.pid);
@@ -54,6 +48,7 @@ Deno.test("discovery file lifecycle", async (t) => {
         "unix:///tmp/test.sock",
         "jgd-test",
         { httpUrl: "http://127.0.0.1:8080/" },
+        tmpCacheDir,
       );
 
       const content = JSON.parse(await Deno.readTextFile(discPath));
@@ -66,7 +61,7 @@ Deno.test("discovery file lifecycle", async (t) => {
     });
 
     await t.step("serverInfo is omitted when not provided", async () => {
-      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test", undefined, tmpCacheDir);
 
       const content = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(content.serverName, "jgd-test");
@@ -115,7 +110,7 @@ Deno.test("discovery file lifecycle", async (t) => {
     });
 
     await t.step("removeDiscovery deletes file owned by current PID", async () => {
-      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test");
+      const path = await writeDiscoveryOrFail("unix:///tmp/test.sock", "jgd-test", undefined, tmpCacheDir);
 
       const content = JSON.parse(await Deno.readTextFile(discPath));
       assertEquals(content.pid, Deno.pid);
@@ -131,18 +126,8 @@ Deno.test("discovery file lifecycle", async (t) => {
       }
     });
   } finally {
-    if (origXdg !== undefined) {
-      Deno.env.set("XDG_CACHE_HOME", origXdg);
-    } else {
-      Deno.env.delete("XDG_CACHE_HOME");
-    }
-    if (origLocalAppData !== undefined) {
-      Deno.env.set("LOCALAPPDATA", origLocalAppData);
-    } else {
-      Deno.env.delete("LOCALAPPDATA");
-    }
     try {
-      await Deno.remove(cacheDir, { recursive: true });
+      await Deno.remove(tmpCacheDir, { recursive: true });
     } catch { /* ignore */ }
   }
 });
