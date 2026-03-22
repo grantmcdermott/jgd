@@ -14,8 +14,12 @@ const SERVER_NAME = 'jgd-vscode';
  * - macOS:   ~/Library/Caches
  * - Windows: %LOCALAPPDATA%
  */
-// TODO: Make cacheDir injectable for test hermeticity (currently tests
-// use the real user cache directory).
+/**
+ * Return the cache directory following platform conventions:
+ * - Linux:   $XDG_CACHE_HOME or ~/.cache
+ * - macOS:   ~/Library/Caches
+ * - Windows: %LOCALAPPDATA%
+ */
 function cacheDir(): string {
     if (process.platform === 'win32') {
         return process.env['LOCALAPPDATA'] || path.join(os.homedir(), 'AppData', 'Local');
@@ -26,8 +30,9 @@ function cacheDir(): string {
     return process.env['XDG_CACHE_HOME'] || path.join(os.homedir(), '.cache');
 }
 
-export function discoveryPath(): string {
-    return path.join(cacheDir(), 'jgd', 'discovery.json');
+export function discoveryPath(cacheDirOverride?: string): string {
+    const base = cacheDirOverride ?? cacheDir();
+    return path.join(base, 'jgd', 'discovery.json');
 }
 
 export type ConnectionChangeListener = (count: number) => void;
@@ -59,7 +64,8 @@ export class SocketServer {
 
     constructor(
         private history: PlotHistory,
-        private webviewProvider: PlotWebviewProvider
+        private webviewProvider: PlotWebviewProvider,
+        private cacheDirOverride?: string,
     ) {}
 
     getSocketPath(): string {
@@ -147,7 +153,7 @@ export class SocketServer {
             pid: process.pid,
         });
 
-        const loc = discoveryPath();
+        const loc = discoveryPath(this.cacheDirOverride);
         try {
             fs.mkdirSync(path.dirname(loc), { recursive: true });
             fs.writeFileSync(loc, discoveryContent);
@@ -175,9 +181,10 @@ export class SocketServer {
         }
         // Only remove discovery file if it belongs to this process
         try {
-            const disc = JSON.parse(fs.readFileSync(discoveryPath(), 'utf-8'));
+            const loc = discoveryPath(this.cacheDirOverride);
+            const disc = JSON.parse(fs.readFileSync(loc, 'utf-8'));
             if (disc && disc.pid === process.pid) {
-                fs.unlinkSync(discoveryPath());
+                fs.unlinkSync(loc);
             }
         } catch { /* file missing or unreadable — ignore */ }
     }

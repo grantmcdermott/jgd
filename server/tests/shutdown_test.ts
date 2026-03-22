@@ -1,4 +1,5 @@
 import { assert } from "@std/assert";
+import { join } from "@std/path";
 import { TestServer } from "./helpers/server.ts";
 import { parseSocketUri } from "../socket_uri.ts";
 import { BrowserClient } from "./helpers/browser_client.ts";
@@ -49,9 +50,7 @@ Deno.test("graceful shutdown", async (t) => {
       }
 
       // Verify discovery file is cleaned up
-      // TODO: Use join() from @std/path instead of hard-coded "/" separator
-      // for Windows compatibility (tracked as part of cacheDir DI task).
-      const discPath = `${server.tmpDir}/jgd/discovery.json`;
+      const discPath = join(server.tmpDir, "jgd", "discovery.json");
       try {
         await Deno.readTextFile(discPath);
         assert(false, "Discovery file should be removed after shutdown");
