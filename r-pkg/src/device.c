@@ -337,6 +337,65 @@ static void do_play_display_list(void *data) {
     GEplayDisplayList(gdd);
 }
 
+/* Find grid state in a snapshot SEXP by looking for the pkgName="grid"
+ * attribute.  Returns the grid state VECSXP (with LENGTH >= 2) or
+ * R_NilValue if not found or malformed. */
+SEXP find_grid_state(SEXP snap) {
+    if (snap == R_NilValue || TYPEOF(snap) != VECSXP)
+        return R_NilValue;
+    for (int i = 1; i < LENGTH(snap); i++) {
+        SEXP st_i = VECTOR_ELT(snap, i);
+        if (st_i != R_NilValue && TYPEOF(st_i) == VECSXP &&
+            LENGTH(st_i) >= 2) {
+            SEXP pn = Rf_getAttrib(st_i, Rf_install("pkgName"));
+            if (pn != R_NilValue && TYPEOF(pn) == STRSXP &&
+                LENGTH(pn) >= 1 &&
+                strcmp(CHAR(STRING_ELT(pn, 0)), "grid") == 0)
+                return st_i;
+        }
+    }
+    return R_NilValue;
+}
+
+/* After GEplaySnapshot, force-restore grid's display list from the
+ * snapshot.  GE_RestoreSnapshotState skips the restore when the
+ * snapshot's grid DL index <= 1 (only root viewport).  This happens
+ * when the snapshot was captured before ggplot2/grid finished writing
+ * its DL entries.  We bypass that check by setting grid's DL and
+ * DL index directly via grid:::grid.Call(C_setDisplayList, ...). */
+static void restore_grid_dl_from_snapshot(jgd_state_t *st, SEXP snap,
+                                          SEXP grid_ns) {
+    SEXP grid_state = find_grid_state(snap);
+    if (grid_state == R_NilValue) return;
+    SEXP snap_dl  = VECTOR_ELT(grid_state, 0);
+    SEXP snap_idx = VECTOR_ELT(grid_state, 1);
+    if (snap_dl == R_NilValue) return;
+
+    int err = 0;
+    /* grid:::grid.Call(C_setDisplayList, snap_dl) */
+    SEXP set_dl_call = PROTECT(Rf_lang3(
+        Rf_install("grid.Call"),
+        Rf_install("C_setDisplayList"), snap_dl));
+    R_tryEval(set_dl_call, grid_ns, &err);
+    UNPROTECT(1);
+
+    if (!err && snap_idx != R_NilValue) {
+        /* grid:::grid.Call(C_setDLindex, snap_idx) */
+        SEXP set_idx_call = PROTECT(Rf_lang3(
+            Rf_install("grid.Call"),
+            Rf_install("C_setDLindex"), snap_idx));
+        R_tryEval(set_idx_call, grid_ns, &err);
+        UNPROTECT(1);
+    }
+
+    if (st->debug_frames)
+        REprintf("[jgd] restore_grid_dl_from_snapshot: dl=%p idx=%d err=%d\n",
+                 (void*)snap_dl,
+                 (snap_idx != R_NilValue && TYPEOF(snap_idx) == INTSXP)
+                     ? INTEGER(snap_idx)[0] : -1,
+                 err);
+}
+
 static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
     st->replaying = 1;
 
@@ -344,21 +403,56 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
      * reachable via snapshot_store or the caller's PROTECT frame,
      * R_ToplevelExec may trigger GC in a new top-level context. */
     PROTECT(snap);
+
+    if (st->debug_frames) {
+        SEXP gs = find_grid_state(snap);
+        if (gs != R_NilValue) {
+            SEXP gs_idx = VECTOR_ELT(gs, 1);
+            int idx = (gs_idx != R_NilValue && TYPEOF(gs_idx) == INTSXP)
+                      ? INTEGER(gs_idx)[0] : -1;
+            REprintf("[jgd] replay_snapshot: snap grid DL=%p index=%d\n",
+                     (void*)VECTOR_ELT(gs, 0), idx);
+        }
+    }
+
+    /* Record op count before GEplaySnapshot so we can detect whether
+     * it actually produced drawing ops (base DL replay) or not. */
+    int ops_before = st->page.op_count;
+
     replay_snapshot_args_t args = { snap, gdd };
     Rboolean ok = R_ToplevelExec(do_play_snapshot, &args);
-    UNPROTECT(1);
     if (!ok) {
         REprintf("[jgd] replay_snapshot: GEplaySnapshot failed (longjmp caught)\n");
+        UNPROTECT(1);
         st->replaying = 0;
         return;
     }
 
-    /* GEplaySnapshot only produces a clip op (~1-2 ops) when the base
-     * display list is empty, as with grid/ggplot2 plots.  In that case
-     * we need grid::grid.refresh() to redraw from grid's internal DL. */
-    if (st->page.op_count - st->last_flushed_ops <= 2) {
-        /* Use R_NamespaceRegistry lookup instead of R_FindNamespace to
-         * avoid longjmp on error (grid is a base package, always loaded). */
+    /* GEplaySnapshot replays the base display list.  For grid/ggplot2
+     * plots the base DL is empty, so GEplaySnapshot produces only a
+     * clip op (~0-2 ops) and does NOT call GE_RestoreState (which
+     * would trigger grid.newpage + initVP).  We detect this case and
+     * call grid::grid.refresh() to redraw from grid's internal DL.
+     *
+     * We also force-restore grid's DL from the snapshot, because
+     * GE_RestoreSnapshotState skips the restore when the snapshot's
+     * grid DL index <= 1 (only root viewport recorded).
+     *
+     * Compare against ops_before (not last_flushed_ops) to detect
+     * the empty-base-DL case correctly even when called mid-page
+     * (e.g. plotIndex resize where op_count is already high). */
+    int new_ops = st->page.op_count - ops_before;
+    if (st->debug_frames)
+        REprintf("[jgd] replay_snapshot: after GEplaySnapshot ops=%d ops_before=%d "
+                 "new_ops=%d\n",
+                 st->page.op_count, ops_before, new_ops);
+
+    /* If GEplaySnapshot produced very few NEW ops, the base DL was empty
+     * (grid/ggplot2 case) — need grid.refresh() to redraw.
+     * A negative new_ops means cb_newPage reset op_count during replay
+     * (base graphics path via GE_RestoreState → GENewPage), which is
+     * normal for base-graphics plots — no grid.refresh() needed. */
+    if (new_ops >= 0 && new_ops <= 2) {
 #if defined(R_VERSION) && R_VERSION >= R_Version(4, 5, 0)
         SEXP grid_ns = R_getVarEx(Rf_install("grid"), R_NamespaceRegistry, FALSE, R_UnboundValue);
 #else
@@ -366,6 +460,10 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
                                          Rf_install("grid"));
 #endif
         if (grid_ns != R_UnboundValue && grid_ns != R_NilValue) {
+            /* Force-restore grid DL from snapshot (bypasses the
+             * dlIndex > 1 gate in GE_RestoreSnapshotState). */
+            restore_grid_dl_from_snapshot(st, snap, grid_ns);
+
             SEXP refresh_sym = Rf_install("grid.refresh");
             SEXP call = PROTECT(Rf_lang1(refresh_sym));
             int err = 0;
@@ -377,6 +475,7 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
         }
     }
 
+    UNPROTECT(1);
     st->replaying = 0;
 }
 

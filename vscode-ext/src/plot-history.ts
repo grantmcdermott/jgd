@@ -103,7 +103,7 @@ export class PlotHistory {
         return true;
     }
 
-    replaceLatest(sessionId: string, plot: PlotFrame): boolean {
+    replaceLatest(sessionId: string, plot: PlotFrame, expectedRIndex?: number): boolean {
         const session = this.sessions.get(sessionId);
         if (session && session.latestDeleted) return false;
         if (!session || session.plots.length === 0) {
@@ -111,7 +111,17 @@ export class PlotHistory {
             return true;
         }
         const old = session.plots[session.plots.length - 1];
-        if (old?.rIndex !== undefined) plot.rIndex = old.rIndex;
+        // If expectedRIndex is provided, verify we're replacing the right plot.
+        // A new plot may have been added after the resize was sent, so the
+        // latest plot's rIndex won't match — skip the stale replacement.
+        if (expectedRIndex !== undefined && old?.rIndex !== undefined && old.rIndex !== expectedRIndex) {
+            return false;
+        }
+        if (old?.rIndex !== undefined) {
+            plot.rIndex = old.rIndex;
+        } else if (expectedRIndex !== undefined) {
+            plot.rIndex = expectedRIndex;
+        }
         session.plots[session.plots.length - 1] = plot;
         // Don't change currentIndex — user stays on their historical view
         this.activeSessionId = sessionId;

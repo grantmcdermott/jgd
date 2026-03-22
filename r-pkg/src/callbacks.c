@@ -26,6 +26,15 @@ static void jgd_capture_snapshot(jgd_state_t *st) {
     SEXP snap = GEcreateSnapshot(gdd);
     if (snap != R_NilValue) {
         PROTECT(snap);
+        if (st->debug_frames) {
+            SEXP gs = find_grid_state(snap);
+            if (gs != R_NilValue) {
+                SEXP idx = VECTOR_ELT(gs, 1);
+                REprintf("[jgd] capture_snapshot: grid DL index=%d page_count=%d ops=%d\n",
+                         (idx != R_NilValue && TYPEOF(idx) == INTSXP) ? INTEGER(idx)[0] : -1,
+                         st->page_count, st->page.op_count);
+            }
+        }
         if (st->last_snapshot != R_NilValue)
             R_ReleaseObject(st->last_snapshot);
         R_PreserveObject(snap);
@@ -87,9 +96,32 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         jgd_flush_frame(st, st->last_flushed_ops > 0 ? 1 : 0);
     }
 
-    /* Move the last_snapshot (captured when the complete frame was flushed)
-     * into the snapshot store.  R clears the display list before calling
-     * newPage, so GEcreateSnapshot here would capture an empty DL. */
+    /* For grid/ggplot2 plots, re-capture the snapshot now to get the
+     * complete grid DL (with dlIndex > 1).  The base DL was already
+     * cleared by GEinitDisplayList, but grid's own DL is still intact
+     * (it won't be cleared until C_initDisplayList runs later in
+     * grid.newpage).
+     *
+     * Only re-capture when the existing snapshot's grid DL index is
+     * incomplete (dlIndex <= 1).  If grid's DL is already complete
+     * or no grid state exists, keep the flush-time snapshot to
+     * preserve base DL content (important for base-only and mixed
+     * base+grid plots). */
+    if (st->page_count > 0 && !st->replaying &&
+        st->last_snapshot != R_NilValue) {
+        SEXP gs = find_grid_state(st->last_snapshot);
+        if (gs != R_NilValue) {
+            SEXP idx = VECTOR_ELT(gs, 1);
+            int dlIndex = (idx != R_NilValue && TYPEOF(idx) == INTSXP &&
+                           LENGTH(idx) > 0)
+                              ? INTEGER(idx)[0] : -1;
+            if (dlIndex <= 1)
+                jgd_capture_snapshot(st);
+        }
+    }
+    /* Store last_snapshot into snapshot_store for historical plot resizing.
+     * This guard duplicates the one above intentionally: jgd_capture_snapshot
+     * may have replaced last_snapshot, so we re-check that it is still valid. */
     if (st->page_count > 0 && !st->replaying && st->last_snapshot != R_NilValue) {
         if (st->snapshot_count >= JGD_MAX_SNAPSHOTS) {
             /* Shift snapshots and their ext strings left by one */
@@ -125,7 +157,8 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     double w_px = st->width * st->dpi;
     double h_px = st->height * st->dpi;
     page_init(&st->page, w_px, h_px, st->dpi, gc->fill);
-    st->page_count++;
+    if (!st->replaying)
+        st->page_count++;
     st->last_flushed_ops = 0;
     if (!st->replaying)
         st->new_page = 1;

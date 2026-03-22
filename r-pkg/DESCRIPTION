@@ -19,6 +19,7 @@ RoxygenNote: 7.3.3
 NeedsCompilation: yes
 Suggests:
     callr,
+    ggplot2,
     jsonlite,
     processx,
     testthat (>= 3.0.0),

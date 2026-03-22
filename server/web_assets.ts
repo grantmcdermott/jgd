@@ -139,14 +139,24 @@ export const assets: Record<string, { body: string; type: string }> = {
         return session.plots[session.currentIndex];
     };
 
-    PlotHistory.prototype.replaceLatest = function(sessionId, plot) {
+    PlotHistory.prototype.replaceLatest = function(sessionId, plot, expectedRIndex) {
         var session = this._sessions.get(sessionId);
         if (session && session.latestDeleted) return;
         if (!session || session.plots.length === 0) {
             return this.addPlot(sessionId, plot);
         }
         var old = session.plots[session.plots.length - 1];
-        if (old && old._rIndex !== undefined) plot._rIndex = old._rIndex;
+        // If expectedRIndex is provided, verify we're replacing the right plot.
+        // A new plot may have been added after the resize was sent, so the
+        // latest plot's _rIndex won't match — skip the stale replacement.
+        if (expectedRIndex !== undefined && old && old._rIndex !== undefined && old._rIndex !== expectedRIndex) {
+            return;
+        }
+        if (old && old._rIndex !== undefined) {
+            plot._rIndex = old._rIndex;
+        } else if (expectedRIndex !== undefined) {
+            plot._rIndex = expectedRIndex;
+        }
         session.plots[session.plots.length - 1] = plot;
         this._activeSessionId = sessionId;
         // Don't change currentIndex — user stays on their historical view
@@ -310,12 +320,15 @@ export const assets: Record<string, { body: string; type: string }> = {
             if (msg.plotIndex !== undefined) {
                 history.replaceAtIndex(sessionId, msg.plotIndex, plot);
             } else {
-                history.replaceLatest(sessionId, plot);
+                // Normal resize replay — use plotNumber to verify the replay
+                // targets the latest plot and not one that was superseded.
+                var expectedRIndex = (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) ? msg.plotNumber : undefined;
+                history.replaceLatest(sessionId, plot, expectedRIndex);
             }
         } else if (msg.incremental) {
             history.appendOps(sessionId, plot);
         } else {
-            if (typeof msg.plotNumber === 'number') {
+            if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
                 plot._rIndex = msg.plotNumber;
             }
             history.addPlot(sessionId, plot);

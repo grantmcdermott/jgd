@@ -359,6 +359,70 @@ describe('PlotHistory', () => {
         });
     });
 
+    // ---- replaceLatest with expectedRIndex (race condition guard) ----
+
+    describe('replaceLatest expectedRIndex guard', () => {
+        it('accepts replacement when expectedRIndex matches latest plot', () => {
+            const plot1 = makePlot('A');
+            plot1.rIndex = 0;
+            history.addPlot('s1', plot1);
+            const accepted = history.replaceLatest('s1', makePlot('A-resized', 800, 600), 0);
+            expect(accepted).toBe(true);
+            expect(history.currentPlot()?.device.width).toBe(800);
+        });
+
+        it('rejects replacement when expectedRIndex does not match latest plot', () => {
+            const plot1 = makePlot('A');
+            plot1.rIndex = 0;
+            history.addPlot('s1', plot1);
+            const plot2 = makePlot('B');
+            plot2.rIndex = 1;
+            history.addPlot('s1', plot2);
+            // Stale resize replay for plot 0 arrives after plot 1 was added
+            const accepted = history.replaceLatest('s1', makePlot('A-resized', 800, 600), 0);
+            expect(accepted).toBe(false);
+            // Plot B must be untouched
+            expect(history.currentPlot()?.device.bg).toBe('B');
+            expect(history.currentPlot()?.device.width).toBe(400);
+        });
+
+        it('accepts replacement when expectedRIndex is undefined (no guard)', () => {
+            const plot1 = makePlot('A');
+            plot1.rIndex = 0;
+            history.addPlot('s1', plot1);
+            const plot2 = makePlot('B');
+            plot2.rIndex = 1;
+            history.addPlot('s1', plot2);
+            // Without expectedRIndex, replacement proceeds unconditionally
+            const accepted = history.replaceLatest('s1', makePlot('X', 800, 600));
+            expect(accepted).toBe(true);
+            expect(history.currentPlot()?.device.bg).toBe('X');
+        });
+
+        it('accepts replacement when latest plot has no rIndex', () => {
+            history.addPlot('s1', makePlot('A')); // no rIndex set
+            // Even with expectedRIndex provided, if old has no rIndex, skip the guard
+            const accepted = history.replaceLatest('s1', makePlot('A-resized', 800, 600), 0);
+            expect(accepted).toBe(true);
+            expect(history.currentPlot()?.device.width).toBe(800);
+            // rIndex should be assigned from expectedRIndex when old plot lacks it
+            expect(history.currentPlot()?.rIndex).toBe(0);
+        });
+
+        it('does not emit change when rejected by expectedRIndex guard', () => {
+            const plot1 = makePlot('A');
+            plot1.rIndex = 0;
+            history.addPlot('s1', plot1);
+            const plot2 = makePlot('B');
+            plot2.rIndex = 1;
+            history.addPlot('s1', plot2);
+            let fired = 0;
+            history.onDidChange(() => fired++);
+            history.replaceLatest('s1', makePlot('stale'), 0);
+            expect(fired).toBe(0);
+        });
+    });
+
     // ---- Eviction ----
 
     describe('eviction', () => {

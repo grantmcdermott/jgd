@@ -390,10 +390,28 @@ function mapFontFamily(family) {
     return family + ', sans-serif';
 }
 
+let replayGeneration = 0;
+let replayChain = Promise.resolve();
+
 async function replay(plot) {
+    const gen = ++replayGeneration;
+    // Serialize replays so that a stale replay's ctx.restore() (in its
+    // finally block) completes before the next replay touches the canvas.
+    // Without this, overlapping replays corrupt the shared canvas state stack.
+    const run = () => doReplay(plot, gen);
+    replayChain = replayChain.then(run, run);
+    await replayChain;
+}
+
+async function doReplay(plot, gen) {
+    if (replayGeneration !== gen) return;
+
     const dpr = window.devicePixelRatio || 1;
     const containerW = container.clientWidth;
     const containerH = container.clientHeight;
+
+    // Skip if container not visible (zero dimensions)
+    if (containerW <= 0 || containerH <= 0) return;
 
     const plotW = plot.device.width;
     const plotH = plot.device.height;
@@ -413,17 +431,23 @@ async function replay(plot) {
     ctx.scale(dpr * scale, dpr * scale);
 
     ctx.save();
+    try {
+        if (plot.device.bg) {
+            ctx.fillStyle = plot.device.bg;
+            ctx.fillRect(0, 0, plotW, plotH);
+        } else {
+            ctx.clearRect(0, 0, plotW, plotH);
+        }
 
-    if (plot.device.bg) {
-        ctx.fillStyle = plot.device.bg;
-        ctx.fillRect(0, 0, plotW, plotH);
-    } else {
-        ctx.clearRect(0, 0, plotW, plotH);
-    }
-
-    const ops = plot.ops;
-    for (let i = 0; i < ops.length; i++) {
-        await renderOp(ctx, ops[i], plotH);
+        const ops = plot.ops;
+        for (let i = 0; i < ops.length; i++) {
+            if (replayGeneration !== gen) return;
+            await renderOp(ctx, ops[i], plotH);
+            if (replayGeneration !== gen) return;
+        }
+    } finally {
+        ctx.restore();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
     }
 }
 

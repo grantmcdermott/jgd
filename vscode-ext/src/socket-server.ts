@@ -215,7 +215,7 @@ export class SocketServer {
                         msg.plot.sessionId = session.id;
 
                         const isResizeReplay = !!msg.resizeReplay;
-                        const plotIndex = typeof msg.plotIndex === 'number' ? msg.plotIndex : undefined;
+                        const plotIndex = (typeof msg.plotIndex === 'number' && Number.isFinite(msg.plotIndex)) ? msg.plotIndex : undefined;
 
                         // R self-reports resize metadata:
                         //   resizeReplay:true  — frame from poll_resize_impl
@@ -224,11 +224,12 @@ export class SocketServer {
                         if (isResizeReplay && plotIndex !== undefined) {
                             accepted = this.history.replaceAtIndex(session.id, plotIndex, msg.plot);
                         } else if (isResizeReplay) {
-                            accepted = this.history.replaceLatest(session.id, msg.plot);
+                            const plotNumber = (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) ? msg.plotNumber : undefined;
+                            accepted = this.history.replaceLatest(session.id, msg.plot, plotNumber);
                         } else if (msg.incremental) {
                             accepted = this.history.appendOps(session.id, msg.plot);
                         } else {
-                            if (typeof msg.plotNumber === 'number') {
+                            if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
                                 msg.plot.rIndex = msg.plotNumber;
                             }
                             this.history.addPlot(session.id, msg.plot);
