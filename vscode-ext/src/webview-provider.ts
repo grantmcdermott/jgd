@@ -810,7 +810,7 @@ function svgEsc(s) { return s.replace(/&/g,'&amp;').replace(/[<]/g,'&lt;').repla
  *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
 const cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\))*$/;
 function isSafeCssFilter(s: string): boolean {
-    return cssFilterRe.test(s.trim());
+    return cssFilterRe.test(s.trim()) && !/url\s*\(/i.test(s);
 }
 
 function svgTag(name, attrs, selfClose) {

@@ -85,17 +85,6 @@ export const assets: Record<string, { body: string; type: string }> = {
         this._activeSessionId = sessionId;
     };
 
-    PlotHistory.prototype.replaceLatest = function(sessionId, plot) {
-        var session = this._sessions.get(sessionId);
-        if (!session || session.plots.length === 0) {
-            return this.addPlot(sessionId, plot);
-        }
-        var last = session.plots[session.plots.length - 1];
-        if (last && last._rIndex !== undefined) plot._rIndex = last._rIndex;
-        session.plots[session.plots.length - 1] = plot;
-        this._activeSessionId = sessionId;
-    };
-
     PlotHistory.prototype.appendOps = function(sessionId, plot) {
         var session = this._sessions.get(sessionId);
         if (session && session.latestDeleted) return;
@@ -924,7 +913,7 @@ function svgEsc(s) {
  *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
 var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\))*$/;
 function isSafeCssFilter(s) {
-    return typeof s === 'string' && cssFilterRe.test(s.trim());
+    return typeof s === 'string' && cssFilterRe.test(s.trim()) && !/url\s*\(/i.test(s);
 }
 
 function svgTag(name, attrs, selfClose) {
