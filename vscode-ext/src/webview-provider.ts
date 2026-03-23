@@ -436,7 +436,8 @@ function applyGlowEffect(ctx, effect) {
     const origCanvas = document.createElement('canvas');
     origCanvas.width = w;
     origCanvas.height = h;
-    origCanvas.getContext('2d')!.drawImage(ctx.canvas, 0, 0);
+    const origCtx = origCanvas.getContext('2d');
+    if (origCtx) origCtx.drawImage(ctx.canvas, 0, 0);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
@@ -638,6 +639,7 @@ async function renderOp(ctx, op, plotH, rc) {
             groupCanvas.width = ctx.canvas.width;
             groupCanvas.height = ctx.canvas.height;
             const groupCtx = groupCanvas.getContext('2d');
+            if (!groupCtx) break;
             groupCtx.setTransform(ctx.getTransform());
             groupCtx.save();
             if (rc.currentClip) {
@@ -860,16 +862,16 @@ function plotToSvg(plot, exportW, exportH) {
     }
 
     let clipId = 0;
-    const elementStack: {kind: string, attrs: string}[] = [];
+    const elementStack = [];
 
     for (const op of plot.ops) {
         switch (op.op) {
             case 'clip': {
                 /* Close elements back to (and including) the previous clip,
                  * saving any intervening groups to reopen afterwards. */
-                const reopenGroups: {kind: string, attrs: string}[] = [];
+                const reopenGroups = [];
                 while (elementStack.length > 0) {
-                    const top = elementStack.pop()!;
+                    const top = elementStack.pop();
                     s += svgClose('g') + '\\n';
                     if (top.kind === 'clip') break;
                     reopenGroups.unshift(top);

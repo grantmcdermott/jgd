@@ -782,6 +782,7 @@ async function renderOp(ctx, op, plotH, rc) {
             groupCanvas.width = ctx.canvas.width;
             groupCanvas.height = ctx.canvas.height;
             var groupCtx = groupCanvas.getContext('2d');
+            if (!groupCtx) break;
             groupCtx.setTransform(ctx.getTransform());
             groupCtx.save();
             if (rc.currentClip) {
