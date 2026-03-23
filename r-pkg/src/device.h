@@ -77,6 +77,11 @@ typedef struct {
      * is saved so that plotIndex replay can restore the correct ext. */
     char *snapshot_ext[JGD_MAX_SNAPSHOTS];
     int holdflush_captured;   /* 1 if cb_holdflush already captured a good snapshot */
+    int replay_newpage_done;  /* set after first cb_newPage in a replay; subsequent
+                               * cb_newPage calls during the same replay skip
+                               * page_free/page_init to avoid destroying ops
+                               * accumulated from base DL replay (caused by
+                               * lingering grid state triggering extra GENewPage). */
     int group_depth;          /* nesting depth of beginGroup/endGroup ops */
     /* Frame-level extension fields.  Similar lifecycle to ext_json/page_ext_json
      * but included once per frame (not per gc).  Set via C_jgd_set_frame_ext,

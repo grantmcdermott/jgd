@@ -545,6 +545,7 @@ static void restore_grid_dl_from_snapshot(jgd_state_t *st, SEXP snap,
 
 static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
     st->replaying = 1;
+    st->replay_newpage_done = 0;
 
     /* PROTECT snap during R_ToplevelExec: although snap is typically
      * reachable via snapshot_store or the caller's PROTECT frame,
@@ -688,8 +689,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         SEXP snap = VECTOR_ELT(st->snapshot_store, store_idx);
         SEXP current = PROTECT(GEcreateSnapshot(gdd));
 
-        /* Always log snapshot DL size for debugging plotIndex replay */
-        {
+        if (st->debug_frames) {
             REprintf("[jgd] poll_resize: plotIndex replay pi=%d store_idx=%d "
                      "snap_count=%d at %.0fx%.0f\n",
                      pi, store_idx, st->snapshot_count,

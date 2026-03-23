@@ -1,27 +1,23 @@
-# Tests that a plotIndex resize replay frame contains the CORRECT historical
-# plot's content, not the current (latest) plot's content.
+# Regression test for lines() disappearing on plotIndex resize replay.
 #
-# Bug: When viewing a historical plot and resizing, the replay frame should
-# contain the historical plot's drawing ops.  With grid-based packages
-# (ggplot2, ComplexHeatmap), the snapshot replay via GEplaySnapshot +
-# grid.refresh() may produce the wrong plot's content if the grid display
-# list is not correctly restored from the snapshot.
+# When plot(1:10); lines(1:10, col="red") is followed by hist(), navigating
+# back to plot 1 and resizing should preserve the lines() polyline ops.
 #
-# This test creates two ggplot2 plots with distinct titles ("PLOT_AAA" and
-# "PLOT_ZZZ"), sends a plotIndex=0 resize, and verifies the replay frame
-# contains text ops with "PLOT_AAA" (plot 1's title), not "PLOT_ZZZ".
+# This test is in a separate file from test-resize-plotindex-content.R to
+# avoid grid state contamination from ggplot2 tests that run in the same
+# file (ggplot2's grid state persists within a devtools::test() session and
+# interferes with GEplaySnapshot for base graphics).
 
 # TCP mock server that sends a plotIndex=0 resize after receiving two
 # newPage frames, then collects all messages including the replay.
-start_mock_server_plotindex_content = function() {
+start_mock_server_plotindex_lines = function() {
   skip_if_not_installed("callr")
   skip_if_not_installed("jsonlite")
 
-  port_file = tempfile(pattern = "jgd-pi-content-port-", fileext = ".txt")
+  port_file = tempfile(pattern = "jgd-pi-lines-port-", fileext = ".txt")
 
   bg = callr::r_bg(
     function(port_file) {
-      `%||%` = function(x, y) if (is.null(x)) y else x
       safe_write = function(conn, text) {
         tryCatch(
           { writeLines(text, conn); flush(conn) },
@@ -64,7 +60,7 @@ start_mock_server_plotindex_content = function() {
         if (identical(msg$type, "metrics_request")) {
           resp = if (identical(msg$kind, "strWidth")) {
             list(type = "metrics_response", id = msg$id,
-                 width = nchar(msg$str %||% "") * 8.0)
+                 width = nchar(if (is.null(msg$str)) "" else msg$str) * 8.0)
           } else {
             list(type = "metrics_response", id = msg$id,
                  ascent = 10.0, descent = 3.0, width = 8.0)
@@ -78,7 +74,6 @@ start_mock_server_plotindex_content = function() {
         }
 
         # After 2 newPage frames, send a plotIndex=0 resize
-        # (simulates browser viewing historical plot 1 and resizing)
         if (new_page_count >= 2L && !resize_sent) {
           resize_sent = TRUE
           safe_write(conn, jsonlite::toJSON(list(
@@ -129,31 +124,23 @@ start_mock_server_plotindex_content = function() {
   )
 }
 
-test_that("plotIndex resize replay contains the historical plot's content, not the current plot's", {
+test_that("plotIndex resize replay preserves lines() added after plot()", {
   skip_on_cran()
-  skip_if_not_installed("ggplot2")
 
-  server = start_mock_server_plotindex_content()
+  server = start_mock_server_plotindex_lines()
   withr::defer(server$cleanup())
 
   jgd(width = 4, height = 3, dpi = 72, socket = server$socket_url)
 
-  # Plot 1 with a distinctive title
-  set.seed(42)
-  d1 = data.frame(x = runif(5), y = runif(5))
-  print(ggplot2::ggplot(d1, ggplot2::aes(x, y)) +
-    ggplot2::geom_point() +
-    ggplot2::ggtitle("PLOT_AAA"))
+  # Plot 1: plot + lines (two drawing calls on the same page)
+  plot(1:10)
+  lines(1:10, col = "red", lwd = 3)
 
-  # Plot 2 with a different distinctive title
-  set.seed(99)
-  d2 = data.frame(x = runif(5), y = runif(5))
-  print(ggplot2::ggplot(d2, ggplot2::aes(x, y)) +
-    ggplot2::geom_point() +
-    ggplot2::ggtitle("PLOT_ZZZ"))
+  # Plot 2: hist (new page)
+  hist(rnorm(1000), col = "steelblue")
 
   # Wait for the mock server to send the plotIndex=0 resize
-  Sys.sleep(0.5)
+  Sys.sleep(1.5)
 
   # Process the plotIndex=0 resize
   .Call(jgd:::C_jgd_poll_resize)
@@ -170,21 +157,50 @@ test_that("plotIndex resize replay contains the historical plot's content, not t
   expect_true(length(resize_frames) >= 1,
     info = "Should have at least 1 plotIndex=0 resize replay frame")
 
-  # Extract all text ops from the replay frame
+  # Collect all ops from the replay (including incremental frames)
   replay_ops = resize_frames[[1]]$plot$ops
-  text_ops = Filter(function(o) identical(o$op, "text"), replay_ops)
-  text_strings = vapply(text_ops, function(o) if (is.null(o$str)) "" else o$str, character(1))
+  replay_idx = which(vapply(frames, function(f) {
+    isTRUE(f$resizeReplay) && identical(f$plotIndex, 0L)
+  }, logical(1)))[1]
+  if (replay_idx < length(frames)) {
+    for (j in (replay_idx + 1):length(frames)) {
+      if (isTRUE(frames[[j]]$incremental)) {
+        replay_ops = c(replay_ops, frames[[j]]$plot$ops)
+      } else {
+        break
+      }
+    }
+  }
 
-  # THE KEY ASSERTION: the replay frame must contain plot 1's title
-  expect_true("PLOT_AAA" %in% text_strings,
-    info = paste0(
-      "plotIndex=0 resize replay should contain plot 1's title 'PLOT_AAA'. ",
-      "Text ops found: [", paste(text_strings, collapse = ", "), "]"))
+  op_types = vapply(
+    replay_ops,
+    function(o) if (is.null(o$op)) "" else o$op,
+    character(1)
+  )
 
-  # And must NOT contain plot 2's title
-  expect_false("PLOT_ZZZ" %in% text_strings,
+  # The replay must contain polyline ops from lines()
+  expect_true("polyline" %in% op_types,
     info = paste0(
-      "plotIndex=0 resize replay should NOT contain plot 2's title 'PLOT_ZZZ'. ",
-      "Text ops found: [", paste(text_strings, collapse = ", "), "]"))
+      "plotIndex=0 resize replay should contain polyline ops from lines(). ",
+      "Ops found: [", paste(unique(op_types), collapse = ", "), "]"))
+
+  # Verify the polyline has the red color from lines()
+  polyline_ops = Filter(function(o) identical(o$op, "polyline"), replay_ops)
+  expect_true(length(polyline_ops) >= 1,
+    info = "Should have at least 1 polyline op")
+
+  # Check that at least one polyline has a red-ish color
+  # jgd may serialize as "#FF0000FF" or "rgba(255,0,0,1)"
+  has_red = any(vapply(polyline_ops, function(o) {
+    col = o$gc$col
+    if (is.null(col)) return(FALSE)
+    grepl("^#[Ff][Ff]0000", col) || grepl("rgba\\(255,\\s*0,\\s*0", col)
+  }, logical(1)))
+  expect_true(has_red,
+    info = paste0(
+      "plotIndex=0 replay should have a red polyline from lines(col='red'). ",
+      "polyline colors: [",
+      paste(vapply(polyline_ops, function(o) {
+        if (is.null(o$gc$col)) "NULL" else o$gc$col
+      }, character(1)), collapse = ", "), "]"))
 })
-

@@ -126,8 +126,9 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
      * dev.hold time the display list is fully populated, whereas here
      * (after GENewPage) the base DL is already NULL.  Re-capturing
      * now would overwrite the good snapshot with an empty one. */
-    REprintf("[jgd] cb_newPage: grid-recapture check: page_count=%d replaying=%d last_snap=%d holdflush=%d\n",
-             st->page_count, st->replaying, st->last_snapshot != R_NilValue, st->holdflush_captured);
+    if (st->debug_frames)
+        REprintf("[jgd] cb_newPage: grid-recapture check: page_count=%d replaying=%d last_snap=%d holdflush=%d\n",
+                 st->page_count, st->replaying, st->last_snapshot != R_NilValue, st->holdflush_captured);
     if (st->page_count > 0 && !st->replaying &&
         st->last_snapshot != R_NilValue && !st->holdflush_captured) {
         SEXP gs = find_grid_state(st->last_snapshot);
@@ -175,6 +176,17 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         st->last_snapshot = R_NilValue;
     }
 
+    /* During replay, the first cb_newPage sets up the page for the
+     * snapshot being replayed.  Subsequent cb_newPage calls (e.g. from
+     * lingering grid state triggering GENewPage via GE_RestoreSnapshotState)
+     * must NOT destroy the ops already accumulated from base DL replay. */
+    if (st->replaying && st->replay_newpage_done) {
+        if (st->debug_frames)
+            REprintf("[jgd] cb_newPage: skipping page reset during replay "
+                     "(ops=%d)\n", st->page.op_count);
+        return;
+    }
+
     if (st->page_count > 0) {
         page_free(&st->page);
     }
@@ -185,7 +197,9 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     double w_px = st->width * st->dpi;
     double h_px = st->height * st->dpi;
     page_init(&st->page, w_px, h_px, st->dpi, gc->fill);
-    if (!st->replaying)
+    if (st->replaying)
+        st->replay_newpage_done = 1;
+    else
         st->page_count++;
     st->last_flushed_ops = 0;
     st->group_depth = 0;
@@ -683,8 +697,9 @@ static int cb_holdflush(pDevDesc dd, int level) {
      * NULL (cleared by GENewPage).  After updating, clear last_snapshot
      * so cb_newPage does not re-store the stale snapshot. */
     if (old == 0 && new_level > 0) {
-        REprintf("[jgd] holdflush: dev.hold 0->1, capturing snapshot page_count=%d\n",
-                 st->page_count);
+        if (st->debug_frames)
+            REprintf("[jgd] holdflush: dev.hold 0->1, capturing snapshot page_count=%d\n",
+                     st->page_count);
         jgd_capture_snapshot(st);
         st->holdflush_captured = 1;
     }
