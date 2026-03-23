@@ -860,20 +860,31 @@ function plotToSvg(plot, exportW, exportH) {
     }
 
     let clipId = 0;
-    let inClip = false;
-    let svgGroupDepth = 0;
+    const elementStack: {kind: string, attrs: string}[] = [];
 
     for (const op of plot.ops) {
         switch (op.op) {
             case 'clip': {
-                if (inClip) s += svgClose('g') + '\\n';
+                /* Close elements back to (and including) the previous clip,
+                 * saving any intervening groups to reopen afterwards. */
+                const reopenGroups: {kind: string, attrs: string}[] = [];
+                while (elementStack.length > 0) {
+                    const top = elementStack.pop()!;
+                    s += svgClose('g') + '\\n';
+                    if (top.kind === 'clip') break;
+                    reopenGroups.unshift(top);
+                }
                 clipId++;
                 const cw = op.x1 - op.x0, ch = op.y1 - op.y0;
                 const cx = Math.min(op.x0, op.x1), cy = Math.min(op.y0, op.y1);
                 const aw = Math.abs(cw), ah = Math.abs(ch);
                 s += svgTag('defs') + svgTag('clipPath', ' id="c' + clipId + '"') + svgTag('rect', ' x="' + cx + '" y="' + cy + '" width="' + aw + '" height="' + ah + '"', true) + svgClose('clipPath') + svgClose('defs') + '\\n';
                 s += svgTag('g', ' clip-path="url(#c' + clipId + ')"') + '\\n';
-                inClip = true;
+                elementStack.push({kind: 'clip', attrs: ''});
+                for (const g of reopenGroups) {
+                    s += svgTag('g', g.attrs) + '\\n';
+                    elementStack.push(g);
+                }
                 break;
             }
             case 'line':
@@ -949,20 +960,19 @@ function plotToSvg(plot, exportW, exportH) {
                     if (op.ext.filter != null && isSafeCssFilter(op.ext.filter)) gAttrs += ' style="filter:' + svgEsc(op.ext.filter) + ';"';
                 }
                 s += svgTag('g', gAttrs) + '\\n';
-                svgGroupDepth++;
+                elementStack.push({kind: 'group', attrs: gAttrs});
                 break;
             }
             case 'endGroup':
-                if (svgGroupDepth > 0) {
+                if (elementStack.length > 0 && elementStack[elementStack.length - 1].kind === 'group') {
+                    elementStack.pop();
                     s += svgClose('g') + '\\n';
-                    svgGroupDepth--;
                 }
                 break;
         }
     }
 
-    while (svgGroupDepth > 0) { s += svgClose('g') + '\\n'; svgGroupDepth--; }
-    if (inClip) s += svgClose('g') + '\\n';
+    while (elementStack.length > 0) { elementStack.pop(); s += svgClose('g') + '\\n'; }
     s += svgClose('svg');
     return s;
 }

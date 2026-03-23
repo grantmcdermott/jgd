@@ -187,9 +187,10 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         return;
     }
 
-    if (st->page_count > 0) {
-        page_free(&st->page);
-    }
+    /* Always free the previous page's ops.  The page is initialized in
+     * C_jgd via page_init(), so even on the first cb_newPage (page_count==0)
+     * there is a valid ops array to free. */
+    page_free(&st->page);
 
     check_incoming(st, dd);
     apply_pending_resize(st, dd);
