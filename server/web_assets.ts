@@ -577,7 +577,8 @@ function applyGlowEffect(ctx, effect) {
     origCanvas.width = w;
     origCanvas.height = h;
     var origCtx = origCanvas.getContext('2d');
-    if (origCtx) origCtx.drawImage(ctx.canvas, 0, 0);
+    if (!origCtx) return;
+    origCtx.drawImage(ctx.canvas, 0, 0);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     // Draw blurred+bright version onto main canvas (replaces content)
@@ -898,20 +899,22 @@ function renderToOffscreen(plot, width, height) {
             var currentCtx = rc.groupStack.length > 0 ? rc.groupStack[rc.groupStack.length - 1].ctx : offCtx;
             await renderOp(currentCtx, plot.ops[i], plotH, rc);
         }
-        // Reset extended canvas state before post-effects to avoid
-        // residual globalAlpha/composite/shadow/filter from the last op.
-        offCtx.globalAlpha = 1;
-        offCtx.globalCompositeOperation = 'source-over';
-        offCtx.shadowBlur = 0;
-        offCtx.shadowColor = 'transparent';
-        offCtx.shadowOffsetX = 0;
-        offCtx.shadowOffsetY = 0;
-        offCtx.filter = 'none';
+        // Apply frame-level post-effects on a fresh, unclipped canvas
+        // to avoid any residual clipping region from the ops replay.
+        var exportCanvas = offscreen;
         if (plot._frameExt && plot._frameExt.postEffects) {
-            applyPostEffects(offCtx, plot._frameExt.postEffects);
+            var fxCanvas = document.createElement('canvas');
+            fxCanvas.width = offscreen.width;
+            fxCanvas.height = offscreen.height;
+            var fxCtx = fxCanvas.getContext('2d');
+            if (fxCtx) {
+                fxCtx.drawImage(offscreen, 0, 0);
+                applyPostEffects(fxCtx, plot._frameExt.postEffects);
+                exportCanvas = fxCanvas;
+            }
         }
         return new Promise(function(resolve) {
-            offscreen.toBlob(function(blob) { resolve(blob); }, 'image/png');
+            exportCanvas.toBlob(function(blob) { resolve(blob); }, 'image/png');
         });
     })();
 }

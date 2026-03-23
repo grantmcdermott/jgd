@@ -437,7 +437,8 @@ function applyGlowEffect(ctx, effect) {
     origCanvas.width = w;
     origCanvas.height = h;
     const origCtx = origCanvas.getContext('2d');
-    if (origCtx) origCtx.drawImage(ctx.canvas, 0, 0);
+    if (!origCtx) return;
+    origCtx.drawImage(ctx.canvas, 0, 0);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, w, h);
@@ -792,19 +793,21 @@ function handleExport(format, exportW, exportH) {
                 const curCtx = rc.groupStack.length > 0 ? rc.groupStack[rc.groupStack.length - 1].ctx : offCtx;
                 await renderOp(curCtx, op, plotH, rc);
             }
-            // Reset extended canvas state before post-effects to avoid
-            // residual globalAlpha/composite/shadow/filter from the last op.
-            offCtx.globalAlpha = 1;
-            offCtx.globalCompositeOperation = 'source-over';
-            offCtx.shadowBlur = 0;
-            offCtx.shadowColor = 'transparent';
-            offCtx.shadowOffsetX = 0;
-            offCtx.shadowOffsetY = 0;
-            offCtx.filter = 'none';
+            // Apply frame-level post-effects on a fresh, unclipped canvas
+            // to avoid any residual clipping region from the ops replay.
+            let exportCanvas: HTMLCanvasElement = offscreen;
             if (currentPlot.frameExt && currentPlot.frameExt.postEffects) {
-                applyPostEffects(offCtx, currentPlot.frameExt.postEffects);
+                const postCanvas = document.createElement('canvas');
+                postCanvas.width = offscreen.width;
+                postCanvas.height = offscreen.height;
+                const postCtx = postCanvas.getContext('2d');
+                if (postCtx) {
+                    postCtx.drawImage(offscreen, 0, 0);
+                    applyPostEffects(postCtx, currentPlot.frameExt.postEffects);
+                    exportCanvas = postCanvas;
+                }
             }
-            offscreen.toBlob((blob) => {
+            exportCanvas.toBlob((blob) => {
                 if (!blob) return;
                 const reader = new FileReader();
                 reader.onload = () => {
