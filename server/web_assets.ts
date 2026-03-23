@@ -915,7 +915,7 @@ var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate
 function isSafeCssFilter(s) {
     if (typeof s !== 'string') return false;
     var trimmed = s.trim();
-    return cssFilterRe.test(trimmed) && !/url\s*\(/i.test(trimmed);
+    return cssFilterRe.test(trimmed) && !/url\\s*\\(/i.test(trimmed);
 }
 
 function svgTag(name, attrs, selfClose) {
