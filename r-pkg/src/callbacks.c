@@ -110,35 +110,68 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         jgd_flush_frame(st, st->last_flushed_ops > 0 ? 1 : 0);
     }
 
-    /* For grid/ggplot2 plots, re-capture the snapshot now to get the
-     * complete grid DL (with dlIndex > 1).  The base DL was already
-     * cleared by GEinitDisplayList, but grid's own DL is still intact
-     * (it won't be cleared until C_initDisplayList runs later in
-     * grid.newpage).
+    /* Replace last_snapshot with the GE engine's savedSnapshot when a
+     * deferred snapshot is pending.  GEinitDisplayList (which runs
+     * inside GENewPage before this callback) saves a complete snapshot
+     * — including the final DL entry that cb_mode(0) missed — before
+     * clearing the display list.  This is the only way to get a
+     * complete base DL for the base→grid transition (e.g. abline
+     * followed by ggplot2) where no dev.hold fires before GENewPage.
      *
-     * Only re-capture when the existing snapshot's grid DL index is
-     * incomplete (dlIndex <= 1).  If grid's DL is already complete
-     * or no grid state exists, keep the flush-time snapshot to
-     * preserve base DL content (important for base-only and mixed
-     * base+grid plots).
+     * For base→base transitions, cb_holdflush already re-captured the
+     * snapshot and cleared snapshot_pending, so this block is skipped.
      *
-     * Skip if cb_holdflush already captured a complete snapshot: at
-     * dev.hold time the display list is fully populated, whereas here
-     * (after GENewPage) the base DL is already NULL.  Re-capturing
-     * now would overwrite the good snapshot with an empty one. */
+     * For grid/ggplot2 plots whose grid DL index is incomplete
+     * (dlIndex <= 1), we additionally re-capture via GEcreateSnapshot
+     * to pick up the updated grid state (grid's own DL survives
+     * GEinitDisplayList and won't be cleared until grid.newpage's
+     * C_initDisplayList). */
+    /* Replace last_snapshot with GE's savedSnapshot.  GEinitDisplayList
+     * (inside GENewPage, before this callback) saves a complete snapshot
+     * — including the final DL entry that cb_mode(0) missed — before
+     * clearing the base display list.
+     *
+     * The cb_mode(0) snapshot may be one entry short because R's
+     * GErecordGraphicOperation runs AFTER mode(0).  For base→base
+     * transitions, cb_holdflush (dev.hold 0→1) re-captures a complete
+     * snapshot.  For base→grid transitions (e.g. abline followed by
+     * ggplot2), grid.newpage() goes directly to GENewPage without
+     * dev.hold, so savedSnapshot is the only source of a complete DL.
+     *
+     * Skip if cb_holdflush already captured a complete snapshot
+     * (holdflush_captured=1) — that snapshot is authoritative.
+     *
+     * For grid/ggplot2 plots whose grid DL index is incomplete
+     * (dlIndex <= 1), additionally re-capture via GEcreateSnapshot to
+     * pick up the updated grid state (grid's own DL survives
+     * GEinitDisplayList and won't be cleared until grid.newpage's
+     * C_initDisplayList). */
     if (st->debug_frames)
-        REprintf("[jgd] cb_newPage: grid-recapture check: page_count=%d replaying=%d last_snap=%d holdflush=%d\n",
-                 st->page_count, st->replaying, st->last_snapshot != R_NilValue, st->holdflush_captured);
-    if (st->page_count > 0 && !st->replaying &&
-        st->last_snapshot != R_NilValue && !st->holdflush_captured) {
-        SEXP gs = find_grid_state(st->last_snapshot);
-        if (gs != R_NilValue) {
-            SEXP idx = VECTOR_ELT(gs, 1);
-            int dlIndex = (idx != R_NilValue && TYPEOF(idx) == INTSXP &&
-                           LENGTH(idx) > 0)
-                              ? INTEGER(idx)[0] : -1;
-            if (dlIndex >= 0 && dlIndex <= 1)
-                jgd_capture_snapshot(st);
+        REprintf("[jgd] cb_newPage: snapshot fixup: page_count=%d replaying=%d "
+                 "last_snap=%d holdflush=%d\n",
+                 st->page_count, st->replaying, st->last_snapshot != R_NilValue,
+                 st->holdflush_captured);
+    if (st->page_count > 0 && !st->replaying && !st->holdflush_captured) {
+        pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
+        if (gdd->savedSnapshot != R_NilValue && st->last_snapshot != R_NilValue) {
+            if (st->debug_frames)
+                REprintf("[jgd] cb_newPage: using GE savedSnapshot for complete DL\n");
+            R_ReleaseObject(st->last_snapshot);
+            R_PreserveObject(gdd->savedSnapshot);
+            st->last_snapshot = gdd->savedSnapshot;
+        }
+        /* For grid plots with incomplete DL index, re-capture to get
+         * the updated grid state (grid's DL survives GEinitDisplayList). */
+        if (st->last_snapshot != R_NilValue) {
+            SEXP gs = find_grid_state(st->last_snapshot);
+            if (gs != R_NilValue) {
+                SEXP idx = VECTOR_ELT(gs, 1);
+                int dlIndex = (idx != R_NilValue && TYPEOF(idx) == INTSXP &&
+                               LENGTH(idx) > 0)
+                                  ? INTEGER(idx)[0] : -1;
+                if (dlIndex >= 0 && dlIndex <= 1)
+                    jgd_capture_snapshot(st);
+            }
         }
     }
     st->holdflush_captured = 0;
@@ -665,9 +698,11 @@ static void cb_mode(int mode, pDevDesc dd) {
             st->last_flushed_ops = st->page.op_count;
             /* Capture a snapshot after every flush so the latest display
              * list state is always available for historical plot resizing.
-             * ggplot2/grid sends many incremental frames; capturing only on
-             * complete frames would leave an incomplete snapshot (just the
-             * initial page setup), producing a white image on replay. */
+             * Note: this snapshot may be one DL entry short because R's
+             * GErecordGraphicOperation runs AFTER mode(0).  For base→base
+             * transitions, cb_holdflush (dev.hold 0→1) re-captures the
+             * complete DL.  For base→grid transitions, cb_newPage uses
+             * GE's savedSnapshot to fix this up. */
             jgd_capture_snapshot(st);
         }
     }

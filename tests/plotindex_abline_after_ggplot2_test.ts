@@ -27,16 +27,6 @@ import { checkRAvailable, startR } from "./helpers/r_process.ts";
 
 const rAvailable = await checkRAvailable();
 
-/**
- * Check whether a frame's ops contain at least one "line" op
- * (used to detect abline's regression line).
- */
-function hasLineOp(frame: FrameMessage): boolean {
-  return (frame.plot.ops as Array<Record<string, unknown>>).some(
-    (op) => op.op === "line",
-  );
-}
-
 Deno.test({
   name: "E2E: abline survives plotIndex resize when ggplot2 is the next plot",
   ignore: !rAvailable,
@@ -122,7 +112,9 @@ Deno.test({
           if (op.op !== "line") return false;
           const gc = op.gc as Record<string, unknown> | undefined;
           const col = (gc?.col as string | undefined) ?? "";
-          return col.toLowerCase().includes("ff0000");
+          // Color may be "#ff0000", "rgba(255,0,0,1)", etc.
+          return col.toLowerCase().includes("ff0000") ||
+            col.includes("255,0,0");
         });
         assert(
           redLineOps.length > 0,
