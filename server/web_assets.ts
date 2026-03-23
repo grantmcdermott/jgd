@@ -576,7 +576,8 @@ function applyGlowEffect(ctx, effect) {
     var origCanvas = document.createElement('canvas');
     origCanvas.width = w;
     origCanvas.height = h;
-    origCanvas.getContext('2d').drawImage(ctx.canvas, 0, 0);
+    var origCtx = origCanvas.getContext('2d');
+    if (origCtx) origCtx.drawImage(ctx.canvas, 0, 0);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     // Draw blurred+bright version onto main canvas (replaces content)
@@ -912,7 +913,7 @@ function svgEsc(s) {
 /** Validate that a CSS filter string contains only known filter functions.
  *  Allows one level of nested parentheses for color functions in drop-shadow,
  *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
-var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\))*$/;
+var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\)(?:\\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\))*$/;
 function isSafeCssFilter(s) {
     if (typeof s !== 'string') return false;
     var trimmed = s.trim();
