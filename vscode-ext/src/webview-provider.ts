@@ -795,7 +795,7 @@ function handleExport(format, exportW, exportH) {
             }
             // Apply frame-level post-effects on a fresh, unclipped canvas
             // to avoid any residual clipping region from the ops replay.
-            let exportCanvas: HTMLCanvasElement = offscreen;
+            let exportCanvas = offscreen;
             if (currentPlot.frameExt && currentPlot.frameExt.postEffects) {
                 const postCanvas = document.createElement('canvas');
                 postCanvas.width = offscreen.width;
