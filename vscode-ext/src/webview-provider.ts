@@ -628,11 +628,14 @@ async function renderOp(ctx, op, plotH, rc) {
             break;
         }
         case 'clip': {
-            /* Only update the root-level clip tracker when outside groups.
-             * Inside a group, the clip applies to the group canvas only and
-             * should not leak to subsequent groups after endGroup. */
-            if (rc.groupStack.length === 0)
-                rc.currentClip = { x0: op.x0, y0: op.y0, x1: op.x1, y1: op.y1 };
+            const clipRect = { x0: op.x0, y0: op.y0, x1: op.x1, y1: op.y1 };
+            if (rc.groupStack.length > 0) {
+                /* Inside a group: update the top group's clip so nested
+                 * beginGroup inherits the correct in-group clip. */
+                rc.groupStack[rc.groupStack.length - 1].clip = clipRect;
+            } else {
+                rc.currentClip = clipRect;
+            }
             ctx.restore();
             ctx.save();
             ctx.beginPath();
@@ -648,18 +651,25 @@ async function renderOp(ctx, op, plotH, rc) {
             if (!groupCtx) break;
             groupCtx.setTransform(ctx.getTransform());
             groupCtx.save();
-            if (rc.currentClip) {
+            /* Use the current level's clip: if inside a group, use that
+             * group's clip (which may have been updated by an in-group clip
+             * op); otherwise use the root-level clip. */
+            const activeClip = rc.groupStack.length > 0
+                ? (rc.groupStack[rc.groupStack.length - 1].clip || rc.currentClip)
+                : rc.currentClip;
+            if (activeClip) {
                 groupCtx.beginPath();
-                groupCtx.rect(rc.currentClip.x0, rc.currentClip.y0,
-                              rc.currentClip.x1 - rc.currentClip.x0,
-                              rc.currentClip.y1 - rc.currentClip.y0);
+                groupCtx.rect(activeClip.x0, activeClip.y0,
+                              activeClip.x1 - activeClip.x0,
+                              activeClip.y1 - activeClip.y0);
                 groupCtx.clip();
             }
             rc.groupStack.push({
                 parentCtx: ctx,
                 ctx: groupCtx,
                 canvas: groupCanvas,
-                ext: op.ext || null
+                ext: op.ext || null,
+                clip: null
             });
             break;
         }
@@ -873,14 +883,14 @@ function plotToSvg(plot, exportW, exportH) {
     for (const op of plot.ops) {
         switch (op.op) {
             case 'clip': {
-                /* Close elements back to (and including) the previous clip,
-                 * saving any intervening groups to reopen afterwards. */
-                const reopenGroups = [];
+                /* Close back to the previous clip, but stop at a group
+                 * boundary so clips inside groups don't escape. */
                 while (elementStack.length > 0) {
-                    const top = elementStack.pop();
+                    const top = elementStack[elementStack.length - 1];
+                    if (top.kind === 'group') break;
+                    elementStack.pop();
                     s += svgClose('g') + '\\n';
                     if (top.kind === 'clip') break;
-                    reopenGroups.unshift(top);
                 }
                 clipId++;
                 const cw = op.x1 - op.x0, ch = op.y1 - op.y0;
@@ -889,10 +899,6 @@ function plotToSvg(plot, exportW, exportH) {
                 s += svgTag('defs') + svgTag('clipPath', ' id="c' + clipId + '"') + svgTag('rect', ' x="' + cx + '" y="' + cy + '" width="' + aw + '" height="' + ah + '"', true) + svgClose('clipPath') + svgClose('defs') + '\\n';
                 s += svgTag('g', ' clip-path="url(#c' + clipId + ')"') + '\\n';
                 elementStack.push({kind: 'clip', attrs: ''});
-                for (const g of reopenGroups) {
-                    s += svgTag('g', g.attrs) + '\\n';
-                    elementStack.push(g);
-                }
                 break;
             }
             case 'line':
@@ -972,6 +978,11 @@ function plotToSvg(plot, exportW, exportH) {
                 break;
             }
             case 'endGroup':
+                /* Close any clips opened within this group, then the group itself. */
+                while (elementStack.length > 0 && elementStack[elementStack.length - 1].kind === 'clip') {
+                    elementStack.pop();
+                    s += svgClose('g') + '\\n';
+                }
                 if (elementStack.length > 0 && elementStack[elementStack.length - 1].kind === 'group') {
                     elementStack.pop();
                     s += svgClose('g') + '\\n';
