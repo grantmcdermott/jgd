@@ -550,7 +550,7 @@ function applyGc(ctx, gc) {
             if (gc.ext.shadow.offsetX != null) ctx.shadowOffsetX = gc.ext.shadow.offsetX;
             if (gc.ext.shadow.offsetY != null) ctx.shadowOffsetY = gc.ext.shadow.offsetY;
         }
-        if (gc.ext.filter != null) ctx.filter = gc.ext.filter;
+        if (gc.ext.filter != null && isSafeCssFilter(gc.ext.filter)) ctx.filter = gc.ext.filter;
     }
 }
 
@@ -816,7 +816,7 @@ async function renderOp(ctx, op, plotH, rc) {
             var parentCtx = group.parentCtx;
             parentCtx.save();
             if (group.ext) {
-                if (group.ext.filter != null) parentCtx.filter = group.ext.filter;
+                if (group.ext.filter != null && isSafeCssFilter(group.ext.filter)) parentCtx.filter = group.ext.filter;
                 if (group.ext.opacity != null) parentCtx.globalAlpha = group.ext.opacity;
                 if (group.ext.blendMode != null) parentCtx.globalCompositeOperation = group.ext.blendMode;
                 if (group.ext.shadow) {
@@ -919,8 +919,10 @@ function svgEsc(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-/** Validate that a CSS filter string contains only known filter functions. */
-var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia|url)\s*\([^)]*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia|url)\s*\([^)]*\))*$/;
+/** Validate that a CSS filter string contains only known filter functions.
+ *  Allows one level of nested parentheses for color functions in drop-shadow,
+ *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
+var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\))*$/;
 function isSafeCssFilter(s) {
     return typeof s === 'string' && cssFilterRe.test(s.trim());
 }
