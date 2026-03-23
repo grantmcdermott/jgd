@@ -789,6 +789,7 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * This prevents the browser from receiving untagged incremental frames
          * that would be misrouted (appendOps to the wrong history slot). */
         st->replaying = 1;
+        st->replay_newpage_done = 0;
         Rboolean ok = R_ToplevelExec(do_play_display_list, gdd);
         st->replaying = 0;
 
