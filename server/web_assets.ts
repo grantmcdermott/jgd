@@ -907,6 +907,12 @@ function svgEsc(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/** Validate that a CSS filter string contains only known filter functions. */
+var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia|url)\s*\([^)]*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia|url)\s*\([^)]*\))*$/;
+function isSafeCssFilter(s) {
+    return typeof s === 'string' && cssFilterRe.test(s.trim());
+}
+
 function svgTag(name, attrs, selfClose) {
     return '<' + name + (attrs || '') + (selfClose ? '/>' : '>');
 }
@@ -1044,7 +1050,7 @@ function plotToSvg(plot, exportW, exportH) {
                             gAttrs += ' opacity="' + opacity + '"';
                         }
                     }
-                    if (op.ext.filter != null) gAttrs += ' style="filter:' + svgEsc(op.ext.filter) + ';"';
+                    if (op.ext.filter != null && isSafeCssFilter(op.ext.filter)) gAttrs += ' style="filter:' + svgEsc(op.ext.filter) + ';"';
                 }
                 s += svgTag('g', gAttrs) + '\\n';
                 svgGroupDepth++;
