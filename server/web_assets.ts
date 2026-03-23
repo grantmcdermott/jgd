@@ -605,7 +605,9 @@ function applyPostEffects(ctx, effects) {
         var tmpCanvas = document.createElement('canvas');
         tmpCanvas.width = w;
         tmpCanvas.height = h;
-        tmpCanvas.getContext('2d').drawImage(ctx.canvas, 0, 0);
+        var tmpCtx = tmpCanvas.getContext('2d');
+        if (!tmpCtx) continue;
+        tmpCtx.drawImage(ctx.canvas, 0, 0);
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
         ctx.clearRect(0, 0, w, h);
@@ -770,7 +772,8 @@ async function renderOp(ctx, op, plotH, rc) {
             break;
         }
         case 'clip': {
-            rc.currentClip = { x0: op.x0, y0: op.y0, x1: op.x1, y1: op.y1 };
+            if (rc.groupStack.length === 0)
+                rc.currentClip = { x0: op.x0, y0: op.y0, x1: op.x1, y1: op.y1 };
             ctx.restore();
             ctx.save();
             ctx.beginPath();
