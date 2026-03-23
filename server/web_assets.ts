@@ -793,9 +793,10 @@ async function renderOp(ctx, op, plotH, rc) {
             if (!groupCtx) break;
             groupCtx.setTransform(ctx.getTransform());
             groupCtx.save();
-            var activeClip = rc.groupStack.length > 0
-                ? (rc.groupStack[rc.groupStack.length - 1].clip || rc.currentClip)
-                : rc.currentClip;
+            var activeClip = rc.currentClip;
+            for (var gi = rc.groupStack.length - 1; gi >= 0; gi--) {
+                if (rc.groupStack[gi].clip) { activeClip = rc.groupStack[gi].clip; break; }
+            }
             if (activeClip) {
                 groupCtx.beginPath();
                 groupCtx.rect(activeClip.x0, activeClip.y0,
