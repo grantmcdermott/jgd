@@ -563,9 +563,24 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
         }
     }
 
-    /* Record op count before GEplaySnapshot so we can detect whether
-     * it actually produced drawing ops (base DL replay) or not. */
-    int ops_before = st->page.op_count;
+    /* Count entries in the snapshot's base display list (element 0).
+     * Base-graphics plots have many entries (8+); grid/ggplot2 plots
+     * have an empty or near-empty base DL (0-2 entries, just initial
+     * clip ops from the graphics engine).
+     *
+     * We check this BEFORE replaying because the old ops-counting
+     * approach (comparing op_count before/after GEplaySnapshot) can
+     * produce false zeros when cb_newPage resets op_count during
+     * replay and the replayed plot happens to have the same number
+     * of ops as the previous page. */
+    int base_dl_len = 0;
+    if (TYPEOF(snap) == VECSXP && LENGTH(snap) >= 1) {
+        SEXP base_dl = VECTOR_ELT(snap, 0);
+        if (base_dl != R_NilValue && TYPEOF(base_dl) == LISTSXP) {
+            for (SEXP p = base_dl; p != R_NilValue; p = CDR(p))
+                base_dl_len++;
+        }
+    }
 
     replay_snapshot_args_t args = { snap, gdd };
     Rboolean ok = R_ToplevelExec(do_play_snapshot, &args);
@@ -576,31 +591,18 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
         return;
     }
 
-    /* GEplaySnapshot replays the base display list.  For grid/ggplot2
-     * plots the base DL is empty, so GEplaySnapshot produces only a
-     * clip op (~0-2 ops) and does NOT call GE_RestoreState (which
-     * would trigger grid.newpage + initVP).  We detect this case and
-     * call grid::grid.refresh() to redraw from grid's internal DL.
+    if (st->debug_frames)
+        REprintf("[jgd] replay_snapshot: after GEplaySnapshot ops=%d "
+                 "base_dl_len=%d\n",
+                 st->page.op_count, base_dl_len);
+
+    /* If the snapshot's base DL was empty (grid/ggplot2 case), we need
+     * grid::grid.refresh() to redraw from grid's internal DL.
      *
      * We also force-restore grid's DL from the snapshot, because
      * GE_RestoreSnapshotState skips the restore when the snapshot's
-     * grid DL index <= 1 (only root viewport recorded).
-     *
-     * Compare against ops_before (not last_flushed_ops) to detect
-     * the empty-base-DL case correctly even when called mid-page
-     * (e.g. plotIndex resize where op_count is already high). */
-    int new_ops = st->page.op_count - ops_before;
-    if (st->debug_frames)
-        REprintf("[jgd] replay_snapshot: after GEplaySnapshot ops=%d ops_before=%d "
-                 "new_ops=%d\n",
-                 st->page.op_count, ops_before, new_ops);
-
-    /* If GEplaySnapshot produced very few NEW ops, the base DL was empty
-     * (grid/ggplot2 case) — need grid.refresh() to redraw.
-     * A negative new_ops means cb_newPage reset op_count during replay
-     * (base graphics path via GE_RestoreState → GENewPage), which is
-     * normal for base-graphics plots — no grid.refresh() needed. */
-    if (new_ops >= 0 && new_ops <= 2) {
+     * grid DL index <= 1 (only root viewport recorded). */
+    if (base_dl_len <= 2) {
 #if defined(R_VERSION) && R_VERSION >= R_Version(4, 5, 0)
         SEXP grid_ns = R_getVarEx(Rf_install("grid"), R_NamespaceRegistry, FALSE, R_UnboundValue);
 #else
