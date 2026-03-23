@@ -913,7 +913,9 @@ function svgEsc(s) {
  *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
 var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\))*$/;
 function isSafeCssFilter(s) {
-    return typeof s === 'string' && cssFilterRe.test(s.trim()) && !/url\s*\(/i.test(s);
+    if (typeof s !== 'string') return false;
+    var trimmed = s.trim();
+    return cssFilterRe.test(trimmed) && !/url\s*\(/i.test(trimmed);
 }
 
 function svgTag(name, attrs, selfClose) {
