@@ -262,8 +262,10 @@ export class SocketServer {
                             }
                             this.history.addPlot(session.id, msg.plot);
                         } else {
-                            // Complete frame for current page (dev.flush) — replace, not add
-                            this.history.replaceCurrent(session.id, msg.plot);
+                            // Complete frame for latest page (dev.flush) — replace, not add.
+                            // Use replaceLatest so we always target the latest plot even
+                            // if the user has navigated back to view a historical plot.
+                            this.history.replaceLatest(session.id, msg.plot);
                         }
                         if (accepted) this.webviewProvider.showPlot(msg.plot);
                     }

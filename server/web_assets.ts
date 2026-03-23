@@ -85,6 +85,17 @@ export const assets: Record<string, { body: string; type: string }> = {
         this._activeSessionId = sessionId;
     };
 
+    PlotHistory.prototype.replaceLatest = function(sessionId, plot) {
+        var session = this._sessions.get(sessionId);
+        if (!session || session.plots.length === 0) {
+            return this.addPlot(sessionId, plot);
+        }
+        var last = session.plots[session.plots.length - 1];
+        if (last && last._rIndex !== undefined) plot._rIndex = last._rIndex;
+        session.plots[session.plots.length - 1] = plot;
+        this._activeSessionId = sessionId;
+    };
+
     PlotHistory.prototype.appendOps = function(sessionId, plot) {
         var session = this._sessions.get(sessionId);
         if (session && session.latestDeleted) return;
@@ -334,10 +345,11 @@ export const assets: Record<string, { body: string; type: string }> = {
             }
             history.addPlot(sessionId, plot);
         } else {
-            // Complete frame for the current page (e.g. dev.flush() after
-            // hold period) — replace the current plot rather than creating
-            // a duplicate history entry.
-            history.replaceCurrent(sessionId, plot);
+            // Complete frame for the latest page (e.g. dev.flush() after
+            // hold period) — replace the latest plot rather than creating
+            // a duplicate history entry.  Use replaceLatest so we always
+            // target the latest plot even if the user navigated back.
+            history.replaceLatest(sessionId, plot);
         }
         scheduleRender();
     }
