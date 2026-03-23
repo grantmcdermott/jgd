@@ -127,12 +127,13 @@ Deno.test({
         );
       } finally {
         r.kill();
-        await r.process.stdout.cancel();
-        await r.process.stderr.cancel();
+        try { await r.process.output(); } catch { /* ignore */ }
       }
     } finally {
       await browser.close();
+      await delay(100);
       await server.shutdown();
+      server.cleanup();
     }
   },
 });

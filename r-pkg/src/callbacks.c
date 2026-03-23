@@ -110,22 +110,6 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         jgd_flush_frame(st, st->last_flushed_ops > 0 ? 1 : 0);
     }
 
-    /* Replace last_snapshot with the GE engine's savedSnapshot when a
-     * deferred snapshot is pending.  GEinitDisplayList (which runs
-     * inside GENewPage before this callback) saves a complete snapshot
-     * — including the final DL entry that cb_mode(0) missed — before
-     * clearing the display list.  This is the only way to get a
-     * complete base DL for the base→grid transition (e.g. abline
-     * followed by ggplot2) where no dev.hold fires before GENewPage.
-     *
-     * For base→base transitions, cb_holdflush already re-captured the
-     * snapshot and cleared snapshot_pending, so this block is skipped.
-     *
-     * For grid/ggplot2 plots whose grid DL index is incomplete
-     * (dlIndex <= 1), we additionally re-capture via GEcreateSnapshot
-     * to pick up the updated grid state (grid's own DL survives
-     * GEinitDisplayList and won't be cleared until grid.newpage's
-     * C_initDisplayList). */
     /* Replace last_snapshot with GE's savedSnapshot.  GEinitDisplayList
      * (inside GENewPage, before this callback) saves a complete snapshot
      * — including the final DL entry that cb_mode(0) missed — before
