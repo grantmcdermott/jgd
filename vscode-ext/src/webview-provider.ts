@@ -929,7 +929,13 @@ function plotToSvg(plot, exportW, exportH) {
             case 'beginGroup': {
                 let gAttrs = '';
                 if (op.ext) {
-                    if (op.ext.opacity != null) gAttrs += ' opacity="' + op.ext.opacity + '"';
+                    if (op.ext.opacity != null) {
+                        const rawOpacity = Number(op.ext.opacity);
+                        if (Number.isFinite(rawOpacity)) {
+                            const clampedOpacity = Math.max(0, Math.min(1, rawOpacity));
+                            gAttrs += ' opacity="' + clampedOpacity + '"';
+                        }
+                    }
                     if (op.ext.filter != null) gAttrs += ' style="filter:' + svgEsc(op.ext.filter) + ';"';
                 }
                 s += svgTag('g', gAttrs) + '\\n';
