@@ -598,7 +598,7 @@ function applyPostEffects(ctx, effects) {
             continue;
         }
         var filterStr = effectToFilter(effect);
-        if (!filterStr) continue;
+        if (!filterStr || !isSafeCssFilter(filterStr)) continue;
         var w = ctx.canvas.width;
         var h = ctx.canvas.height;
         var tmpCanvas = document.createElement('canvas');

@@ -455,7 +455,7 @@ function applyPostEffects(ctx, effects) {
             continue;
         }
         const filterStr = effectToFilter(effect);
-        if (!filterStr) continue;
+        if (!filterStr || !isSafeCssFilter(filterStr)) continue;
         const w = ctx.canvas.width;
         const h = ctx.canvas.height;
         const tmpCanvas = document.createElement('canvas');
@@ -809,8 +809,10 @@ function svgEsc(s) { return s.replace(/&/g,'&amp;').replace(/[<]/g,'&lt;').repla
  *  Allows one level of nested parentheses for color functions in drop-shadow,
  *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
 const cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\))*$/;
-function isSafeCssFilter(s: string): boolean {
-    return cssFilterRe.test(s.trim()) && !/url\s*\(/i.test(s);
+function isSafeCssFilter(s) {
+    if (typeof s !== 'string') return false;
+    var trimmed = s.trim();
+    return cssFilterRe.test(trimmed) && !/url\s*\(/i.test(trimmed);
 }
 
 function svgTag(name, attrs, selfClose) {
