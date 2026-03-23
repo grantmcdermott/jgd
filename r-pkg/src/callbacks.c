@@ -684,19 +684,17 @@ static int cb_holdflush(pDevDesc dd, int level) {
     if (new_level < 0) new_level = 0;
     st->hold_level = new_level;
     /* When transitioning from unheld to held (dev.hold), re-capture the
-     * snapshot and update the latest snapshot_store entry.  The previous
-     * snapshot from cb_mode(0) may miss the last display list entry because
-     * R's GE engine adds it after the mode(0) callback.  At this point
-     * (next plot's dev.hold) all prior drawing is complete and the display
-     * list is fully populated.
+     * snapshot into last_snapshot.  The previous snapshot from cb_mode(0)
+     * may miss the last display list entry because R's GE engine adds it
+     * after the mode(0) callback.  At this point (next plot's dev.hold)
+     * all prior drawing is complete and the display list is fully populated.
      *
-     * This must update snapshot_store directly because cb_newPage (which
-     * stores last_snapshot into snapshot_store) runs *after* dev.hold()
-     * within the same plot.new() call sequence (dev.hold → plot.new →
-     * cb_newPage), and by cb_newPage time the display list is already
-     * NULL (cleared by GENewPage).  After updating, clear last_snapshot
-     * so cb_newPage does not re-store the stale snapshot. */
-    if (old == 0 && new_level > 0) {
+     * Set holdflush_captured so that cb_newPage (which runs shortly after
+     * in the plot.new → GENewPage sequence) does NOT re-capture the
+     * snapshot — by that time the base DL is already NULL (cleared by
+     * GEinitDisplayList), so a re-capture would overwrite the good
+     * snapshot with an empty one. */
+    if (old == 0 && new_level > 0 && st->page_count > 0) {
         if (st->debug_frames)
             REprintf("[jgd] holdflush: dev.hold 0->1, capturing snapshot page_count=%d\n",
                      st->page_count);
