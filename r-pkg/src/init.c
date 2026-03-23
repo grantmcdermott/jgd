@@ -19,9 +19,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"C_jgd_set_ext",       (DL_FUNC) &C_jgd_set_ext,       1},
     {"C_jgd_set_frame_ext", (DL_FUNC) &C_jgd_set_frame_ext, 1},
     {"C_jgd_begin_group",   (DL_FUNC) &C_jgd_begin_group,   1},
-    {"C_jgd_end_group",       (DL_FUNC) &C_jgd_end_group,       0},
+    {"C_jgd_end_group",     (DL_FUNC) &C_jgd_end_group,     0},
     {"C_jgd_update_snapshot", (DL_FUNC) &C_jgd_update_snapshot, 0},
-    {"C_jgd_discover",        (DL_FUNC) &C_jgd_discover,        1},
+    {"C_jgd_discover",      (DL_FUNC) &C_jgd_discover,      1},
     {NULL, NULL, 0}
 };
 

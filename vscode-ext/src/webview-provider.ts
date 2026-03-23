@@ -826,11 +826,11 @@ function svgEsc(s) { return s.replace(/&/g,'&amp;').replace(/[<]/g,'&lt;').repla
 /** Validate that a CSS filter string contains only known filter functions.
  *  Allows one level of nested parentheses for color functions in drop-shadow,
  *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
-const cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\)(?:\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\s*\([^()]*(?:\([^)]*\)[^()]*)*\))*$/;
+const cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\)(?:\\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\))*$/;
 function isSafeCssFilter(s) {
     if (typeof s !== 'string') return false;
     var trimmed = s.trim();
-    return cssFilterRe.test(trimmed) && !/url\s*\(/i.test(trimmed);
+    return cssFilterRe.test(trimmed) && !/url\\s*\\(/i.test(trimmed);
 }
 
 function svgTag(name, attrs, selfClose) {
