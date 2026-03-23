@@ -1038,10 +1038,9 @@ function plotToSvg(plot, exportW, exportH) {
                 var gAttrs = '';
                 if (op.ext) {
                     if (op.ext.opacity != null) {
-                        var opacity = parseFloat(op.ext.opacity);
-                        if (isFinite(opacity)) {
-                            if (opacity < 0) opacity = 0;
-                            else if (opacity > 1) opacity = 1;
+                        var opacity = Number(op.ext.opacity);
+                        if (Number.isFinite(opacity)) {
+                            opacity = Math.max(0, Math.min(1, opacity));
                             gAttrs += ' opacity="' + opacity + '"';
                         }
                     }
