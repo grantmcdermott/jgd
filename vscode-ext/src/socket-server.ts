@@ -51,7 +51,6 @@ const isWindows = process.platform === 'win32';
 export class SocketServer {
     private server: net.Server | null = null;
     private socketPath: string = '';
-    private tcpPort: number = 0;
     private sessions: Map<string, RSession> = new Map();
     private connectionListeners: ConnectionChangeListener[] = [];
     private sessionCounter = 0;
@@ -63,7 +62,7 @@ export class SocketServer {
     ) {}
 
     getSocketPath(): string {
-        return isWindows ? `tcp://127.0.0.1:${this.tcpPort}` : this.socketPath;
+        return this.socketPath;
     }
 
     getEnvVars(): Record<string, string> {
@@ -112,18 +111,20 @@ export class SocketServer {
 
         this.server = net.createServer((socket) => this.handleConnection(socket));
 
+        const token = crypto.randomBytes(8).toString('hex');
         if (isWindows) {
-            /* TCP on Windows — let OS pick a free port */
-            this.server.listen(0, '127.0.0.1', () => {
-                const addr = this.server!.address() as net.AddressInfo;
-                this.tcpPort = addr.port;
-                console.log('jgd: TCP server listening on 127.0.0.1:' + this.tcpPort);
+            /* Named pipe on Windows.  Node's net module accepts the raw
+             * \\.\pipe\NAME path directly in server.listen(). */
+            const pipeName = `jgd-${token}`;
+            const pipePath = `\\\\.\\pipe\\${pipeName}`;
+            this.socketPath = `npipe:////./pipe/${pipeName}`;
+            this.server.listen(pipePath, () => {
+                console.log('jgd: named pipe server listening at', pipePath);
                 this.writeDiscovery();
                 this.notifyReady();
             });
         } else {
             /* Unix domain socket */
-            const token = crypto.randomBytes(8).toString('hex');
             this.socketPath = path.join(os.tmpdir(), `jgd-${token}.sock`);
             try { fs.unlinkSync(this.socketPath); } catch {}
 
@@ -205,7 +206,7 @@ export class SocketServer {
                         type: 'server_info',
                         serverName: SERVER_NAME,
                         protocolVersion: 1,
-                        transport: isWindows ? 'tcp' : 'unix',
+                        transport: isWindows ? 'npipe' : 'unix',
                     };
                     socket.write(JSON.stringify(welcome) + '\n');
 
