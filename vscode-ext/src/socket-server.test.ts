@@ -76,8 +76,17 @@ interface ClientHelper {
     close: () => void;
 }
 
-/** Connect a TCP client to the server and return helpers. */
-function connectClient(socketPath: string): Promise<ClientHelper> {
+/** Convert a socket URI to the raw path that net.Socket.connect() expects. */
+function uriToConnectPath(uri: string): string {
+    const NPIPE_PREFIX = 'npipe:////./pipe/';
+    if (uri.startsWith(NPIPE_PREFIX)) {
+        return `\\\\.\\pipe\\${uri.slice(NPIPE_PREFIX.length)}`;
+    }
+    return uri;
+}
+
+/** Connect a client to the server and return helpers. */
+function connectClient(socketUri: string): Promise<ClientHelper> {
     return new Promise((resolve, reject) => {
         const socket = new net.Socket();
         let buffer = '';
@@ -109,7 +118,7 @@ function connectClient(socketPath: string): Promise<ClientHelper> {
             reject(err);
         });
 
-        socket.connect(socketPath, () => {
+        socket.connect(uriToConnectPath(socketUri), () => {
             resolve({
                 socket,
                 send: (msg: object) => socket.write(JSON.stringify(msg) + '\n'),
