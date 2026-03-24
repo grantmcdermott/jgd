@@ -34,10 +34,11 @@ Deno.test({
 
       // Start R FIRST — before browser — so R is connected when
       // the browser's ResizeObserver fires.
-      // R sleeps 2s to let browser connect, then draws 3 plots.
+      // R sleeps long enough for the browser to launch and connect
+      // (Windows CI can take 5-10s to launch headless Chrome).
       const r = startR(
         'jgd(width=8, height=6, dpi=96); ' +
-          'Sys.sleep(2); ' +
+          'Sys.sleep(8); ' +
           'plot(1:3); ' +
           'Sys.sleep(3); ' +
           'for (i in 1:20) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }; ' +
@@ -51,8 +52,8 @@ Deno.test({
       );
 
       try {
-        // Wait a moment for R to connect
-        await delay(500);
+        // Wait for R to load library and connect to the server
+        await delay(2000);
 
         // NOW open browser — R is already connected.
         // ResizeObserver will fire → resize reaches R's socket.
