@@ -79,34 +79,13 @@ test_that("TCP: drawing works without server connection", {
 
 # --- Named pipe tests (Windows only) ---
 
-test_that("npipe: npipe:/// URI accepted", {
+test_that("npipe: npipe:////./pipe/ URI accepted", {
   skip_if(.Platform$OS.type != "windows", "Named pipes only available on Windows")
   expect_warning(
-    jgd(socket = "npipe:///nonexistent-jgd-test"),
+    jgd(socket = "npipe:////./pipe/nonexistent-jgd-test"),
     "could not connect to renderer"
   )
   expect_identical(names(dev.cur()), "jgd")
-  dev.off()
-})
-
-test_that("npipe: npipe://localhost/ URI accepted", {
-  skip_if(.Platform$OS.type != "windows", "Named pipes only available on Windows")
-  expect_warning(
-    jgd(socket = "npipe://localhost/nonexistent-jgd-localhost-test"),
-    "could not connect to renderer"
-  )
-  expect_identical(names(dev.cur()), "jgd")
-  dev.off()
-})
-
-test_that("npipe: drawing works with npipe://localhost/ URI", {
-  skip_if(.Platform$OS.type != "windows", "Named pipes only available on Windows")
-  expect_warning(
-    jgd(socket = "npipe://localhost/nonexistent-jgd-localhost-draw"),
-    "could not connect to renderer"
-  )
-  plot.new()
-  rect(0, 0, 1, 1)
   dev.off()
 })
 

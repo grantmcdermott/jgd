@@ -87,8 +87,8 @@ Deno.test("parseSocketUri", async (t) => {
     );
   });
 
-  await t.step("npipe:///name", () => {
-    const addr = parseSocketUri("npipe:///jgd-abc123");
+  await t.step("npipe:////./pipe/name", () => {
+    const addr = parseSocketUri("npipe:////./pipe/jgd-abc123");
     assertEquals(addr, {
       transport: "npipe",
       name: "jgd-abc123",
@@ -98,7 +98,7 @@ Deno.test("parseSocketUri", async (t) => {
 
   await t.step("npipe with empty name throws", () => {
     assertThrows(
-      () => parseSocketUri("npipe:///"),
+      () => parseSocketUri("npipe:////./pipe/"),
       Error,
       "Empty pipe name",
     );
@@ -155,7 +155,7 @@ Deno.test("parseSocketUri", async (t) => {
 
   await t.step("socketUri.npipe round-trips", () => {
     const uri = socketUri.npipe("jgd-test123");
-    assertEquals(uri, "npipe:///jgd-test123");
+    assertEquals(uri, "npipe:////./pipe/jgd-test123");
     const addr = parseSocketUri(uri);
     assertEquals(addr, { transport: "npipe", name: "jgd-test123", pipePath: "\\\\.\\pipe\\jgd-test123" });
   });

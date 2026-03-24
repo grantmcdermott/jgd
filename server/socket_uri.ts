@@ -4,11 +4,14 @@
  * Supported formats:
  * - tcp://host:port
  * - unix:///absolute/path
- * - npipe:///pipename
+ * - npipe:////./pipe/name   (Docker-standard 4-slash form)
  *
  * Use the `socketUri.*` factory functions to construct URIs, and
  * `parseSocketUri()` to parse them back into typed addresses.
  */
+
+/** Prefix for the Docker-standard named pipe URI form. */
+const NPIPE_PREFIX = "npipe:////./pipe/";
 
 export type SocketAddr =
   | { transport: "tcp"; hostname: string; port: number }
@@ -25,7 +28,7 @@ export const socketUri = {
   },
   npipe: (name: string): string => {
     if (!name) throw new Error("Named pipe name must not be empty");
-    return `npipe:///${name}`;
+    return `${NPIPE_PREFIX}${name}`;
   },
 };
 
@@ -41,8 +44,8 @@ export function parseSocketUri(uri: string): SocketAddr {
     }
     return { transport: "tcp", hostname: url.hostname, port };
   }
-  if (uri.startsWith("npipe:///")) {
-    const name = uri.slice("npipe:///".length);
+  if (uri.startsWith(NPIPE_PREFIX)) {
+    const name = uri.slice(NPIPE_PREFIX.length);
     if (!name) throw new Error(`Empty pipe name in URI: ${uri}`);
     return { transport: "npipe", name, pipePath: `\\\\.\\pipe\\${name}` };
   }
@@ -57,6 +60,6 @@ export function parseSocketUri(uri: string): SocketAddr {
     return { transport: "unix", path: decodeURIComponent(url.pathname) };
   }
   throw new Error(
-    `Unsupported socket URI: ${uri} (expected tcp://host:port, unix:///path, or npipe:///name)`,
+    `Unsupported socket URI: ${uri} (expected tcp://host:port, unix:///path, or npipe:////./pipe/name)`,
   );
 }

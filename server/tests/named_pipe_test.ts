@@ -26,8 +26,8 @@ Deno.test("Default transport mode", async (t) => {
     await t.step("server reports platform-appropriate socket path", () => {
       if (isWindows) {
         assert(
-          server.socketPath.startsWith("npipe:///"),
-          `Expected npipe:///..., got ${server.socketPath}`,
+          server.socketPath.startsWith("npipe:////./pipe/"),
+          `Expected npipe:////./pipe/..., got ${server.socketPath}`,
         );
       } else {
         assert(
