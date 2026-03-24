@@ -315,6 +315,7 @@ export const assets: Record<string, { body: string; type: string }> = {
 
     function handleFrame(msg) {
         var plot = msg.plot;
+        plot._frameExt = msg.ext || null;
         var sessionId = plot.sessionId || 'default';
         if (msg.resize) {
             if (msg.plotIndex !== undefined) {
@@ -327,11 +328,17 @@ export const assets: Record<string, { body: string; type: string }> = {
             }
         } else if (msg.incremental) {
             history.appendOps(sessionId, plot);
-        } else {
+        } else if (msg.newPage) {
             if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
                 plot._rIndex = msg.plotNumber;
             }
             history.addPlot(sessionId, plot);
+        } else {
+            // Complete frame for the latest page (e.g. dev.flush() after
+            // hold period) — replace the latest plot rather than creating
+            // a duplicate history entry.  Use replaceLatest so we always
+            // target the latest plot even if the user navigated back.
+            history.replaceLatest(sessionId, plot);
         }
         scheduleRender();
     }
@@ -413,7 +420,7 @@ export const assets: Record<string, { body: string; type: string }> = {
     }
 
     var resizeObserver = new ResizeObserver(function() {
-        replayCurrentPlot();
+        scheduleRender();
         scheduleResizeMessage();
     });
     resizeObserver.observe(container);
@@ -532,21 +539,109 @@ function applyGc(ctx, gc) {
             if (gc.ext.shadow.offsetX != null) ctx.shadowOffsetX = gc.ext.shadow.offsetX;
             if (gc.ext.shadow.offsetY != null) ctx.shadowOffsetY = gc.ext.shadow.offsetY;
         }
-        if (gc.ext.filter != null) ctx.filter = gc.ext.filter;
+        if (gc.ext.filter != null && isSafeCssFilter(gc.ext.filter)) ctx.filter = gc.ext.filter;
+    }
+}
+
+// Create a fresh render context for group state.  Each render pass
+// (replay, renderToOffscreen) gets its own context so concurrent
+// async renders cannot corrupt each other's group stack.
+function makeRenderCtx() {
+    return { groupStack: [], currentClip: null };
+}
+
+// Convert a postEffect descriptor to a CSS filter string.
+function effectToFilter(effect) {
+    switch (effect.type) {
+        case 'blur': return 'blur(' + (effect.radius ?? 0) + 'px)';
+        case 'brightness': return 'brightness(' + (effect.value ?? 1) + ')';
+        case 'contrast': return 'contrast(' + (effect.value ?? 1) + ')';
+        case 'grayscale': return 'grayscale(' + (effect.value ?? 1) + ')';
+        case 'saturate': return 'saturate(' + (effect.value ?? 1) + ')';
+        case 'sepia': return 'sepia(' + (effect.value ?? 1) + ')';
+        case 'hue-rotate': return 'hue-rotate(' + (effect.angle ?? 0) + 'deg)';
+        case 'invert': return 'invert(' + (effect.value ?? 1) + ')';
+        default: return effect.filter ?? '';
+    }
+}
+
+// Apply a glow post-effect: draw a blurred bright copy behind the original.
+// Previous approach used additive blending ('lighter') which washed out to
+// white on opaque backgrounds.  Instead, we now draw the blurred+bright
+// version first, then layer the original on top — this produces a visible
+// halo regardless of background color or drawing opacity.
+function applyGlowEffect(ctx, effect) {
+    var w = ctx.canvas.width;
+    var h = ctx.canvas.height;
+    var origCanvas = document.createElement('canvas');
+    origCanvas.width = w;
+    origCanvas.height = h;
+    var origCtx = origCanvas.getContext('2d');
+    if (!origCtx) return;
+    origCtx.drawImage(ctx.canvas, 0, 0);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Draw blurred+bright version onto main canvas (replaces content)
+    ctx.clearRect(0, 0, w, h);
+    ctx.filter = 'blur(' + (effect.radius ?? 3) + 'px) brightness(' + (effect.brightness ?? 1.5) + ')';
+    ctx.drawImage(origCanvas, 0, 0);
+    // Layer the sharp original on top
+    ctx.filter = 'none';
+    ctx.drawImage(origCanvas, 0, 0);
+    ctx.restore();
+}
+
+// Apply frame-level postEffects after all ops have been rendered.
+function applyPostEffects(ctx, effects) {
+    for (var i = 0; i < effects.length; i++) {
+        var effect = effects[i];
+        if (effect.type === 'glow') {
+            applyGlowEffect(ctx, effect);
+            continue;
+        }
+        var filterStr = effectToFilter(effect);
+        if (!filterStr || !isSafeCssFilter(filterStr)) continue;
+        var w = ctx.canvas.width;
+        var h = ctx.canvas.height;
+        var tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = w;
+        tmpCanvas.height = h;
+        var tmpCtx = tmpCanvas.getContext('2d');
+        if (!tmpCtx) continue;
+        tmpCtx.drawImage(ctx.canvas, 0, 0);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        ctx.filter = filterStr;
+        ctx.drawImage(tmpCanvas, 0, 0);
+        ctx.restore();
     }
 }
 
 // Generation counter to detect superseded renders — incremented each
 // time replay() starts.  If a newer render begins while an async op
 // (raster image decode) is pending, the older render aborts.
+// Serialized replay — each render waits for the previous one to finish
+// (or abort) before starting, preventing overlapping ctx.restore() calls
+// and group stack corruption from concurrent renders.
 var _renderGen = 0;
+var _replayChain = Promise.resolve();
 
-async function replay(canvas, container, plot) {
+function replay(canvas, container, plot) {
     var gen = ++_renderGen;
+    var run = function() { return doReplay(canvas, container, plot, gen); };
+    _replayChain = _replayChain.then(run, run);
+    return _replayChain;
+}
+
+async function doReplay(canvas, container, plot, gen) {
+    if (_renderGen !== gen) return;
     var ctx = canvas.getContext('2d');
     var dpr = window.devicePixelRatio || 1;
     var containerW = container.clientWidth;
     var containerH = container.clientHeight;
+
+    if (containerW <= 0 || containerH <= 0) return;
 
     var plotW = plot.device.width;
     var plotH = plot.device.height;
@@ -566,26 +661,42 @@ async function replay(canvas, container, plot) {
     ctx.scale(dpr * scale, dpr * scale);
 
     ctx.save();
+    try {
+        if (plot.device.bg) {
+            ctx.fillStyle = plot.device.bg;
+            ctx.fillRect(0, 0, plotW, plotH);
+        } else {
+            ctx.clearRect(0, 0, plotW, plotH);
+        }
 
-    if (plot.device.bg) {
-        ctx.fillStyle = plot.device.bg;
-        ctx.fillRect(0, 0, plotW, plotH);
-    } else {
-        ctx.clearRect(0, 0, plotW, plotH);
+        var ops = plot.ops;
+        var rc = makeRenderCtx();
+        for (var i = 0; i < ops.length; i++) {
+            if (_renderGen !== gen) return;
+            var currentCtx = rc.groupStack.length > 0 ? rc.groupStack[rc.groupStack.length - 1].ctx : ctx;
+            await renderOp(currentCtx, ops[i], plotH, rc);
+            if (_renderGen !== gen) return;
+        }
+
+        // Apply frame-level postEffects if present.
+        if (plot._frameExt && plot._frameExt.postEffects) {
+            ctx.restore();
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.filter = 'none';
+            applyPostEffects(ctx, plot._frameExt.postEffects);
+            ctx.save();
+        }
+    } finally {
+        ctx.restore();
     }
-
-    var ops = plot.ops;
-    for (var i = 0; i < ops.length; i++) {
-        await renderOp(ctx, ops[i], plotH);
-        // Abort if a newer render has started (prevents overlap from
-        // async raster image decoding interleaving with a new render).
-        if (_renderGen !== gen) { ctx.restore(); return; }
-    }
-
-    ctx.restore();
 }
 
-async function renderOp(ctx, op, plotH) {
+async function renderOp(ctx, op, plotH, rc) {
     switch (op.op) {
         case 'line': {
             applyGc(ctx, op.gc);
@@ -662,11 +773,66 @@ async function renderOp(ctx, op, plotH) {
             break;
         }
         case 'clip': {
+            var clipRect = { x0: op.x0, y0: op.y0, x1: op.x1, y1: op.y1 };
+            if (rc.groupStack.length > 0) {
+                rc.groupStack[rc.groupStack.length - 1].clip = clipRect;
+            } else {
+                rc.currentClip = clipRect;
+            }
             ctx.restore();
             ctx.save();
             ctx.beginPath();
             ctx.rect(op.x0, op.y0, op.x1 - op.x0, op.y1 - op.y0);
             ctx.clip();
+            break;
+        }
+        case 'beginGroup': {
+            var groupCanvas = document.createElement('canvas');
+            groupCanvas.width = ctx.canvas.width;
+            groupCanvas.height = ctx.canvas.height;
+            var groupCtx = groupCanvas.getContext('2d');
+            if (!groupCtx) break;
+            groupCtx.setTransform(ctx.getTransform());
+            groupCtx.save();
+            var activeClip = rc.currentClip;
+            for (var gi = rc.groupStack.length - 1; gi >= 0; gi--) {
+                if (rc.groupStack[gi].clip) { activeClip = rc.groupStack[gi].clip; break; }
+            }
+            if (activeClip) {
+                groupCtx.beginPath();
+                groupCtx.rect(activeClip.x0, activeClip.y0,
+                              activeClip.x1 - activeClip.x0,
+                              activeClip.y1 - activeClip.y0);
+                groupCtx.clip();
+            }
+            rc.groupStack.push({
+                parentCtx: ctx,
+                ctx: groupCtx,
+                canvas: groupCanvas,
+                ext: op.ext || null,
+                clip: null
+            });
+            break;
+        }
+        case 'endGroup': {
+            if (rc.groupStack.length === 0) break;
+            var group = rc.groupStack.pop();
+            var parentCtx = group.parentCtx;
+            parentCtx.save();
+            if (group.ext) {
+                if (group.ext.filter != null && isSafeCssFilter(group.ext.filter)) parentCtx.filter = group.ext.filter;
+                if (group.ext.opacity != null) parentCtx.globalAlpha = group.ext.opacity;
+                if (group.ext.blendMode != null) parentCtx.globalCompositeOperation = group.ext.blendMode;
+                if (group.ext.shadow) {
+                    if (group.ext.shadow.blur != null) parentCtx.shadowBlur = group.ext.shadow.blur;
+                    if (group.ext.shadow.color != null) parentCtx.shadowColor = group.ext.shadow.color;
+                    if (group.ext.shadow.offsetX != null) parentCtx.shadowOffsetX = group.ext.shadow.offsetX;
+                    if (group.ext.shadow.offsetY != null) parentCtx.shadowOffsetY = group.ext.shadow.offsetY;
+                }
+            }
+            parentCtx.setTransform(1, 0, 0, 1, 0, 0);
+            parentCtx.drawImage(group.canvas, 0, 0);
+            parentCtx.restore();
             break;
         }
         case 'path': {
@@ -728,11 +894,27 @@ function renderToOffscreen(plot, width, height) {
         offCtx.fillRect(0, 0, plotW, plotH);
     }
     return (async function() {
+        var rc = makeRenderCtx();
         for (var i = 0; i < plot.ops.length; i++) {
-            await renderOp(offCtx, plot.ops[i], plotH);
+            var currentCtx = rc.groupStack.length > 0 ? rc.groupStack[rc.groupStack.length - 1].ctx : offCtx;
+            await renderOp(currentCtx, plot.ops[i], plotH, rc);
+        }
+        // Apply frame-level post-effects on a fresh, unclipped canvas
+        // to avoid any residual clipping region from the ops replay.
+        var exportCanvas = offscreen;
+        if (plot._frameExt && plot._frameExt.postEffects) {
+            var fxCanvas = document.createElement('canvas');
+            fxCanvas.width = offscreen.width;
+            fxCanvas.height = offscreen.height;
+            var fxCtx = fxCanvas.getContext('2d');
+            if (fxCtx) {
+                fxCtx.drawImage(offscreen, 0, 0);
+                applyPostEffects(fxCtx, plot._frameExt.postEffects);
+                exportCanvas = fxCanvas;
+            }
         }
         return new Promise(function(resolve) {
-            offscreen.toBlob(function(blob) { resolve(blob); }, 'image/png');
+            exportCanvas.toBlob(function(blob) { resolve(blob); }, 'image/png');
         });
     })();
 }
@@ -741,6 +923,16 @@ function renderToOffscreen(plot, width, height) {
 
 function svgEsc(s) {
     return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+/** Validate that a CSS filter string contains only known filter functions.
+ *  Allows one level of nested parentheses for color functions in drop-shadow,
+ *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
+var cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\)(?:\\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\))*$/;
+function isSafeCssFilter(s) {
+    if (typeof s !== 'string') return false;
+    var trimmed = s.trim();
+    return cssFilterRe.test(trimmed) && !/url\\s*\\(/i.test(trimmed);
 }
 
 function svgTag(name, attrs, selfClose) {
@@ -791,20 +983,28 @@ function plotToSvg(plot, exportW, exportH) {
     }
 
     var clipId = 0;
-    var inClip = false;
+    var elementStack = []; /* {kind:'clip'|'group', attrs:string} */
 
     for (var oi = 0; oi < plot.ops.length; oi++) {
         var op = plot.ops[oi];
         switch (op.op) {
             case 'clip': {
-                if (inClip) s += svgClose('g') + '\\n';
+                /* Close back to the previous clip, but stop at a group
+                 * boundary so clips inside groups don't escape. */
+                while (elementStack.length > 0) {
+                    var top = elementStack[elementStack.length - 1];
+                    if (top.kind === 'group') break;
+                    elementStack.pop();
+                    s += svgClose('g') + '\\n';
+                    if (top.kind === 'clip') break;
+                }
                 clipId++;
                 var cw = op.x1 - op.x0, ch = op.y1 - op.y0;
                 var cx = Math.min(op.x0, op.x1), cy = Math.min(op.y0, op.y1);
                 var aw = Math.abs(cw), ah = Math.abs(ch);
                 s += svgTag('defs') + svgTag('clipPath', ' id="c' + clipId + '"') + svgTag('rect', ' x="' + cx + '" y="' + cy + '" width="' + aw + '" height="' + ah + '"', true) + svgClose('clipPath') + svgClose('defs') + '\\n';
                 s += svgTag('g', ' clip-path="url(#c' + clipId + ')"') + '\\n';
-                inClip = true;
+                elementStack.push({kind: 'clip', attrs: ''});
                 break;
             }
             case 'line':
@@ -869,10 +1069,37 @@ function plotToSvg(plot, exportW, exportH) {
                 s += svgTag('image', ' x="' + dx + '" y="' + dy + '" width="' + aw + '" height="' + ah + '" href="' + safeHref + '"' + transform, true) + '\\n';
                 break;
             }
+            case 'beginGroup': {
+                var gAttrs = '';
+                if (op.ext) {
+                    if (op.ext.opacity != null) {
+                        var opacity = Number(op.ext.opacity);
+                        if (Number.isFinite(opacity)) {
+                            opacity = Math.max(0, Math.min(1, opacity));
+                            gAttrs += ' opacity="' + opacity + '"';
+                        }
+                    }
+                    if (op.ext.filter != null && isSafeCssFilter(op.ext.filter)) gAttrs += ' style="filter:' + svgEsc(op.ext.filter) + ';"';
+                }
+                s += svgTag('g', gAttrs) + '\\n';
+                elementStack.push({kind: 'group', attrs: gAttrs});
+                break;
+            }
+            case 'endGroup':
+                /* Close any clips opened within this group, then the group itself. */
+                while (elementStack.length > 0 && elementStack[elementStack.length - 1].kind === 'clip') {
+                    elementStack.pop();
+                    s += svgClose('g') + '\\n';
+                }
+                if (elementStack.length > 0 && elementStack[elementStack.length - 1].kind === 'group') {
+                    elementStack.pop();
+                    s += svgClose('g') + '\\n';
+                }
+                break;
         }
     }
 
-    if (inClip) s += svgClose('g') + '\\n';
+    while (elementStack.length > 0) { elementStack.pop(); s += svgClose('g') + '\\n'; }
     s += svgClose('svg');
     return s;
 }

@@ -360,6 +360,16 @@ window.addEventListener('message', (event) => {
 });
 
 function applyGc(ctx, gc) {
+    // Always reset extended Canvas2D state to defaults, even when gc is
+    // absent.  This prevents gc.ext fields from leaking into subsequent
+    // ops that lack a gc object (e.g. raster ops without gc).
+    ctx.globalCompositeOperation = 'source-over';
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.shadowColor = 'transparent';
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+    ctx.filter = 'none';
     if (!gc) return;
     if (gc.col != null) ctx.strokeStyle = gc.col;
     if (gc.fill != null) ctx.fillStyle = gc.fill;
@@ -381,6 +391,18 @@ function applyGc(ctx, gc) {
         if (face === 3 || face === 4) style += 'italic ';
         ctx.font = style + size + 'px ' + family;
     }
+    // Apply extension fields from gc.ext if present.
+    if (gc.ext) {
+        if (gc.ext.blendMode != null) ctx.globalCompositeOperation = gc.ext.blendMode;
+        if (gc.ext.opacity != null) ctx.globalAlpha = gc.ext.opacity;
+        if (gc.ext.shadow) {
+            if (gc.ext.shadow.blur != null) ctx.shadowBlur = gc.ext.shadow.blur;
+            if (gc.ext.shadow.color != null) ctx.shadowColor = gc.ext.shadow.color;
+            if (gc.ext.shadow.offsetX != null) ctx.shadowOffsetX = gc.ext.shadow.offsetX;
+            if (gc.ext.shadow.offsetY != null) ctx.shadowOffsetY = gc.ext.shadow.offsetY;
+        }
+        if (gc.ext.filter != null && isSafeCssFilter(gc.ext.filter)) ctx.filter = gc.ext.filter;
+    }
 }
 
 function mapFontFamily(family) {
@@ -388,6 +410,69 @@ function mapFontFamily(family) {
     if (family === 'serif' || family === 'Times') return 'serif';
     if (family === 'mono' || family === 'Courier') return 'monospace';
     return family + ', sans-serif';
+}
+
+function makeRenderCtx() {
+    return { groupStack: [], currentClip: null };
+}
+
+function effectToFilter(effect) {
+    switch (effect.type) {
+        case 'blur': return 'blur(' + (effect.radius ?? 0) + 'px)';
+        case 'brightness': return 'brightness(' + (effect.value ?? 1) + ')';
+        case 'contrast': return 'contrast(' + (effect.value ?? 1) + ')';
+        case 'grayscale': return 'grayscale(' + (effect.value ?? 1) + ')';
+        case 'saturate': return 'saturate(' + (effect.value ?? 1) + ')';
+        case 'sepia': return 'sepia(' + (effect.value ?? 1) + ')';
+        case 'hue-rotate': return 'hue-rotate(' + (effect.angle ?? 0) + 'deg)';
+        case 'invert': return 'invert(' + (effect.value ?? 1) + ')';
+        default: return effect.filter ?? '';
+    }
+}
+
+function applyGlowEffect(ctx, effect) {
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    const origCanvas = document.createElement('canvas');
+    origCanvas.width = w;
+    origCanvas.height = h;
+    const origCtx = origCanvas.getContext('2d');
+    if (!origCtx) return;
+    origCtx.drawImage(ctx.canvas, 0, 0);
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    ctx.filter = 'blur(' + (effect.radius ?? 3) + 'px) brightness(' + (effect.brightness ?? 1.5) + ')';
+    ctx.drawImage(origCanvas, 0, 0);
+    ctx.filter = 'none';
+    ctx.drawImage(origCanvas, 0, 0);
+    ctx.restore();
+}
+
+function applyPostEffects(ctx, effects) {
+    for (let i = 0; i < effects.length; i++) {
+        const effect = effects[i];
+        if (effect.type === 'glow') {
+            applyGlowEffect(ctx, effect);
+            continue;
+        }
+        const filterStr = effectToFilter(effect);
+        if (!filterStr || !isSafeCssFilter(filterStr)) continue;
+        const w = ctx.canvas.width;
+        const h = ctx.canvas.height;
+        const tmpCanvas = document.createElement('canvas');
+        tmpCanvas.width = w;
+        tmpCanvas.height = h;
+        const tmpCtx = tmpCanvas.getContext('2d');
+        if (!tmpCtx) continue;
+        tmpCtx.drawImage(ctx.canvas, 0, 0);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.clearRect(0, 0, w, h);
+        ctx.filter = filterStr;
+        ctx.drawImage(tmpCanvas, 0, 0);
+        ctx.restore();
+    }
 }
 
 let replayGeneration = 0;
@@ -440,10 +525,26 @@ async function doReplay(plot, gen) {
         }
 
         const ops = plot.ops;
+        const rc = makeRenderCtx();
         for (let i = 0; i < ops.length; i++) {
             if (replayGeneration !== gen) return;
-            await renderOp(ctx, ops[i], plotH);
+            const currentCtx = rc.groupStack.length > 0 ? rc.groupStack[rc.groupStack.length - 1].ctx : ctx;
+            await renderOp(currentCtx, ops[i], plotH, rc);
             if (replayGeneration !== gen) return;
+        }
+
+        // Apply frame-level postEffects if present.
+        if (plot.frameExt && plot.frameExt.postEffects) {
+            ctx.restore();
+            ctx.globalAlpha = 1;
+            ctx.globalCompositeOperation = 'source-over';
+            ctx.shadowBlur = 0;
+            ctx.shadowColor = 'transparent';
+            ctx.shadowOffsetX = 0;
+            ctx.shadowOffsetY = 0;
+            ctx.filter = 'none';
+            applyPostEffects(ctx, plot.frameExt.postEffects);
+            ctx.save();
         }
     } finally {
         ctx.restore();
@@ -451,7 +552,7 @@ async function doReplay(plot, gen) {
     }
 }
 
-async function renderOp(ctx, op, plotH) {
+async function renderOp(ctx, op, plotH, rc) {
     switch (op.op) {
         case 'line': {
             applyGc(ctx, op.gc);
@@ -528,11 +629,70 @@ async function renderOp(ctx, op, plotH) {
             break;
         }
         case 'clip': {
+            const clipRect = { x0: op.x0, y0: op.y0, x1: op.x1, y1: op.y1 };
+            if (rc.groupStack.length > 0) {
+                /* Inside a group: update the top group's clip so nested
+                 * beginGroup inherits the correct in-group clip. */
+                rc.groupStack[rc.groupStack.length - 1].clip = clipRect;
+            } else {
+                rc.currentClip = clipRect;
+            }
             ctx.restore();
             ctx.save();
             ctx.beginPath();
             ctx.rect(op.x0, op.y0, op.x1 - op.x0, op.y1 - op.y0);
             ctx.clip();
+            break;
+        }
+        case 'beginGroup': {
+            const groupCanvas = document.createElement('canvas');
+            groupCanvas.width = ctx.canvas.width;
+            groupCanvas.height = ctx.canvas.height;
+            const groupCtx = groupCanvas.getContext('2d');
+            if (!groupCtx) break;
+            groupCtx.setTransform(ctx.getTransform());
+            groupCtx.save();
+            /* Walk the group stack from top to bottom to find the nearest
+             * ancestor clip; fall back to the root-level clip. */
+            let activeClip = rc.currentClip;
+            for (let gi = rc.groupStack.length - 1; gi >= 0; gi--) {
+                if (rc.groupStack[gi].clip) { activeClip = rc.groupStack[gi].clip; break; }
+            }
+            if (activeClip) {
+                groupCtx.beginPath();
+                groupCtx.rect(activeClip.x0, activeClip.y0,
+                              activeClip.x1 - activeClip.x0,
+                              activeClip.y1 - activeClip.y0);
+                groupCtx.clip();
+            }
+            rc.groupStack.push({
+                parentCtx: ctx,
+                ctx: groupCtx,
+                canvas: groupCanvas,
+                ext: op.ext || null,
+                clip: null
+            });
+            break;
+        }
+        case 'endGroup': {
+            if (rc.groupStack.length === 0) break;
+            const group = rc.groupStack.pop();
+            const parentCtx = group.parentCtx;
+            parentCtx.save();
+            if (group.ext) {
+                if (group.ext.filter != null && isSafeCssFilter(group.ext.filter)) parentCtx.filter = group.ext.filter;
+                if (group.ext.opacity != null) parentCtx.globalAlpha = group.ext.opacity;
+                if (group.ext.blendMode != null) parentCtx.globalCompositeOperation = group.ext.blendMode;
+                if (group.ext.shadow) {
+                    if (group.ext.shadow.blur != null) parentCtx.shadowBlur = group.ext.shadow.blur;
+                    if (group.ext.shadow.color != null) parentCtx.shadowColor = group.ext.shadow.color;
+                    if (group.ext.shadow.offsetX != null) parentCtx.shadowOffsetX = group.ext.shadow.offsetX;
+                    if (group.ext.shadow.offsetY != null) parentCtx.shadowOffsetY = group.ext.shadow.offsetY;
+                }
+            }
+            parentCtx.setTransform(1, 0, 0, 1, 0, 0);
+            parentCtx.drawImage(group.canvas, 0, 0);
+            parentCtx.restore();
             break;
         }
         case 'path': {
@@ -628,8 +788,26 @@ function handleExport(format, exportW, exportH) {
             offCtx.fillRect(0, 0, plotW, plotH);
         }
         (async () => {
-            for (const op of currentPlot.ops) await renderOp(offCtx, op, plotH);
-            offscreen.toBlob((blob) => {
+            const rc = makeRenderCtx();
+            for (const op of currentPlot.ops) {
+                const curCtx = rc.groupStack.length > 0 ? rc.groupStack[rc.groupStack.length - 1].ctx : offCtx;
+                await renderOp(curCtx, op, plotH, rc);
+            }
+            // Apply frame-level post-effects on a fresh, unclipped canvas
+            // to avoid any residual clipping region from the ops replay.
+            let exportCanvas = offscreen;
+            if (currentPlot.frameExt && currentPlot.frameExt.postEffects) {
+                const postCanvas = document.createElement('canvas');
+                postCanvas.width = offscreen.width;
+                postCanvas.height = offscreen.height;
+                const postCtx = postCanvas.getContext('2d');
+                if (postCtx) {
+                    postCtx.drawImage(offscreen, 0, 0);
+                    applyPostEffects(postCtx, currentPlot.frameExt.postEffects);
+                    exportCanvas = postCanvas;
+                }
+            }
+            exportCanvas.toBlob((blob) => {
                 if (!blob) return;
                 const reader = new FileReader();
                 reader.onload = () => {
@@ -647,6 +825,16 @@ function handleExport(format, exportW, exportH) {
 }
 
 function svgEsc(s) { return s.replace(/&/g,'&amp;').replace(/[<]/g,'&lt;').replace(/[>]/g,'&gt;').replace(/"/g,'&quot;'); }
+
+/** Validate that a CSS filter string contains only known filter functions.
+ *  Allows one level of nested parentheses for color functions in drop-shadow,
+ *  e.g. drop-shadow(5px 5px 5px rgba(0,0,0,0.5)). */
+const cssFilterRe = /^(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\)(?:\\s+(?:blur|brightness|contrast|drop-shadow|grayscale|hue-rotate|invert|opacity|saturate|sepia)\\s*\\([^()]*(?:\\([^)]*\\)[^()]*)*\\))*$/;
+function isSafeCssFilter(s) {
+    if (typeof s !== 'string') return false;
+    var trimmed = s.trim();
+    return cssFilterRe.test(trimmed) && !/url\\s*\\(/i.test(trimmed);
+}
 
 function svgTag(name, attrs, selfClose) {
     return String.fromCharCode(60) + name + (attrs || '') + (selfClose ? '/>' : '>');
@@ -693,19 +881,27 @@ function plotToSvg(plot, exportW, exportH) {
     }
 
     let clipId = 0;
-    let inClip = false;
+    const elementStack = [];
 
     for (const op of plot.ops) {
         switch (op.op) {
             case 'clip': {
-                if (inClip) s += svgClose('g') + '\\n';
+                /* Close back to the previous clip, but stop at a group
+                 * boundary so clips inside groups don't escape. */
+                while (elementStack.length > 0) {
+                    const top = elementStack[elementStack.length - 1];
+                    if (top.kind === 'group') break;
+                    elementStack.pop();
+                    s += svgClose('g') + '\\n';
+                    if (top.kind === 'clip') break;
+                }
                 clipId++;
                 const cw = op.x1 - op.x0, ch = op.y1 - op.y0;
                 const cx = Math.min(op.x0, op.x1), cy = Math.min(op.y0, op.y1);
                 const aw = Math.abs(cw), ah = Math.abs(ch);
                 s += svgTag('defs') + svgTag('clipPath', ' id="c' + clipId + '"') + svgTag('rect', ' x="' + cx + '" y="' + cy + '" width="' + aw + '" height="' + ah + '"', true) + svgClose('clipPath') + svgClose('defs') + '\\n';
                 s += svgTag('g', ' clip-path="url(#c' + clipId + ')"') + '\\n';
-                inClip = true;
+                elementStack.push({kind: 'clip', attrs: ''});
                 break;
             }
             case 'line':
@@ -768,10 +964,37 @@ function plotToSvg(plot, exportW, exportH) {
                 s += svgTag('image', ' x="' + dx + '" y="' + dy + '" width="' + aw + '" height="' + ah + '" href="' + op.data + '"' + transform, true) + '\\n';
                 break;
             }
+            case 'beginGroup': {
+                let gAttrs = '';
+                if (op.ext) {
+                    if (op.ext.opacity != null) {
+                        const rawOpacity = Number(op.ext.opacity);
+                        if (Number.isFinite(rawOpacity)) {
+                            const clampedOpacity = Math.max(0, Math.min(1, rawOpacity));
+                            gAttrs += ' opacity="' + clampedOpacity + '"';
+                        }
+                    }
+                    if (op.ext.filter != null && isSafeCssFilter(op.ext.filter)) gAttrs += ' style="filter:' + svgEsc(op.ext.filter) + ';"';
+                }
+                s += svgTag('g', gAttrs) + '\\n';
+                elementStack.push({kind: 'group', attrs: gAttrs});
+                break;
+            }
+            case 'endGroup':
+                /* Close any clips opened within this group, then the group itself. */
+                while (elementStack.length > 0 && elementStack[elementStack.length - 1].kind === 'clip') {
+                    elementStack.pop();
+                    s += svgClose('g') + '\\n';
+                }
+                if (elementStack.length > 0 && elementStack[elementStack.length - 1].kind === 'group') {
+                    elementStack.pop();
+                    s += svgClose('g') + '\\n';
+                }
+                break;
         }
     }
 
-    if (inClip) s += svgClose('g') + '\\n';
+    while (elementStack.length > 0) { elementStack.pop(); s += svgClose('g') + '\\n'; }
     s += svgClose('svg');
     return s;
 }

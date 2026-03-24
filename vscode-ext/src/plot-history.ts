@@ -3,6 +3,8 @@ import { EventEmitter } from 'events';
 export interface PlotFrame {
     version: number;
     sessionId: string;
+    /** Frame-level extension fields (e.g. postEffects). */
+    frameExt?: Record<string, unknown> | null;
     device: {
         width: number;
         height: number;

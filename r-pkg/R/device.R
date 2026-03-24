@@ -146,3 +146,132 @@ with_jgd_ext = function(json, expr) {
   on.exit(jgd_ext(NULL), add = TRUE)
   expr
 }
+
+#' Set frame-level extension fields (experimental)
+#'
+#' Sets extension fields that are included once per frame in the JSON protocol
+#' (at the top level of the frame message, not per drawing operation).  This is
+#' useful for frame-wide properties such as post-processing effects.
+#'
+#' @param json A single JSON string representing the extension object, or
+#'   `NULL` or `""` to clear.  Non-empty strings must be valid JSON; an error
+#'   is raised otherwise.
+#' @return Called for its side effect; returns `NULL` invisibly.
+#' @section Lifecycle:
+#' **Experimental.** This API may change in future versions.
+#' @export
+jgd_frame_ext = function(json = NULL) {
+  if (!is.null(json)) {
+    stopifnot(is.character(json), length(json) == 1L)
+  }
+  result = .Call(C_jgd_set_frame_ext, json)
+  if (is.character(result))
+    stop(result, call. = FALSE)
+  invisible()
+}
+
+#' Scoped frame-level extension fields (experimental)
+#'
+#' Temporarily sets frame-level extension fields for the duration of `expr`,
+#' then clears them on exit.
+#'
+#' @param json A single JSON string representing the extension object.
+#' @param expr Expression to evaluate with the frame extension active.
+#' @return The result of evaluating `expr`.
+#' @section Lifecycle:
+#' **Experimental.** This API may change in future versions.
+#' @export
+with_jgd_frame_ext = function(json, expr) {
+  stopifnot(is.character(json), length(json) == 1L)
+  jgd_frame_ext(json)
+  on.exit(jgd_frame_ext(NULL), add = TRUE)
+  expr
+}
+
+#' Begin a drawing group (experimental)
+#'
+#' Emits a `beginGroup` operation into the drawing stream.  All subsequent
+#' drawing operations until the matching [jgd_end_group()] are part of this
+#' group.  The renderer may use the group's extension fields to apply effects
+#' to the group as a whole.
+#'
+#' @param ext A single JSON string with extension fields for this group, or
+#'   `NULL` for a group without extension fields.
+#' @return Called for its side effect; returns `NULL` invisibly.
+#' @section Lifecycle:
+#' **Experimental.** This API may change in future versions.
+#' @export
+jgd_begin_group = function(ext = NULL) {
+  if (!is.null(ext)) {
+    stopifnot(is.character(ext), length(ext) == 1L)
+  }
+  # Unlike gc.ext (jgd_ext), which is device state embedded into every
+  # drawing op by the C callbacks, group ops are standalone markers in the
+  # ops stream that are not produced by any R graphics engine callback.
+  # We use recordGraphics() so the .Call is recorded in R's display list
+  # and replayed on resize.  recordGraphics() also executes immediately.
+  recordGraphics(
+    {
+      result = .Call(C_jgd_begin_group, ext)
+      if (is.character(result))
+        stop(result, call. = FALSE)
+    },
+    list(ext = ext),
+    env = getNamespace("jgd")
+  )
+  invisible()
+}
+
+#' End a drawing group (experimental)
+#'
+#' Emits an `endGroup` operation into the drawing stream, closing the most
+#' recently opened group from [jgd_begin_group()].
+#'
+#' @return Called for its side effect; returns `NULL` invisibly.
+#' @section Lifecycle:
+#' **Experimental.** This API may change in future versions.
+#' @export
+jgd_end_group = function() {
+  # See jgd_begin_group for why recordGraphics is used here.
+  recordGraphics(
+    .Call(C_jgd_end_group),
+    list(),
+    env = getNamespace("jgd")
+  )
+  # Update the snapshot after recordGraphics has added the endGroup entry
+  # to the display list.  Without this, the snapshot (captured by cb_mode(0)
+  # during the last drawing primitive) would not include the endGroup,
+  # causing blank plots on plotIndex resize replay.
+  .Call(C_jgd_update_snapshot)
+  invisible()
+}
+
+#' Scoped drawing group (experimental)
+#'
+#' Opens a drawing group with extension fields, evaluates `expr`, then closes
+#' the group on exit.
+#'
+#' @param ext A single JSON string with extension fields for this group, or
+#'   `NULL` for a group without extension fields.
+#' @param expr Expression to evaluate within the group.
+#' @return The result of evaluating `expr`.
+#' @section Lifecycle:
+#' **Experimental.** This API may change in future versions.
+#' @export
+with_jgd_group = function(ext, expr) {
+  jgd_begin_group(ext)
+  on.exit({
+    tryCatch(
+      jgd_end_group(),
+      error = function(e) {
+        # If the device auto-closed the group at a page boundary
+        # (cb_newPage resets group_depth), the cleanup endGroup would
+        # fail with "endGroup without matching beginGroup".  Suppress
+        # that specific error so the original error (if any) propagates.
+        if (!grepl("endGroup without matching beginGroup", conditionMessage(e), fixed = TRUE))
+          stop(e)
+      }
+    )
+  }, add = TRUE)
+  expr
+}

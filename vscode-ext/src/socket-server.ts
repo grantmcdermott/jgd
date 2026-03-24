@@ -240,6 +240,7 @@ export class SocketServer {
                 case 'frame':
                     if (msg.plot) {
                         msg.plot.sessionId = session.id;
+                        msg.plot.frameExt = msg.ext || null;
 
                         const isResizeReplay = !!msg.resizeReplay;
                         const plotIndex = (typeof msg.plotIndex === 'number' && Number.isFinite(msg.plotIndex)) ? msg.plotIndex : undefined;
@@ -255,11 +256,16 @@ export class SocketServer {
                             accepted = this.history.replaceLatest(session.id, msg.plot, plotNumber);
                         } else if (msg.incremental) {
                             accepted = this.history.appendOps(session.id, msg.plot);
-                        } else {
+                        } else if (msg.newPage) {
                             if (typeof msg.plotNumber === 'number' && Number.isFinite(msg.plotNumber)) {
                                 msg.plot.rIndex = msg.plotNumber;
                             }
                             this.history.addPlot(session.id, msg.plot);
+                        } else {
+                            // Complete frame for latest page (dev.flush) — replace, not add.
+                            // Use replaceLatest so we always target the latest plot even
+                            // if the user has navigated back to view a historical plot.
+                            this.history.replaceLatest(session.id, msg.plot);
                         }
                         if (accepted) this.webviewProvider.showPlot(msg.plot);
                     }

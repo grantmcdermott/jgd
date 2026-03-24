@@ -76,10 +76,27 @@ typedef struct {
     /* Per-snapshot ext, parallel to snapshot_store.  Stored when a snapshot
      * is saved so that plotIndex replay can restore the correct ext. */
     char *snapshot_ext[JGD_MAX_SNAPSHOTS];
+    int holdflush_captured;   /* 1 if cb_holdflush already captured a good snapshot */
+    int replay_newpage_done;  /* set after first cb_newPage in a replay; subsequent
+                               * cb_newPage calls during the same replay skip
+                               * page_free/page_init to avoid destroying ops
+                               * accumulated from base DL replay (caused by
+                               * lingering grid state triggering extra GENewPage). */
+    int group_depth;          /* nesting depth of beginGroup/endGroup ops */
+    /* Frame-level extension fields.  Similar lifecycle to ext_json/page_ext_json
+     * but included once per frame (not per gc).  Set via C_jgd_set_frame_ext,
+     * captured at cb_newPage time into page_frame_ext_json. */
+    char *frame_ext_json;
+    char *page_frame_ext_json;
+    /* Per-snapshot frame ext, parallel to snapshot_store. */
+    char *snapshot_frame_ext[JGD_MAX_SNAPSHOTS];
 } jgd_state_t;
 
 /* Flush the current frame over the transport. */
 void jgd_flush_frame(jgd_state_t *st, int incremental);
+
+/* Capture a display list snapshot for historical plot resizing. */
+void jgd_capture_snapshot(jgd_state_t *st);
 
 /* Register/remove the R input handler that watches the transport socket
    for incoming resize messages.  Called from C_jgd (open) and cb_close. */

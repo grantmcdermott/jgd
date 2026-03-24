@@ -21,18 +21,19 @@ static jgd_state_t *get_state(pDevDesc dd) {
 }
 
 /** Capture a display list snapshot for historical plot resizing. */
-static void jgd_capture_snapshot(jgd_state_t *st) {
+void jgd_capture_snapshot(jgd_state_t *st) {
     pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
     SEXP snap = GEcreateSnapshot(gdd);
     if (snap != R_NilValue) {
         PROTECT(snap);
         if (st->debug_frames) {
+            REprintf("[jgd] capture_snapshot: page_count=%d ops=%d\n",
+                     st->page_count, st->page.op_count);
             SEXP gs = find_grid_state(snap);
             if (gs != R_NilValue) {
                 SEXP idx = VECTOR_ELT(gs, 1);
-                REprintf("[jgd] capture_snapshot: grid DL index=%d page_count=%d ops=%d\n",
-                         (idx != R_NilValue && TYPEOF(idx) == INTSXP) ? INTEGER(idx)[0] : -1,
-                         st->page_count, st->page.op_count);
+                REprintf("[jgd] capture_snapshot: grid DL index=%d\n",
+                         (idx != R_NilValue && TYPEOF(idx) == INTSXP) ? INTEGER(idx)[0] : -1);
             }
         }
         if (st->last_snapshot != R_NilValue)
@@ -89,6 +90,19 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
                  st->replaying, st->new_page);
     }
 
+    /* Auto-close unclosed groups before flushing the previous page.
+     * Rf_error is unsafe here (would corrupt device state during replay),
+     * so we warn and emit the missing endGroup ops into the current page. */
+    if (st->group_depth > 0 && st->page_count > 0 && !st->replaying) {
+        Rf_warning("jgd: %d unclosed group(s) at new page", st->group_depth);
+        while (st->group_depth > 0) {
+            cJSON *op = cJSON_CreateObject();
+            cJSON_AddStringToObject(op, "op", "endGroup");
+            page_add_op(&st->page, op);
+            st->group_depth--;
+        }
+    }
+
     if (st->page_count > 0 && st->page.op_count > st->last_flushed_ops && !st->replaying) {
         if (st->debug_frames)
             REprintf("[jgd] cb_newPage: flushing %d unflushed ops\n",
@@ -96,29 +110,55 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         jgd_flush_frame(st, st->last_flushed_ops > 0 ? 1 : 0);
     }
 
-    /* For grid/ggplot2 plots, re-capture the snapshot now to get the
-     * complete grid DL (with dlIndex > 1).  The base DL was already
-     * cleared by GEinitDisplayList, but grid's own DL is still intact
-     * (it won't be cleared until C_initDisplayList runs later in
-     * grid.newpage).
+    /* Replace last_snapshot with GE's savedSnapshot.  GEinitDisplayList
+     * (inside GENewPage, before this callback) saves a complete snapshot
+     * — including the final DL entry that cb_mode(0) missed — before
+     * clearing the base display list.
      *
-     * Only re-capture when the existing snapshot's grid DL index is
-     * incomplete (dlIndex <= 1).  If grid's DL is already complete
-     * or no grid state exists, keep the flush-time snapshot to
-     * preserve base DL content (important for base-only and mixed
-     * base+grid plots). */
-    if (st->page_count > 0 && !st->replaying &&
-        st->last_snapshot != R_NilValue) {
-        SEXP gs = find_grid_state(st->last_snapshot);
-        if (gs != R_NilValue) {
-            SEXP idx = VECTOR_ELT(gs, 1);
-            int dlIndex = (idx != R_NilValue && TYPEOF(idx) == INTSXP &&
-                           LENGTH(idx) > 0)
-                              ? INTEGER(idx)[0] : -1;
-            if (dlIndex <= 1)
-                jgd_capture_snapshot(st);
+     * The cb_mode(0) snapshot may be one entry short because R's
+     * GErecordGraphicOperation runs AFTER mode(0).  For base→base
+     * transitions, cb_holdflush (dev.hold 0→1) re-captures a complete
+     * snapshot.  For base→grid transitions (e.g. abline followed by
+     * ggplot2), grid.newpage() goes directly to GENewPage without
+     * dev.hold, so savedSnapshot is the only source of a complete DL.
+     *
+     * Skip if cb_holdflush already captured a complete snapshot
+     * (holdflush_captured=1) — that snapshot is authoritative.
+     *
+     * For grid/ggplot2 plots whose grid DL index is incomplete
+     * (dlIndex <= 1), additionally re-capture via GEcreateSnapshot to
+     * pick up the updated grid state (grid's own DL survives
+     * GEinitDisplayList and won't be cleared until grid.newpage's
+     * C_initDisplayList). */
+    if (st->debug_frames)
+        REprintf("[jgd] cb_newPage: snapshot fixup: page_count=%d replaying=%d "
+                 "last_snap=%d holdflush=%d\n",
+                 st->page_count, st->replaying, st->last_snapshot != R_NilValue,
+                 st->holdflush_captured);
+    if (st->page_count > 0 && !st->replaying && !st->holdflush_captured) {
+        pGEDevDesc gdd = (pGEDevDesc)st->ge_dev;
+        if (gdd->savedSnapshot != R_NilValue && st->last_snapshot != R_NilValue) {
+            if (st->debug_frames)
+                REprintf("[jgd] cb_newPage: using GE savedSnapshot for complete DL\n");
+            R_ReleaseObject(st->last_snapshot);
+            R_PreserveObject(gdd->savedSnapshot);
+            st->last_snapshot = gdd->savedSnapshot;
+        }
+        /* For grid plots with incomplete DL index, re-capture to get
+         * the updated grid state (grid's DL survives GEinitDisplayList). */
+        if (st->last_snapshot != R_NilValue) {
+            SEXP gs = find_grid_state(st->last_snapshot);
+            if (gs != R_NilValue) {
+                SEXP idx = VECTOR_ELT(gs, 1);
+                int dlIndex = (idx != R_NilValue && TYPEOF(idx) == INTSXP &&
+                               LENGTH(idx) > 0)
+                                  ? INTEGER(idx)[0] : -1;
+                if (dlIndex >= 0 && dlIndex <= 1)
+                    jgd_capture_snapshot(st);
+            }
         }
     }
+    st->holdflush_captured = 0;
     /* Store last_snapshot into snapshot_store for historical plot resizing.
      * This guard duplicates the one above intentionally: jgd_capture_snapshot
      * may have replaced last_snapshot, so we re-check that it is still valid. */
@@ -126,30 +166,48 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
         if (st->snapshot_count >= JGD_MAX_SNAPSHOTS) {
             /* Shift snapshots and their ext strings left by one */
             free(st->snapshot_ext[0]);
+            free(st->snapshot_frame_ext[0]);
             for (int i = 0; i < JGD_MAX_SNAPSHOTS - 1; i++) {
                 SET_VECTOR_ELT(st->snapshot_store, i,
                                VECTOR_ELT(st->snapshot_store, i + 1));
                 st->snapshot_ext[i] = st->snapshot_ext[i + 1];
+                st->snapshot_frame_ext[i] = st->snapshot_frame_ext[i + 1];
             }
             SET_VECTOR_ELT(st->snapshot_store, JGD_MAX_SNAPSHOTS - 1,
                            st->last_snapshot);
             st->snapshot_ext[JGD_MAX_SNAPSHOTS - 1] =
                 st->page_ext_json ? strdup(st->page_ext_json) : NULL;
+            st->snapshot_frame_ext[JGD_MAX_SNAPSHOTS - 1] =
+                st->page_frame_ext_json ? strdup(st->page_frame_ext_json) : NULL;
             st->evicted_count++;
         } else {
             SET_VECTOR_ELT(st->snapshot_store, st->snapshot_count,
                            st->last_snapshot);
             st->snapshot_ext[st->snapshot_count] =
                 st->page_ext_json ? strdup(st->page_ext_json) : NULL;
+            st->snapshot_frame_ext[st->snapshot_count] =
+                st->page_frame_ext_json ? strdup(st->page_frame_ext_json) : NULL;
             st->snapshot_count++;
         }
         R_ReleaseObject(st->last_snapshot);
         st->last_snapshot = R_NilValue;
     }
 
-    if (st->page_count > 0) {
-        page_free(&st->page);
+    /* During replay, the first cb_newPage sets up the page for the
+     * snapshot being replayed.  Subsequent cb_newPage calls (e.g. from
+     * lingering grid state triggering GENewPage via GE_RestoreSnapshotState)
+     * must NOT destroy the ops already accumulated from base DL replay. */
+    if (st->replaying && st->replay_newpage_done) {
+        if (st->debug_frames)
+            REprintf("[jgd] cb_newPage: skipping page reset during replay "
+                     "(ops=%d)\n", st->page.op_count);
+        return;
     }
+
+    /* Always free the previous page's ops.  The page is initialized in
+     * C_jgd via page_init(), so even on the first cb_newPage (page_count==0)
+     * there is a valid ops array to free. */
+    page_free(&st->page);
 
     check_incoming(st, dd);
     apply_pending_resize(st, dd);
@@ -157,9 +215,12 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     double w_px = st->width * st->dpi;
     double h_px = st->height * st->dpi;
     page_init(&st->page, w_px, h_px, st->dpi, gc->fill);
-    if (!st->replaying)
+    if (st->replaying)
+        st->replay_newpage_done = 1;
+    else
         st->page_count++;
     st->last_flushed_ops = 0;
+    st->group_depth = 0;
     if (!st->replaying)
         st->new_page = 1;
     /* Always capture ext_json at page creation time.  During normal
@@ -173,6 +234,15 @@ static void cb_newPage(const pGEcontext gc, pDevDesc dd) {
     st->page_ext_parsed = (st->page_ext_json && st->page_ext_json[0])
                               ? cJSON_Parse(st->page_ext_json)
                               : NULL;
+
+    /* Capture frame-level ext similarly.  page_free() already freed
+     * page.frame_ext, and page_init() set it to NULL, so no cJSON_Delete
+     * is needed here (unlike page_ext_parsed which lives on jgd_state_t). */
+    free(st->page_frame_ext_json);
+    st->page_frame_ext_json = st->frame_ext_json ? strdup(st->frame_ext_json) : NULL;
+    st->page.frame_ext = (st->page_frame_ext_json && st->page_frame_ext_json[0])
+                              ? cJSON_Parse(st->page_frame_ext_json)
+                              : NULL;
 }
 
 static void cb_close(pDevDesc dd) {
@@ -180,6 +250,17 @@ static void cb_close(pDevDesc dd) {
 
     /* Remove R input handler before closing the transport fd */
     jgd_remove_input_handler(st);
+
+    /* Auto-close unclosed groups before the final flush. */
+    if (st->group_depth > 0) {
+        Rf_warning("jgd: %d unclosed group(s) at device close", st->group_depth);
+        while (st->group_depth > 0) {
+            cJSON *op = cJSON_CreateObject();
+            cJSON_AddStringToObject(op, "op", "endGroup");
+            page_add_op(&st->page, op);
+            st->group_depth--;
+        }
+    }
 
     if (st->page.op_count > st->last_flushed_ops) {
         jgd_flush_frame(st, 0);
@@ -197,8 +278,12 @@ static void cb_close(pDevDesc dd) {
     free(st->ext_json);
     free(st->page_ext_json);
     cJSON_Delete(st->page_ext_parsed);
-    for (int i = 0; i < st->snapshot_count; i++)
+    free(st->frame_ext_json);
+    free(st->page_frame_ext_json);
+    for (int i = 0; i < st->snapshot_count; i++) {
         free(st->snapshot_ext[i]);
+        free(st->snapshot_frame_ext[i]);
+    }
     free(st);
     dd->deviceSpecific = NULL;
 }
@@ -597,9 +682,11 @@ static void cb_mode(int mode, pDevDesc dd) {
             st->last_flushed_ops = st->page.op_count;
             /* Capture a snapshot after every flush so the latest display
              * list state is always available for historical plot resizing.
-             * ggplot2/grid sends many incremental frames; capturing only on
-             * complete frames would leave an incomplete snapshot (just the
-             * initial page setup), producing a white image on replay. */
+             * Note: this snapshot may be one DL entry short because R's
+             * GErecordGraphicOperation runs AFTER mode(0).  For base→base
+             * transitions, cb_holdflush (dev.hold 0→1) re-captures the
+             * complete DL.  For base→grid transitions, cb_newPage uses
+             * GE's savedSnapshot to fix this up. */
             jgd_capture_snapshot(st);
         }
     }
@@ -607,12 +694,33 @@ static void cb_mode(int mode, pDevDesc dd) {
 
 static int cb_holdflush(pDevDesc dd, int level) {
     jgd_state_t *st = get_state(dd);
+    if (st->debug_frames)
+        REprintf("[jgd] cb_holdflush: level=%d hold=%d replaying=%d\n",
+                 level, st->hold_level, st->replaying);
     if (st->replaying) return st->hold_level;
     int old = st->hold_level;
     /* R passes level as a delta: dev.hold() passes +1, dev.flush() passes -1. */
     int new_level = old + level;
     if (new_level < 0) new_level = 0;
     st->hold_level = new_level;
+    /* When transitioning from unheld to held (dev.hold), re-capture the
+     * snapshot into last_snapshot.  The previous snapshot from cb_mode(0)
+     * may miss the last display list entry because R's GE engine adds it
+     * after the mode(0) callback.  At this point (next plot's dev.hold)
+     * all prior drawing is complete and the display list is fully populated.
+     *
+     * Set holdflush_captured so that cb_newPage (which runs shortly after
+     * in the plot.new → GENewPage sequence) does NOT re-capture the
+     * snapshot — by that time the base DL is already NULL (cleared by
+     * GEinitDisplayList), so a re-capture would overwrite the good
+     * snapshot with an empty one. */
+    if (old == 0 && new_level > 0 && st->page_count > 0) {
+        if (st->debug_frames)
+            REprintf("[jgd] holdflush: dev.hold 0->1, capturing snapshot page_count=%d\n",
+                     st->page_count);
+        jgd_capture_snapshot(st);
+        st->holdflush_captured = 1;
+    }
     /* When transitioning from held to unheld, send accumulated frame. */
     if (old > 0 && new_level == 0) {
         if (st->page.op_count > st->last_flushed_ops) {

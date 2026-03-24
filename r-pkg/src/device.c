@@ -304,6 +304,153 @@ SEXP C_jgd_set_ext(SEXP s_json) {
     return R_NilValue;
 }
 
+/* Called from R: .Call(C_jgd_set_frame_ext, json_string_or_null) */
+SEXP C_jgd_set_frame_ext(SEXP s_json) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) Rf_error("no active graphics device");
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) Rf_error("current device is not a jgd device");
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st) Rf_error("jgd device state is NULL");
+
+    if (s_json == R_NilValue) {
+        free(st->frame_ext_json);
+        st->frame_ext_json = NULL;
+        return R_NilValue;
+    }
+
+    if (TYPEOF(s_json) != STRSXP || LENGTH(s_json) != 1)
+        Rf_error("frame_ext must be a single JSON string or NULL");
+
+    const char *json = CHAR(STRING_ELT(s_json, 0));
+
+    if (!json[0]) {
+        free(st->frame_ext_json);
+        st->frame_ext_json = NULL;
+        return R_NilValue;
+    }
+
+    cJSON *parsed = cJSON_Parse(json);
+    if (!parsed) {
+        const char *err = cJSON_GetErrorPtr();
+        if (err && err >= json) {
+            long pos = (long)(err - json);
+            char buf[128];
+            snprintf(buf, sizeof(buf),
+                     "invalid JSON in frame_ext at position %ld", pos);
+            return Rf_mkString(buf);
+        }
+        return Rf_mkString("invalid JSON in frame_ext");
+    }
+    cJSON_Delete(parsed);
+
+    char *new_ext = strdup(json);
+    if (!new_ext) Rf_error("failed to allocate frame_ext_json");
+
+    free(st->frame_ext_json);
+    st->frame_ext_json = new_ext;
+
+    return R_NilValue;
+}
+
+/* Called from R: .Call(C_jgd_begin_group, ext_json_string_or_null) */
+SEXP C_jgd_begin_group(SEXP s_ext) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) Rf_error("no active graphics device");
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) Rf_error("current device is not a jgd device");
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st) Rf_error("jgd device state is NULL");
+
+    if (s_ext != R_NilValue &&
+        (TYPEOF(s_ext) != STRSXP || LENGTH(s_ext) != 1))
+        Rf_error("group ext must be a single JSON string or NULL");
+
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "beginGroup");
+
+    if (s_ext != R_NilValue) {
+        const char *json = CHAR(STRING_ELT(s_ext, 0));
+        if (json[0]) {  /* empty string "" treated as no-ext, same as NULL */
+            cJSON *ext = cJSON_Parse(json);
+            if (!ext) {
+                cJSON_Delete(op);
+                const char *err = cJSON_GetErrorPtr();
+                if (err && err >= json) {
+                    long pos = (long)(err - json);
+                    char buf[128];
+                    snprintf(buf, sizeof(buf),
+                             "invalid JSON in group ext at position %ld", pos);
+                    return Rf_mkString(buf);
+                }
+                return Rf_mkString("invalid JSON in group ext");
+            }
+            cJSON_AddItemToObject(op, "ext", ext);
+        }
+    }
+
+    page_add_op(&st->page, op);
+    st->group_depth++;
+    return R_NilValue;
+}
+
+/* Called from R: .Call(C_jgd_end_group) */
+SEXP C_jgd_end_group(void) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) Rf_error("no active graphics device");
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) Rf_error("current device is not a jgd device");
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st) Rf_error("jgd device state is NULL");
+
+    if (st->group_depth <= 0)
+        Rf_error("endGroup without matching beginGroup");
+
+    cJSON *op = cJSON_CreateObject();
+    cJSON_AddStringToObject(op, "op", "endGroup");
+    page_add_op(&st->page, op);
+    st->group_depth--;
+
+    /* recordGraphics() does not trigger cb_mode(0), so the endGroup op
+     * would stay unflushed until the next graphics primitive or page
+     * boundary.  Flush immediately so the renderer receives the complete
+     * group sequence (beginGroup … endGroup) without delay. */
+    if (!st->replaying && st->hold_level == 0 &&
+        st->page.op_count > st->last_flushed_ops) {
+        int incr = (st->last_flushed_ops > 0) ? 1 : 0;
+        jgd_flush_frame(st, incr);
+        st->last_flushed_ops = st->page.op_count;
+    }
+
+    return R_NilValue;
+}
+
+/* Called from R after recordGraphics(jgd_end_group) to update the
+ * snapshot.  The snapshot captured by cb_mode(0) during the last
+ * drawing primitive (before endGroup) does not include the endGroup
+ * recordGraphics entry, because R adds it to the display list only
+ * after the callback finishes.  This function re-captures the
+ * snapshot so plotIndex resize replay includes the complete group. */
+SEXP C_jgd_update_snapshot(void) {
+    pGEDevDesc gdd = GEcurrentDevice();
+    if (!gdd || !gdd->dev) return R_NilValue;
+
+    pDevDesc dd = gdd->dev;
+    if (!jgd_is_jgd_device(dd)) return R_NilValue;
+
+    jgd_state_t *st = (jgd_state_t *)dd->deviceSpecific;
+    if (!st || st->replaying) return R_NilValue;
+
+    jgd_capture_snapshot(st);
+    return R_NilValue;
+}
+
 /* ---- Snapshot replay ---- */
 
 /**
@@ -398,6 +545,7 @@ static void restore_grid_dl_from_snapshot(jgd_state_t *st, SEXP snap,
 
 static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
     st->replaying = 1;
+    st->replay_newpage_done = 0;
 
     /* PROTECT snap during R_ToplevelExec: although snap is typically
      * reachable via snapshot_store or the caller's PROTECT frame,
@@ -415,9 +563,24 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
         }
     }
 
-    /* Record op count before GEplaySnapshot so we can detect whether
-     * it actually produced drawing ops (base DL replay) or not. */
-    int ops_before = st->page.op_count;
+    /* Count entries in the snapshot's base display list (element 0).
+     * Base-graphics plots have many entries (8+); grid/ggplot2 plots
+     * have an empty or near-empty base DL (0-2 entries, just initial
+     * clip ops from the graphics engine).
+     *
+     * We check this BEFORE replaying because the old ops-counting
+     * approach (comparing op_count before/after GEplaySnapshot) can
+     * produce false zeros when cb_newPage resets op_count during
+     * replay and the replayed plot happens to have the same number
+     * of ops as the previous page. */
+    int base_dl_len = 0;
+    if (TYPEOF(snap) == VECSXP && LENGTH(snap) >= 1) {
+        SEXP base_dl = VECTOR_ELT(snap, 0);
+        if (base_dl != R_NilValue && TYPEOF(base_dl) == LISTSXP) {
+            for (SEXP p = base_dl; p != R_NilValue; p = CDR(p))
+                base_dl_len++;
+        }
+    }
 
     replay_snapshot_args_t args = { snap, gdd };
     Rboolean ok = R_ToplevelExec(do_play_snapshot, &args);
@@ -428,31 +591,18 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
         return;
     }
 
-    /* GEplaySnapshot replays the base display list.  For grid/ggplot2
-     * plots the base DL is empty, so GEplaySnapshot produces only a
-     * clip op (~0-2 ops) and does NOT call GE_RestoreState (which
-     * would trigger grid.newpage + initVP).  We detect this case and
-     * call grid::grid.refresh() to redraw from grid's internal DL.
+    if (st->debug_frames)
+        REprintf("[jgd] replay_snapshot: after GEplaySnapshot ops=%d "
+                 "base_dl_len=%d\n",
+                 st->page.op_count, base_dl_len);
+
+    /* If the snapshot's base DL was empty (grid/ggplot2 case), we need
+     * grid::grid.refresh() to redraw from grid's internal DL.
      *
      * We also force-restore grid's DL from the snapshot, because
      * GE_RestoreSnapshotState skips the restore when the snapshot's
-     * grid DL index <= 1 (only root viewport recorded).
-     *
-     * Compare against ops_before (not last_flushed_ops) to detect
-     * the empty-base-DL case correctly even when called mid-page
-     * (e.g. plotIndex resize where op_count is already high). */
-    int new_ops = st->page.op_count - ops_before;
-    if (st->debug_frames)
-        REprintf("[jgd] replay_snapshot: after GEplaySnapshot ops=%d ops_before=%d "
-                 "new_ops=%d\n",
-                 st->page.op_count, ops_before, new_ops);
-
-    /* If GEplaySnapshot produced very few NEW ops, the base DL was empty
-     * (grid/ggplot2 case) — need grid.refresh() to redraw.
-     * A negative new_ops means cb_newPage reset op_count during replay
-     * (base graphics path via GE_RestoreState → GENewPage), which is
-     * normal for base-graphics plots — no grid.refresh() needed. */
-    if (new_ops >= 0 && new_ops <= 2) {
+     * grid DL index <= 1 (only root viewport recorded). */
+    if (base_dl_len <= 2) {
 #if defined(R_VERSION) && R_VERSION >= R_Version(4, 5, 0)
         SEXP grid_ns = R_getVarEx(Rf_install("grid"), R_NamespaceRegistry, FALSE, R_UnboundValue);
 #else
@@ -541,10 +691,27 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         SEXP snap = VECTOR_ELT(st->snapshot_store, store_idx);
         SEXP current = PROTECT(GEcreateSnapshot(gdd));
 
-        if (st->debug_frames)
+        if (st->debug_frames) {
             REprintf("[jgd] poll_resize: plotIndex replay pi=%d store_idx=%d "
-                     "at %.0fx%.0f\n",
-                     pi, store_idx, st->width * st->dpi, st->height * st->dpi);
+                     "snap_count=%d at %.0fx%.0f\n",
+                     pi, store_idx, st->snapshot_count,
+                     st->width * st->dpi, st->height * st->dpi);
+            if (TYPEOF(snap) == VECSXP && LENGTH(snap) >= 1) {
+                SEXP dl = VECTOR_ELT(snap, 0);
+                if (dl != R_NilValue && TYPEOF(dl) == LISTSXP) {
+                    int dl_len = 0;
+                    for (SEXP p = dl; p != R_NilValue; p = CDR(p)) dl_len++;
+                    REprintf("[jgd] poll_resize: snapshot DL pairlist entries=%d\n",
+                             dl_len);
+                } else {
+                    REprintf("[jgd] poll_resize: snapshot DL is NULL or type=%d\n",
+                             dl == R_NilValue ? 0 : TYPEOF(dl));
+                }
+            } else {
+                REprintf("[jgd] poll_resize: snap type=%d len=%d\n",
+                         TYPEOF(snap), LENGTH(snap));
+            }
+        }
 
         /* Save current page ext before the historical replay overwrites
          * page_ext_json.  We need this to restore the current plot's ext
@@ -552,11 +719,16 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
         char *saved_ext = st->ext_json;
         char *current_page_ext = st->page_ext_json
                                      ? strdup(st->page_ext_json) : NULL;
+        char *saved_frame_ext = st->frame_ext_json;
+        char *current_page_frame_ext = st->page_frame_ext_json
+                                           ? strdup(st->page_frame_ext_json) : NULL;
 
-        /* Set ext_json to the historical snapshot's ext so that
+        /* Set ext_json/frame_ext_json to the historical snapshot's ext so that
          * cb_newPage (during replay) captures the correct page_ext_json. */
         st->ext_json = st->snapshot_ext[store_idx]
                            ? strdup(st->snapshot_ext[store_idx]) : NULL;
+        st->frame_ext_json = st->snapshot_frame_ext[store_idx]
+                                 ? strdup(st->snapshot_frame_ext[store_idx]) : NULL;
 
         replay_snapshot(st, snap, gdd);
 
@@ -581,14 +753,18 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * cleanup) so cb_newPage captures the correct page_ext_json. */
         free(st->ext_json);
         st->ext_json = current_page_ext;
+        free(st->frame_ext_json);
+        st->frame_ext_json = current_page_frame_ext;
 
         if (current != R_NilValue) {
             replay_snapshot(st, current, gdd);
         }
 
-        /* Now restore ext_json to its real value (what the user last set). */
+        /* Now restore ext_json/frame_ext_json to their real values. */
         free(st->ext_json);
         st->ext_json = saved_ext;
+        free(st->frame_ext_json);
+        st->frame_ext_json = saved_frame_ext;
 
         /* Suppress re-flushing the restored current plot */
         st->last_flushed_ops = st->page.op_count;
@@ -601,10 +777,13 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
             REprintf("[jgd] poll_resize: current plot replay at %.0fx%.0f\n",
                      st->width * st->dpi, st->height * st->dpi);
 
-        /* Temporarily restore ext_json from page_ext_json so that
+        /* Temporarily restore ext_json/frame_ext_json from page copies so that
          * cb_newPage (during replay) captures the correct ext. */
         char *saved_ext = st->ext_json;
         st->ext_json = st->page_ext_json ? strdup(st->page_ext_json) : NULL;
+        char *saved_frame_ext = st->frame_ext_json;
+        st->frame_ext_json = st->page_frame_ext_json
+                                 ? strdup(st->page_frame_ext_json) : NULL;
 
         /* Replay the display list at new dimensions.
          * All intermediate flushes (cb_holdflush, cb_mode) are suppressed while
@@ -612,12 +791,15 @@ static int poll_resize_impl(jgd_state_t *st, pDevDesc dd, pGEDevDesc gdd) {
          * This prevents the browser from receiving untagged incremental frames
          * that would be misrouted (appendOps to the wrong history slot). */
         st->replaying = 1;
+        st->replay_newpage_done = 0;
         Rboolean ok = R_ToplevelExec(do_play_display_list, gdd);
         st->replaying = 0;
 
-        /* Restore ext_json to what it was before the replay. */
+        /* Restore ext_json/frame_ext_json to what they were before the replay. */
         free(st->ext_json);
         st->ext_json = saved_ext;
+        free(st->frame_ext_json);
+        st->frame_ext_json = saved_frame_ext;
 
         if (!ok) {
             REprintf("[jgd] poll_resize: GEplayDisplayList failed (longjmp caught)\n");
