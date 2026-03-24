@@ -80,17 +80,17 @@ static int parse_tcp(const char *path, struct sockaddr_in *out) {
 }
 
 #ifdef _WIN32
-/* Parse npipe:///NAME or npipe://localhost/NAME → \\.\pipe\NAME.
+/* Parse npipe:////./pipe/NAME (Docker-standard 4-slash form) → \\.\pipe\NAME.
  * Returns 0 on success, -1 if not an npipe URI. */
 static int parse_npipe(const char *path, char *buf, size_t bufsize) {
+    const char *prefix = "npipe:////./pipe/";
+    size_t prefix_len = 17; /* strlen("npipe:////./pipe/") */
     const char *name;
-    if (_strnicmp(path, "npipe://localhost/", 18) == 0) {
-        name = path + 18;
-    } else if (strncmp(path, "npipe:///", 9) == 0) {
-        name = path + 9;
-    } else {
+
+    if (strncmp(path, prefix, prefix_len) != 0) {
         return -1;
     }
+    name = path + prefix_len;
 
     /* "\\\\.\\pipe\\" is 9 characters; plus 1 for the terminating NUL. */
     if (bufsize <= 10) return -1;

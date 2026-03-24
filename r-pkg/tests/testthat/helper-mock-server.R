@@ -141,7 +141,7 @@ start_mock_server_local = function(send_welcome = FALSE, transport = "unix") {
       bg$kill()
       skip("Mock server pipe not ready in time")
     }
-    client_uri = paste0("npipe:///", pipe_name)
+    client_uri = paste0("npipe:////./pipe/", pipe_name)
   } else {
     # Wait for the socket file to appear
     for (i in seq_len(30)) {

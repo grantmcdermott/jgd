@@ -16,7 +16,7 @@ connection using one of three transport protocols: Unix domain sockets
 The R client connects to the server using one of the following URI schemes:
 \itemize{
 \item \verb{unix:///path/to/socket} -- Unix domain socket (Linux/macOS default)
-\item \verb{npipe:///pipe/name} -- Windows named pipe (Windows default)
+\item \verb{npipe:////./pipe/name} -- Windows named pipe (Windows default)
 \item \verb{tcp://host:port} -- TCP socket (any platform)
 }
 

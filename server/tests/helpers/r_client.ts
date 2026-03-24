@@ -23,7 +23,7 @@ export class RClient {
   /** Welcome message received on connect (if any). */
   serverInfo: ServerInfoMessage | null = null;
 
-  /** Connect to the server's socket. Supports "unix:///path", "tcp://host:port", and "npipe:///NAME". */
+  /** Connect to the server's socket. Supports "unix:///path", "tcp://host:port", and "npipe:////./pipe/NAME". */
   async connect(uri: string): Promise<void> {
     const addr = parseSocketUri(uri);
     switch (addr.transport) {

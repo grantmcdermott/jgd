@@ -5,7 +5,7 @@
 
 typedef struct {
     int fd;
-    char socket_path[512];  /* URI (tcp://host:port, unix:///path, npipe:///name; localhost variant accepted) or raw path */
+    char socket_path[512];  /* URI (tcp://host:port, unix:///path, npipe:////./pipe/name) or raw path */
     int connected;
     char readbuf[4096];     /* persistent read buffer for bulk recv */
     size_t readbuf_len;     /* valid bytes in readbuf */
