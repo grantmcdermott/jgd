@@ -67,8 +67,11 @@ to account for potential message reordering. Non-\code{server_info}
 messages received during handshake are silently discarded.
 
 If the server does not send a welcome within the timeout, the
-device operates normally without server metadata.
-\code{\link[=jgd_server_info]{jgd_server_info()}} returns \code{NULL} in this case.
+device operates normally without a live server connection.
+\code{\link[=jgd_server_info]{jgd_server_info()}} falls back to reading the discovery file
+when available (returning a non-\code{NULL} list with
+\code{connected = FALSE}), and returns \code{NULL} only when neither
+welcome metadata nor discovery information can be obtained.
 
 The server should also tolerate receiving a \code{frame} message
 before \code{ping} (e.g., if a future R client skips the ping). The
@@ -157,9 +160,10 @@ strings (optional). Canonical key: \code{httpUrl}.
 \section{R-side representation}{
 
 
-\code{\link[=jgd_server_info]{jgd_server_info()}} returns a named list with four elements, or
-\code{NULL} if no welcome was received:
+\code{\link[=jgd_server_info]{jgd_server_info()}} returns a named list. When the server sent a
+welcome message (\code{connected = TRUE}), the list contains:
 \itemize{
+\item \strong{\code{connected}}: \code{TRUE}
 \item \strong{\code{server_name}}: The server name (character scalar)
 \item \strong{\code{protocol_version}}: The protocol version (integer scalar)
 \item \strong{\code{transport}}: The transport protocol (character scalar)
@@ -168,11 +172,14 @@ from the \code{serverInfo} object
 (e.g. \code{c(httpUrl = "http://...")})
 }
 
+When no welcome was received but a discovery file is available,
+the function falls back to it (\code{connected = FALSE}) with fields
+such as \code{server_name}, \code{socket_path}, \code{pid}, and \code{server_info}.
+
 \code{jgd_server_info()} returns \code{NULL} when:
 \itemize{
 \item The current device is not a jgd device
-\item The server did not send a welcome within the timeout
-\item The device was not connected at open time
+\item Neither welcome metadata nor discovery file is available
 }
 }
 
@@ -560,9 +567,14 @@ A server may accept connections from multiple R processes
 simultaneously. Each R connection has its own \code{sessionId} and
 independent display list. Servers should:
 \itemize{
-\item Route \code{metrics_request} messages to the renderer and route
-the matching \code{metrics_response} back to the originating R
-session (keyed by request \code{id}).
+\item Route \code{metrics_request} messages from each R connection to
+the renderer, and route the matching \code{metrics_response} back
+to the originating R session. The \code{id} field is only unique
+within a single R process, so servers must scope routing by
+the originating connection (e.g. keyed by session + \code{id}).
+If a server remaps IDs when forwarding to a shared renderer,
+it must restore the original \code{id} when relaying the response
+back to R.
 \item Route \code{plotIndex} resizes to the R session that owns the
 target plot (identified by \code{sessionId} in the resize message).
 \item Broadcast normal resizes to all connected R sessions.
