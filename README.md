@@ -16,8 +16,8 @@ initial development focus, in principle any client able to read JSON could use
 it to render R plots (e.g., Neovim, Emacs, or a custom web app).
 
 **Caveats:** The package is experimental and may have some rough edges despite
-our best efforts at thorough local testing. The communication protocol between
-R and the renderer is still in development and not yet stable.
+our best efforts at thorough local testing. The NDJSON wire protocol is
+documented in `?jgd-spec`; extension fields (`ext`) remain experimental.
 Finally, we want to be transparent that this project has made _heavy_ use of
 AI-assisted pair programming (Claude). It is highly doubtful that we would have
 been able to put this together without AI help.
@@ -223,8 +223,8 @@ using the browser's Canvas2D API.
 - **Incremental updates**: `plot()` + `lines()` = one history entry
 - **Text rotation**, **transparent colors**, **clip regions**, **line types**,
   **raster images** (base64-encoded PNG)
-- **Auto-discovery**: `JGD_SOCKET` environment variable or `jgd-discovery.json`
-  file for automatic connection
+- **Auto-discovery**: `JGD_SOCKET` environment variable or `discovery.json`
+  file for automatic connection (see `?jgd-spec` for details)
 - **Export**: PNG and SVG from the toolbar dropdown, with custom dimensions
   (inches + DPI)
 - **Cross-platform**: Unix domain sockets on macOS/Linux, named pipes on
@@ -413,7 +413,8 @@ saved per-snapshot, and restored on plotIndex replay.
 
 - [x] **Windows support**: Named pipes (default) and TCP transport
 - [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
-- [ ] **Protocol stabilization**: Stabilize and document the NDJSON protocol
+- [x] **Protocol stabilization**: Stabilize and document the NDJSON protocol
+  (see `?jgd-spec`)
 - [ ] **CRAN submission**: Package the R side for CRAN distribution
 - [ ] **R extension integration**: Incorporate the code from this package into
   the main VS Code R extension (if the upstream maintainers agree).
