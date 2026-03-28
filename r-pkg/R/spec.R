@@ -122,6 +122,12 @@
 #' - **`server_info`**: A named character vector of key-value pairs from the
 #'   `serverInfo` object (e.g. `c(httpUrl = "http://...")`)
 #'
+#' `jgd_server_info()` returns `NULL` when:
+#'
+#' - The current device is not a jgd device
+#' - The server did not send a welcome within the timeout
+#' - The device was not connected at open time
+#'
 #' @section R-to-server messages:
 #'
 #' **ping** -- Heartbeat; triggers the deferred welcome on first send.
@@ -295,8 +301,8 @@
 #' @section Drawing operations:
 #'
 #' Each element of the `ops` array is a JSON object with an `"op"` field.
-#' Operations that produce visible output also include a `"gc"` field
-#' (see \dQuote{Graphics context}).
+#' Most drawing operations include a `"gc"` field (see
+#' \dQuote{Graphics context}). Exceptions are noted per operation.
 #'
 #' **clip** -- Set the clipping rectangle. No `gc`.
 #'
@@ -356,13 +362,12 @@
 #' - **`subpaths`**: Array of subpaths. Each subpath is an array of
 #'   `[x, y]` coordinate pairs.
 #'
-#' **raster** -- Raster image.
+#' **raster** -- Raster image. No `gc`.
 #'
 #' ```json
 #' {"op": "raster", "x": 0, "y": 0, "w": 100, "h": 80,
 #'  "rot": 0, "interpolate": true,
-#'  "pw": 200, "ph": 160, "data": "data:image/png;base64,...",
-#'  "gc": {}}
+#'  "pw": 200, "ph": 160, "data": "data:image/png;base64,..."}
 #' ```
 #'
 #' - **`w`**, **`h`**: Displayed width and height in device coordinates.

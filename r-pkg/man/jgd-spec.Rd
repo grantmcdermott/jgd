@@ -139,6 +139,13 @@ if no welcome was received:
 \item \strong{\code{server_info}}: A named character vector of key-value pairs from the
 \code{serverInfo} object (e.g. \code{c(httpUrl = "http://...")})
 }
+
+\code{jgd_server_info()} returns \code{NULL} when:
+\itemize{
+\item The current device is not a jgd device
+\item The server did not send a welcome within the timeout
+\item The device was not connected at open time
+}
 }
 
 \section{R-to-server messages}{
@@ -327,8 +334,8 @@ an empty array \verb{[]}. Each element is the product of a dash nibble and
 
 
 Each element of the \code{ops} array is a JSON object with an \code{"op"} field.
-Operations that produce visible output also include a \code{"gc"} field
-(see \dQuote{Graphics context}).
+Most drawing operations include a \code{"gc"} field (see
+\dQuote{Graphics context}). Exceptions are noted per operation.
 
 \strong{clip} -- Set the clipping rectangle. No \code{gc}.
 
@@ -382,12 +389,11 @@ Operations that produce visible output also include a \code{"gc"} field
 \verb{[x, y]} coordinate pairs.
 }
 
-\strong{raster} -- Raster image.
+\strong{raster} -- Raster image. No \code{gc}.
 
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{"op": "raster", "x": 0, "y": 0, "w": 100, "h": 80,
  "rot": 0, "interpolate": true,
- "pw": 200, "ph": 160, "data": "data:image/png;base64,...",
- "gc": \{\}\}
+ "pw": 200, "ph": 160, "data": "data:image/png;base64,..."\}
 }\if{html}{\out{</div>}}
 \itemize{
 \item \strong{\code{w}}, \strong{\code{h}}: Displayed width and height in device coordinates.
