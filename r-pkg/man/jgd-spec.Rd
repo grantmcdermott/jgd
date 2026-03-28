@@ -16,8 +16,8 @@ can implement a compatible rendering backend.
 \section{Transport protocols}{
 
 
-The R client connects to the server using one of the following
-URI schemes:
+The client connects to the server using one of the following URI
+schemes:
 \itemize{
 \item \verb{unix:///path/to/socket} -- Unix domain socket (Linux/macOS
 default)
@@ -62,18 +62,8 @@ first read completes can cause data loss.
 Server -> R:  \{"type":"server_info", ...\}
 }\if{html}{\out{</div>}}
 
-The R client reads with a short timeout, discarding any
-non-\code{server_info} messages received during the handshake.
-
-If the server does not send a welcome within the timeout, the
-device operates normally without a live server connection.
-\code{\link[=jgd_server_info]{jgd_server_info()}} falls back to reading the discovery file
-when available (returning a non-\code{NULL} list with
-\code{connected = FALSE}), and returns \code{NULL} only when neither
-welcome metadata nor discovery information can be obtained.
-
 The server should also tolerate receiving a \code{frame} message
-before \code{ping} (e.g., if a future R client skips the ping). The
+before \code{ping} (e.g., if a future client skips the ping). The
 first received message of any type should trigger the deferred
 welcome.
 }
@@ -81,7 +71,7 @@ welcome.
 \section{Discovery file}{
 
 
-The discovery file is an \strong{optional} JSON file that allows the R
+The discovery file is an \strong{optional} JSON file that allows the
 client to find the server without an explicit socket address. It
 is a hint for auto-connection only; the welcome message is the
 single source of truth.
@@ -108,8 +98,8 @@ or \verb{~/.cache/jgd/discovery.json}
 \itemize{
 \item \strong{\code{serverName}} (string, required): Human-readable server
 name.
-\item \strong{\code{socketPath}} (string, required): Socket URI where R should
-connect.
+\item \strong{\code{socketPath}} (string, required): Socket URI where the
+client should connect.
 \item \strong{\code{pid}} (integer, required): Process ID of the server.
 \item \strong{\code{serverInfo}} (object, optional): Flat key-value pairs with
 string values. Canonical key: \code{httpUrl} (HTTP endpoint URL).
@@ -125,8 +115,8 @@ after confirming it still owns the file (PID check).
 stale files, since \verb{~/.cache} is not cleared on reboot.
 \item Multiple server instances may coexist; the last writer wins.
 \item Server implementors may omit discovery file support entirely.
-Clients can always connect directly via
-\code{jgd(socket = "<uri>")}.
+Clients can always connect directly via an explicit socket
+URI.
 \item The discovery file has no explicit version field. Readers
 should ignore unknown fields for forward compatibility.
 }
@@ -154,34 +144,11 @@ protocol version rather than raising an error.
 \item \strong{\code{transport}}: Transport in use: \code{"tcp"}, \code{"unix"}, or
 \code{"npipe"} (string)
 \item \strong{\code{serverInfo}}: A flat JSON object whose values are all
-strings (optional). Canonical key: \code{httpUrl}. When absent or
-empty, R represents it as an empty named character vector.
-}
+strings (optional). Canonical key: \code{httpUrl}.
 }
 
-\section{R-side representation}{
-
-
-\code{\link[=jgd_server_info]{jgd_server_info()}} returns a named list. When the server sent a
-welcome message (\code{connected = TRUE}), the list contains:
-\itemize{
-\item \strong{\code{connected}}: \code{TRUE}
-\item \strong{\code{server_name}}: The server name (character scalar)
-\item \strong{\code{protocol_version}}: The protocol version (integer scalar)
-\item \strong{\code{transport}}: The transport protocol (character scalar)
-\item \strong{\code{server_info}}: A named character vector of key-value pairs
-from the \code{serverInfo} object
-(e.g. \code{c(httpUrl = "http://...")})
-}
-
-When no welcome was received but a discovery file is available,
-the function falls back to it (\code{connected = FALSE}) with fields
-such as \code{server_name}, \code{socket_path}, \code{pid}, and \code{server_info}.
-
-\code{jgd_server_info()} returns \code{NULL} only when neither a
-connected device's welcome nor a valid discovery file is
-available. Note that the discovery fallback applies regardless
-of whether the current device is a jgd device.
+See \code{\link[=jgd_server_info]{jgd_server_info()}} for how the R client represents this
+data.
 }
 
 \section{R-to-server messages}{
@@ -222,7 +189,7 @@ the character to measure (e.g., 77 for \code{"M"}).
 in points).
 }
 
-\strong{close} -- Signals that \code{dev.off()} was called.
+\strong{close} -- Signals device shutdown.
 
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{"type": "close"\}
 }\if{html}{\out{</div>}}
@@ -253,9 +220,9 @@ historical plot identified by its R-assigned plot number (the
 }\if{html}{\out{</div>}}
 \itemize{
 \item \strong{\code{id}}: Must match the request \code{id}.
-\item The R client handles its own timeout and falls back to local
-font metric computation if no matching response arrives.
-Servers are not required to synthesize fallback responses.
+\item Servers should respond promptly. Clients handle their own
+timeouts and may fall back to local computation. Servers are
+not required to synthesize fallback responses.
 }
 }
 
@@ -309,8 +276,7 @@ If \code{false}, \code{ops} contains the complete drawing for the page.
 \item \strong{\code{newPage}} (boolean, optional): Present and \code{true} when
 this is a fresh plot (not a delta, not a resize replay).
 \item \strong{\code{resizeReplay}} (boolean, optional): Present and \code{true}
-when this frame is a replay of a display list triggered by a
-resize.
+when this frame is a replay triggered by a resize.
 \item \strong{\code{plotIndex}} (integer, optional): Present during
 \code{resizeReplay} when a historical plot (not the current one)
 was replayed. This is the absolute R-side plot number (the
@@ -323,11 +289,10 @@ sequence number for plots (e.g., 0 for the first, 1 for the
 second). Present on all frames for the current plot (including
 incremental and resize replay frames). Omitted only on
 historical resize replays where \code{plotIndex} is present.
-\item \strong{\code{ext}} (object, optional): Frame-level extension data set
-via \code{\link[=jgd_frame_ext]{jgd_frame_ext()}}. When unset, the field is omitted
-(never sent as \code{null}); when set, it may be any JSON object
-including an empty \code{{}}. Servers should preserve and forward
-it to renderers.
+\item \strong{\code{ext}} (object, optional): Frame-level extension data.
+When unset, the field is omitted (never sent as \code{null}); when
+set, it may be any JSON object including an empty \code{{}}.
+Servers should preserve and forward it to renderers.
 }
 
 \strong{plot object:}
@@ -405,8 +370,8 @@ default).
 \item \strong{\code{size}}: Font size in points (number).
 \item \strong{\code{lineheight}}: Line height multiplier (number).
 }
-\item \strong{\code{ext}} (object, optional): Per-operation extension data set
-via \code{\link[=jgd_ext]{jgd_ext()}}. Present only when set. Free-form JSON.
+\item \strong{\code{ext}} (object, optional): Per-operation extension data.
+Present only when set. Free-form JSON.
 }
 }
 
@@ -505,10 +470,10 @@ image.
  "ext": \{"filter": "blur(5px)", "opacity": 0.8\}\}
 }\if{html}{\out{</div>}}
 \itemize{
-\item \strong{\code{ext}} (object, optional): Group-level extension data
-passed via \code{\link[=jgd_begin_group]{jgd_begin_group()}}. Present only when set.
-Free-form JSON. Common keys: \code{filter} (CSS filter string),
-\code{opacity} (number 0--1), \code{blendMode} (CSS blend mode string).
+\item \strong{\code{ext}} (object, optional): Group-level extension data.
+Present only when set. Free-form JSON. Common keys: \code{filter}
+(CSS filter string), \code{opacity} (number 0--1), \code{blendMode}
+(CSS blend mode string).
 }
 
 \strong{endGroup} -- End the most recently opened group. No \code{gc}, no
@@ -517,18 +482,15 @@ fields other than \code{"op"}.
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{"op": "endGroup"\}
 }\if{html}{\out{</div>}}
 
-Groups nest arbitrarily. When the device is not held via
-\code{dev.hold()}, an \code{endGroup} triggers an immediate frame flush.
-The flush is complete if nothing has been flushed yet since the
-last \code{newPage}, and incremental otherwise.
+Groups nest arbitrarily.
 }
 
 \section{Resize protocol}{
 
 
 The server receives resize messages from the renderer and
-forwards them to R. R replays the display list at the new
-dimensions and sends back a frame message.
+forwards them to R. R replays the drawing at the new dimensions
+and sends back a frame message.
 
 \strong{Normal resize flow:}
 
@@ -564,7 +526,7 @@ Servers should deduplicate consecutive normal resizes with
 identical dimensions for each R session. However, if the
 previous resize was a \code{plotIndex} resize, the next normal resize
 at the same dimensions must NOT be deduplicated, because they
-target different display lists (historical snapshot vs. current
+target different contexts (historical snapshot vs. current
 plot).
 }
 
@@ -573,7 +535,7 @@ plot).
 
 A server may accept connections from multiple R processes
 simultaneously. Each R connection has its own \code{sessionId} and
-independent display list. Servers should:
+independent state. Servers should:
 \itemize{
 \item Route \code{metrics_request} messages from each R connection to
 the renderer, and route the matching \code{metrics_response} back
@@ -595,31 +557,28 @@ renderers.
 
 
 The \code{sessionId} in frame messages identifies the R device
-instance. Servers should treat it as an opaque string. The
-reference implementation generates IDs in
-\verb{r-<pid>-<counter>} format (e.g., \code{"r-1234-1"},
-\code{"r-1234-2"}), where the counter increments for each new
-device within the same R process.
+instance. Servers should treat it as an \strong{opaque string}. Do
+not parse it or make assumptions about its format.
 
-Since each device instance produces a unique \code{sessionId},
-reuse is unlikely. However, as a defensive measure, servers
-may disambiguate by appending a suffix (e.g., \code{"r-1234-1:1"})
-if a retired \code{sessionId} reappears. The server's (possibly
-remapped) \code{sessionId} is what the renderer sees; \code{plotIndex}
-resizes use it for routing.
+Session ID reuse is unlikely but possible (e.g., after process
+restart). As a defensive measure, servers should disambiguate
+if a previously retired \code{sessionId} reappears, to prevent
+\code{plotIndex} resizes for old plots from reaching the new
+connection. The server's (possibly remapped) \code{sessionId} is
+what the renderer sees; \code{plotIndex} resizes use it for routing.
 }
 
 \section{Connection lifecycle}{
 
 
-\strong{Graceful close:} R sends \code{{"type":"close"}} when
-\code{dev.off()} is called. The server should forward this to
-renderers and clean up routing state for that session.
+\strong{Graceful close:} The client sends \code{{"type":"close"}} on
+device shutdown. The server should forward this to renderers
+and clean up routing state for that session.
 
-\strong{Ungraceful disconnect:} If the R connection drops without a
-\code{close} message (e.g., R process crash), the server should
-detect the broken connection (EOF or socket error), clean up
-the session, and optionally notify renderers.
+\strong{Ungraceful disconnect:} If the connection drops without a
+\code{close} message (e.g., process crash), the server should detect
+the broken connection (EOF or socket error), clean up the
+session, and optionally notify renderers.
 
 \strong{Incomplete lines:} If a connection drops mid-line (no
 trailing \verb{\\n}), the partial data should be discarded.
@@ -630,23 +589,25 @@ trailing \verb{\\n}), the partial data should be discarded.
 
 Extension fields (\code{ext}) appear at three levels:
 \itemize{
-\item \strong{Frame-level}: Top-level \code{ext} on the frame message. Set
-via \code{\link[=jgd_frame_ext]{jgd_frame_ext()}} in R. Applies to the entire frame.
+\item \strong{Frame-level}: Top-level \code{ext} on the frame message.
+Applies to the entire frame.
 \item \strong{Graphics context level}: \code{ext} inside the \code{gc} object.
-Set via \code{\link[=jgd_ext]{jgd_ext()}} in R. Applies to all drawing operations
-while active.
-\item \strong{Group level}: \code{ext} on \code{beginGroup} operations. Passed
-via \code{\link[=jgd_begin_group]{jgd_begin_group()}} in R. Applies only to that group.
+Applies to all drawing operations while active.
+\item \strong{Group level}: \code{ext} on \code{beginGroup} operations. Applies
+only to that group.
 }
 
-All \code{ext} fields are free-form JSON objects. When unset in R,
-the field is omitted from the message (never sent as \code{null}).
-When set, it may contain any JSON object, including an empty
-\code{{}}. Servers should preserve and forward them to renderers
-without validation. Renderers should ignore unknown keys.
+All \code{ext} fields are free-form JSON objects. When unset, the
+field is omitted from the message (never sent as \code{null}). When
+set, it may contain any JSON object, including an empty \code{{}}.
+Servers should preserve and forward them to renderers without
+validation. Renderers should ignore unknown keys.
 
-Extension fields survive display list replays (resize), so
+Extension fields are preserved across resize replays, so
 historical plot snapshots retain their \code{ext} data.
+
+See \code{\link[=jgd_ext]{jgd_ext()}}, \code{\link[=jgd_frame_ext]{jgd_frame_ext()}}, and \code{\link[=jgd_begin_group]{jgd_begin_group()}}
+for the R API to set these fields.
 }
 
 \section{Implementing a server}{
@@ -661,9 +622,8 @@ first message from R (not before).
 \item Forward \code{frame} messages to connected renderers.
 \item Forward \code{resize} messages from renderers to R.
 \item Handle \code{metrics_request}/\code{metrics_response} routing between
-R and the renderer. Clients may impose their own timeouts
-and fall back to local metric computation if no response
-arrives.
+R and the renderer. Clients handle their own timeouts;
+servers are not required to synthesize fallback responses.
 \item Forward \code{close} messages to renderers and clean up the
 session state (remove metrics routing entries, etc.).
 }

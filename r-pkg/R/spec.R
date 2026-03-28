@@ -11,8 +11,8 @@
 #'
 #' @section Transport protocols:
 #'
-#' The R client connects to the server using one of the following
-#' URI schemes:
+#' The client connects to the server using one of the following URI
+#' schemes:
 #'
 #' - `unix:///path/to/socket` -- Unix domain socket (Linux/macOS
 #'   default)
@@ -51,24 +51,14 @@
 #' Server -> R:  {"type":"server_info", ...}
 #' ```
 #'
-#' The R client reads with a short timeout, discarding any
-#' non-`server_info` messages received during the handshake.
-#'
-#' If the server does not send a welcome within the timeout, the
-#' device operates normally without a live server connection.
-#' [jgd_server_info()] falls back to reading the discovery file
-#' when available (returning a non-`NULL` list with
-#' `connected = FALSE`), and returns `NULL` only when neither
-#' welcome metadata nor discovery information can be obtained.
-#'
 #' The server should also tolerate receiving a `frame` message
-#' before `ping` (e.g., if a future R client skips the ping). The
+#' before `ping` (e.g., if a future client skips the ping). The
 #' first received message of any type should trigger the deferred
 #' welcome.
 #'
 #' @section Discovery file:
 #'
-#' The discovery file is an **optional** JSON file that allows the R
+#' The discovery file is an **optional** JSON file that allows the
 #' client to find the server without an explicit socket address. It
 #' is a hint for auto-connection only; the welcome message is the
 #' single source of truth.
@@ -95,8 +85,8 @@
 #'
 #' - **`serverName`** (string, required): Human-readable server
 #'   name.
-#' - **`socketPath`** (string, required): Socket URI where R should
-#'   connect.
+#' - **`socketPath`** (string, required): Socket URI where the
+#'   client should connect.
 #' - **`pid`** (integer, required): Process ID of the server.
 #' - **`serverInfo`** (object, optional): Flat key-value pairs with
 #'   string values. Canonical key: `httpUrl` (HTTP endpoint URL).
@@ -111,8 +101,8 @@
 #'   stale files, since `~/.cache` is not cleared on reboot.
 #' - Multiple server instances may coexist; the last writer wins.
 #' - Server implementors may omit discovery file support entirely.
-#'   Clients can always connect directly via
-#'   `jgd(socket = "<uri>")`.
+#'   Clients can always connect directly via an explicit socket
+#'   URI.
 #' - The discovery file has no explicit version field. Readers
 #'   should ignore unknown fields for forward compatibility.
 #'
@@ -138,30 +128,10 @@
 #' - **`transport`**: Transport in use: `"tcp"`, `"unix"`, or
 #'   `"npipe"` (string)
 #' - **`serverInfo`**: A flat JSON object whose values are all
-#'   strings (optional). Canonical key: `httpUrl`. When absent or
-#'   empty, R represents it as an empty named character vector.
+#'   strings (optional). Canonical key: `httpUrl`.
 #'
-#' @section R-side representation:
-#'
-#' [jgd_server_info()] returns a named list. When the server sent a
-#' welcome message (`connected = TRUE`), the list contains:
-#'
-#' - **`connected`**: `TRUE`
-#' - **`server_name`**: The server name (character scalar)
-#' - **`protocol_version`**: The protocol version (integer scalar)
-#' - **`transport`**: The transport protocol (character scalar)
-#' - **`server_info`**: A named character vector of key-value pairs
-#'   from the `serverInfo` object
-#'   (e.g. `c(httpUrl = "http://...")`)
-#'
-#' When no welcome was received but a discovery file is available,
-#' the function falls back to it (`connected = FALSE`) with fields
-#' such as `server_name`, `socket_path`, `pid`, and `server_info`.
-#'
-#' `jgd_server_info()` returns `NULL` only when neither a
-#' connected device's welcome nor a valid discovery file is
-#' available. Note that the discovery fallback applies regardless
-#' of whether the current device is a jgd device.
+#' See [jgd_server_info()] for how the R client represents this
+#' data.
 #'
 #' @section R-to-server messages:
 #'
@@ -202,7 +172,7 @@
 #'   `family` (string), `face` (integer), and `size` (font size
 #'   in points).
 #'
-#' **close** -- Signals that `dev.off()` was called.
+#' **close** -- Signals device shutdown.
 #'
 #' ```json
 #' {"type": "close"}
@@ -233,9 +203,9 @@
 #' ```
 #'
 #' - **`id`**: Must match the request `id`.
-#' - The R client handles its own timeout and falls back to local
-#'   font metric computation if no matching response arrives.
-#'   Servers are not required to synthesize fallback responses.
+#' - Servers should respond promptly. Clients handle their own
+#'   timeouts and may fall back to local computation. Servers are
+#'   not required to synthesize fallback responses.
 #'
 #' @section Frame message:
 #'
@@ -288,8 +258,7 @@
 #' - **`newPage`** (boolean, optional): Present and `true` when
 #'   this is a fresh plot (not a delta, not a resize replay).
 #' - **`resizeReplay`** (boolean, optional): Present and `true`
-#'   when this frame is a replay of a display list triggered by a
-#'   resize.
+#'   when this frame is a replay triggered by a resize.
 #' - **`plotIndex`** (integer, optional): Present during
 #'   `resizeReplay` when a historical plot (not the current one)
 #'   was replayed. This is the absolute R-side plot number (the
@@ -302,11 +271,10 @@
 #'   second). Present on all frames for the current plot (including
 #'   incremental and resize replay frames). Omitted only on
 #'   historical resize replays where `plotIndex` is present.
-#' - **`ext`** (object, optional): Frame-level extension data set
-#'   via [jgd_frame_ext()]. When unset, the field is omitted
-#'   (never sent as `null`); when set, it may be any JSON object
-#'   including an empty `{}`. Servers should preserve and forward
-#'   it to renderers.
+#' - **`ext`** (object, optional): Frame-level extension data.
+#'   When unset, the field is omitted (never sent as `null`); when
+#'   set, it may be any JSON object including an empty `{}`.
+#'   Servers should preserve and forward it to renderers.
 #'
 #' **plot object:**
 #'
@@ -375,8 +343,8 @@
 #'     4 = bold italic, 5 = symbol.
 #'   - **`size`**: Font size in points (number).
 #'   - **`lineheight`**: Line height multiplier (number).
-#' - **`ext`** (object, optional): Per-operation extension data set
-#'   via [jgd_ext()]. Present only when set. Free-form JSON.
+#' - **`ext`** (object, optional): Per-operation extension data.
+#'   Present only when set. Free-form JSON.
 #'
 #' @section Drawing operations:
 #'
@@ -479,10 +447,10 @@
 #'  "ext": {"filter": "blur(5px)", "opacity": 0.8}}
 #' ```
 #'
-#' - **`ext`** (object, optional): Group-level extension data
-#'   passed via [jgd_begin_group()]. Present only when set.
-#'   Free-form JSON. Common keys: `filter` (CSS filter string),
-#'   `opacity` (number 0--1), `blendMode` (CSS blend mode string).
+#' - **`ext`** (object, optional): Group-level extension data.
+#'   Present only when set. Free-form JSON. Common keys: `filter`
+#'   (CSS filter string), `opacity` (number 0--1), `blendMode`
+#'   (CSS blend mode string).
 #'
 #' **endGroup** -- End the most recently opened group. No `gc`, no
 #' fields other than `"op"`.
@@ -491,16 +459,13 @@
 #' {"op": "endGroup"}
 #' ```
 #'
-#' Groups nest arbitrarily. When the device is not held via
-#' `dev.hold()`, an `endGroup` triggers an immediate frame flush.
-#' The flush is complete if nothing has been flushed yet since the
-#' last `newPage`, and incremental otherwise.
+#' Groups nest arbitrarily.
 #'
 #' @section Resize protocol:
 #'
 #' The server receives resize messages from the renderer and
-#' forwards them to R. R replays the display list at the new
-#' dimensions and sends back a frame message.
+#' forwards them to R. R replays the drawing at the new dimensions
+#' and sends back a frame message.
 #'
 #' **Normal resize flow:**
 #'
@@ -538,14 +503,14 @@
 #' identical dimensions for each R session. However, if the
 #' previous resize was a `plotIndex` resize, the next normal resize
 #' at the same dimensions must NOT be deduplicated, because they
-#' target different display lists (historical snapshot vs. current
+#' target different contexts (historical snapshot vs. current
 #' plot).
 #'
 #' @section Multiple R sessions:
 #'
 #' A server may accept connections from multiple R processes
 #' simultaneously. Each R connection has its own `sessionId` and
-#' independent display list. Servers should:
+#' independent state. Servers should:
 #'
 #' - Route `metrics_request` messages from each R connection to
 #'   the renderer, and route the matching `metrics_response` back
@@ -564,29 +529,26 @@
 #' @section Session ID management:
 #'
 #' The `sessionId` in frame messages identifies the R device
-#' instance. Servers should treat it as an opaque string. The
-#' reference implementation generates IDs in
-#' `r-<pid>-<counter>` format (e.g., `"r-1234-1"`,
-#' `"r-1234-2"`), where the counter increments for each new
-#' device within the same R process.
+#' instance. Servers should treat it as an **opaque string**. Do
+#' not parse it or make assumptions about its format.
 #'
-#' Since each device instance produces a unique `sessionId`,
-#' reuse is unlikely. However, as a defensive measure, servers
-#' may disambiguate by appending a suffix (e.g., `"r-1234-1:1"`)
-#' if a retired `sessionId` reappears. The server's (possibly
-#' remapped) `sessionId` is what the renderer sees; `plotIndex`
-#' resizes use it for routing.
+#' Session ID reuse is unlikely but possible (e.g., after process
+#' restart). As a defensive measure, servers should disambiguate
+#' if a previously retired `sessionId` reappears, to prevent
+#' `plotIndex` resizes for old plots from reaching the new
+#' connection. The server's (possibly remapped) `sessionId` is
+#' what the renderer sees; `plotIndex` resizes use it for routing.
 #'
 #' @section Connection lifecycle:
 #'
-#' **Graceful close:** R sends `{"type":"close"}` when
-#' `dev.off()` is called. The server should forward this to
-#' renderers and clean up routing state for that session.
+#' **Graceful close:** The client sends `{"type":"close"}` on
+#' device shutdown. The server should forward this to renderers
+#' and clean up routing state for that session.
 #'
-#' **Ungraceful disconnect:** If the R connection drops without a
-#' `close` message (e.g., R process crash), the server should
-#' detect the broken connection (EOF or socket error), clean up
-#' the session, and optionally notify renderers.
+#' **Ungraceful disconnect:** If the connection drops without a
+#' `close` message (e.g., process crash), the server should detect
+#' the broken connection (EOF or socket error), clean up the
+#' session, and optionally notify renderers.
 #'
 #' **Incomplete lines:** If a connection drops mid-line (no
 #' trailing `\n`), the partial data should be discarded.
@@ -595,22 +557,24 @@
 #'
 #' Extension fields (`ext`) appear at three levels:
 #'
-#' - **Frame-level**: Top-level `ext` on the frame message. Set
-#'   via [jgd_frame_ext()] in R. Applies to the entire frame.
+#' - **Frame-level**: Top-level `ext` on the frame message.
+#'   Applies to the entire frame.
 #' - **Graphics context level**: `ext` inside the `gc` object.
-#'   Set via [jgd_ext()] in R. Applies to all drawing operations
-#'   while active.
-#' - **Group level**: `ext` on `beginGroup` operations. Passed
-#'   via [jgd_begin_group()] in R. Applies only to that group.
+#'   Applies to all drawing operations while active.
+#' - **Group level**: `ext` on `beginGroup` operations. Applies
+#'   only to that group.
 #'
-#' All `ext` fields are free-form JSON objects. When unset in R,
-#' the field is omitted from the message (never sent as `null`).
-#' When set, it may contain any JSON object, including an empty
-#' `{}`. Servers should preserve and forward them to renderers
-#' without validation. Renderers should ignore unknown keys.
+#' All `ext` fields are free-form JSON objects. When unset, the
+#' field is omitted from the message (never sent as `null`). When
+#' set, it may contain any JSON object, including an empty `{}`.
+#' Servers should preserve and forward them to renderers without
+#' validation. Renderers should ignore unknown keys.
 #'
-#' Extension fields survive display list replays (resize), so
+#' Extension fields are preserved across resize replays, so
 #' historical plot snapshots retain their `ext` data.
+#'
+#' See [jgd_ext()], [jgd_frame_ext()], and [jgd_begin_group()]
+#' for the R API to set these fields.
 #'
 #' @section Implementing a server:
 #'
@@ -623,9 +587,8 @@
 #' 4. Forward `frame` messages to connected renderers.
 #' 5. Forward `resize` messages from renderers to R.
 #' 6. Handle `metrics_request`/`metrics_response` routing between
-#'    R and the renderer. Clients may impose their own timeouts
-#'    and fall back to local metric computation if no response
-#'    arrives.
+#'    R and the renderer. Clients handle their own timeouts;
+#'    servers are not required to synthesize fallback responses.
 #' 7. Forward `close` messages to renderers and clean up the
 #'    session state (remove metrics routing entries, etc.).
 #'
