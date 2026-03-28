@@ -241,9 +241,10 @@ historical plot identified by its R-assigned plot number (the
 }\if{html}{\out{</div>}}
 \itemize{
 \item \strong{\code{id}}: Must match the request \code{id}.
-\item Server should apply a 2-second timeout and send a zero-value
-fallback (\verb{width: 0, ascent: 0, descent: 0}) if no response
-arrives.
+\item The reference R client waits up to 500 ms for a matching
+\code{metrics_response}; if none arrives, it falls back to local
+font metric computation. Servers are not required to
+synthesize fallback responses.
 }
 }
 
@@ -309,9 +310,10 @@ second). Present on all frames for the current plot (including
 incremental and resize replay frames). Omitted only on
 historical resize replays where \code{plotIndex} is present.
 \item \strong{\code{ext}} (object, optional): Frame-level extension data set
-via \code{\link[=jgd_frame_ext]{jgd_frame_ext()}}. Present only when set (not sent as
-\code{null} or \code{{}}). Free-form JSON; servers should preserve and
-forward it to renderers.
+via \code{\link[=jgd_frame_ext]{jgd_frame_ext()}}. When unset, the field is omitted
+(never sent as \code{null}); when set, it may be any JSON object
+including an empty \code{{}}. Servers should preserve and forward
+it to renderers.
 }
 
 \strong{plot object:}
@@ -617,9 +619,10 @@ while active.
 via \code{\link[=jgd_begin_group]{jgd_begin_group()}} in R. Applies only to that group.
 }
 
-All \code{ext} fields are free-form JSON objects. They are present
-only when explicitly set in R (never sent as \code{null} or empty
-\code{{}}). Servers should preserve and forward them to renderers
+All \code{ext} fields are free-form JSON objects. When unset in R,
+the field is omitted from the message (never sent as \code{null}).
+When set, it may contain any JSON object, including an empty
+\code{{}}. Servers should preserve and forward them to renderers
 without validation. Renderers should ignore unknown keys.
 
 Extension fields survive display list replays (resize), so
@@ -638,8 +641,9 @@ first message from R (not before).
 \item Forward \code{frame} messages to connected renderers.
 \item Forward \code{resize} messages from renderers to R.
 \item Handle \code{metrics_request}/\code{metrics_response} routing between
-R and the renderer, with a 2-second timeout and zero-value
-fallback.
+R and the renderer. Clients may impose their own timeouts
+and fall back to local metric computation if no response
+arrives.
 \item Forward \code{close} messages to renderers.
 }
 

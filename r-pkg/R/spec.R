@@ -220,9 +220,10 @@
 #' ```
 #'
 #' - **`id`**: Must match the request `id`.
-#' - Server should apply a 2-second timeout and send a zero-value
-#'   fallback (`width: 0, ascent: 0, descent: 0`) if no response
-#'   arrives.
+#' - The reference R client waits up to 500 ms for a matching
+#'   `metrics_response`; if none arrives, it falls back to local
+#'   font metric computation. Servers are not required to
+#'   synthesize fallback responses.
 #'
 #' @section Frame message:
 #'
@@ -287,9 +288,10 @@
 #'   incremental and resize replay frames). Omitted only on
 #'   historical resize replays where `plotIndex` is present.
 #' - **`ext`** (object, optional): Frame-level extension data set
-#'   via [jgd_frame_ext()]. Present only when set (not sent as
-#'   `null` or `{}`). Free-form JSON; servers should preserve and
-#'   forward it to renderers.
+#'   via [jgd_frame_ext()]. When unset, the field is omitted
+#'   (never sent as `null`); when set, it may be any JSON object
+#'   including an empty `{}`. Servers should preserve and forward
+#'   it to renderers.
 #'
 #' **plot object:**
 #'
@@ -580,9 +582,10 @@
 #' - **Group level**: `ext` on `beginGroup` operations. Passed
 #'   via [jgd_begin_group()] in R. Applies only to that group.
 #'
-#' All `ext` fields are free-form JSON objects. They are present
-#' only when explicitly set in R (never sent as `null` or empty
-#' `{}`). Servers should preserve and forward them to renderers
+#' All `ext` fields are free-form JSON objects. When unset in R,
+#' the field is omitted from the message (never sent as `null`).
+#' When set, it may contain any JSON object, including an empty
+#' `{}`. Servers should preserve and forward them to renderers
 #' without validation. Renderers should ignore unknown keys.
 #'
 #' Extension fields survive display list replays (resize), so
@@ -599,8 +602,9 @@
 #' 4. Forward `frame` messages to connected renderers.
 #' 5. Forward `resize` messages from renderers to R.
 #' 6. Handle `metrics_request`/`metrics_response` routing between
-#'    R and the renderer, with a 2-second timeout and zero-value
-#'    fallback.
+#'    R and the renderer. Clients may impose their own timeouts
+#'    and fall back to local metric computation if no response
+#'    arrives.
 #' 7. Forward `close` messages to renderers.
 #'
 #' Optional:
