@@ -614,14 +614,14 @@
 #' - Implement session ID remapping for reused IDs.
 #' - Serve an HTTP endpoint for the renderer UI.
 #'
-# TODO: Message size limits are intentionally unspecified.  The
-# reference R client uses a 4096-byte read buffer (transport.h),
-# which may truncate very large messages (e.g., raster data URIs).
-# This is an implementation limitation, not a protocol constraint.
-# A future protocol version may address this if needed.
-#'
 #' @name jgd-spec
 #' @aliases jgd-protocol
 #' @seealso [jgd()], [jgd_server_info()], [jgd_ext()],
 #'   [jgd_frame_ext()], [jgd_begin_group()]
 NULL
+
+# TODO: Message size limits are intentionally unspecified.  The
+# reference R client uses a 4096-byte read buffer (transport.h),
+# which may truncate very large messages (e.g., raster data URIs).
+# This is an implementation limitation, not a protocol constraint.
+# A future protocol version may address this if needed.
