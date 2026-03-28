@@ -62,11 +62,8 @@ first read completes can cause data loss.
 Server -> R:  \{"type":"server_info", ...\}
 }\if{html}{\out{</div>}}
 
-The R client performs an initial read with a 200 ms timeout and,
-if it receives a non-\code{server_info} line, may perform up to two
-additional 200 ms reads to account for potential message
-reordering. Non-\code{server_info} messages received during handshake
-are silently discarded.
+The R client reads with a short timeout, discarding any
+non-\code{server_info} messages received during the handshake.
 
 If the server does not send a welcome within the timeout, the
 device operates normally without a live server connection.
@@ -221,8 +218,8 @@ it.
 \item \strong{\code{c}} (integer, \code{metricInfo} only): Unicode code point of
 the character to measure (e.g., 77 for \code{"M"}).
 \item \strong{\code{gc}}: Graphics context with a \code{font} object containing
-\code{family} (string), \code{face} (integer), and \code{size} (computed
-\code{cex * ps}, in points).
+\code{family} (string), \code{face} (integer), and \code{size} (font size
+in points).
 }
 
 \strong{close} -- Signals that \code{dev.off()} was called.
@@ -392,11 +389,10 @@ noted per operation):
 \item \strong{\code{col}}: Stroke color (RGBA string or \code{null}).
 \item \strong{\code{fill}}: Fill color (RGBA string or \code{null}).
 \item \strong{\code{lwd}}: Line width in pixels (number).
-\item \strong{\code{lty}}: Line type as an array of dash lengths. Solid lines
-and blank (invisible) lines both produce an empty array \verb{[]}.
-When the line is blank, \code{col} is \code{null}, so renderers can
-distinguish via the color. Each element is the product of a
-dash nibble and \code{lwd}.
+\item \strong{\code{lty}}: Line type as an array of dash lengths (in pixels).
+Solid lines and blank (invisible) lines both produce an empty
+array \verb{[]}. When the line is blank, \code{col} is \code{null}, so
+renderers can distinguish via the color.
 \item \strong{\code{lend}}: Line end cap: \code{"round"}, \code{"butt"}, or \code{"square"}.
 \item \strong{\code{ljoin}}: Line join: \code{"round"}, \code{"miter"}, or \code{"bevel"}.
 \item \strong{\code{lmitre}}: Miter limit (number).
@@ -406,7 +402,7 @@ dash nibble and \code{lwd}.
 default).
 \item \strong{\code{face}}: Font face: 1 = plain, 2 = bold, 3 = italic,
 4 = bold italic, 5 = symbol.
-\item \strong{\code{size}}: Computed font size in points (\code{cex * ps}).
+\item \strong{\code{size}}: Font size in points (number).
 \item \strong{\code{lineheight}}: Line height multiplier (number).
 }
 \item \strong{\code{ext}} (object, optional): Per-operation extension data set

@@ -51,11 +51,8 @@
 #' Server -> R:  {"type":"server_info", ...}
 #' ```
 #'
-#' The R client performs an initial read with a 200 ms timeout and,
-#' if it receives a non-`server_info` line, may perform up to two
-#' additional 200 ms reads to account for potential message
-#' reordering. Non-`server_info` messages received during handshake
-#' are silently discarded.
+#' The R client reads with a short timeout, discarding any
+#' non-`server_info` messages received during the handshake.
 #'
 #' If the server does not send a welcome within the timeout, the
 #' device operates normally without a live server connection.
@@ -202,8 +199,8 @@
 #' - **`c`** (integer, `metricInfo` only): Unicode code point of
 #'   the character to measure (e.g., 77 for `"M"`).
 #' - **`gc`**: Graphics context with a `font` object containing
-#'   `family` (string), `face` (integer), and `size` (computed
-#'   `cex * ps`, in points).
+#'   `family` (string), `face` (integer), and `size` (font size
+#'   in points).
 #'
 #' **close** -- Signals that `dev.off()` was called.
 #'
@@ -364,11 +361,10 @@
 #' - **`col`**: Stroke color (RGBA string or `null`).
 #' - **`fill`**: Fill color (RGBA string or `null`).
 #' - **`lwd`**: Line width in pixels (number).
-#' - **`lty`**: Line type as an array of dash lengths. Solid lines
-#'   and blank (invisible) lines both produce an empty array `[]`.
-#'   When the line is blank, `col` is `null`, so renderers can
-#'   distinguish via the color. Each element is the product of a
-#'   dash nibble and `lwd`.
+#' - **`lty`**: Line type as an array of dash lengths (in pixels).
+#'   Solid lines and blank (invisible) lines both produce an empty
+#'   array `[]`. When the line is blank, `col` is `null`, so
+#'   renderers can distinguish via the color.
 #' - **`lend`**: Line end cap: `"round"`, `"butt"`, or `"square"`.
 #' - **`ljoin`**: Line join: `"round"`, `"miter"`, or `"bevel"`.
 #' - **`lmitre`**: Miter limit (number).
@@ -377,7 +373,7 @@
 #'     default).
 #'   - **`face`**: Font face: 1 = plain, 2 = bold, 3 = italic,
 #'     4 = bold italic, 5 = symbol.
-#'   - **`size`**: Computed font size in points (`cex * ps`).
+#'   - **`size`**: Font size in points (number).
 #'   - **`lineheight`**: Line height multiplier (number).
 #' - **`ext`** (object, optional): Per-operation extension data set
 #'   via [jgd_ext()]. Present only when set. Free-form JSON.
