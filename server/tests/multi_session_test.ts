@@ -76,7 +76,7 @@ Deno.test("multi-session routing", async (t) => {
     );
 
     await t.step(
-      "metrics response routes to correct session",
+      "metrics with same original ID from two sessions are routed correctly",
       async () => {
         // Reconnect r1 for this test
         r1b = new RClient();
@@ -90,18 +90,34 @@ Deno.test("multi-session routing", async (t) => {
         await r1b.readMessage<ResizeMessage>();
         await r2.readMessage<ResizeMessage>();
 
-        // Send metrics from r2
-        await r2.sendMetricsRequest(300);
-        const req = await browser.waitForType<MetricsRequestMessage>(
+        // Both sessions send metrics_request with the SAME original id.
+        // This exercises the ID collision bug: without remapping, the
+        // second set() would overwrite the first routing entry.
+        await r1b.sendMetricsRequest(1);
+        await r2.sendMetricsRequest(1);
+
+        const req1 = await browser.waitForType<MetricsRequestMessage>(
           "metrics_request",
         );
-        // Server remaps IDs; respond with the server-assigned ID
-        browser.sendMetricsResponse(req.id, 55, 12, 4);
+        const req2 = await browser.waitForType<MetricsRequestMessage>(
+          "metrics_request",
+        );
 
-        // r2 should receive the response with original ID restored
-        const resp = await r2.readMessage<MetricsResponseMessage>();
-        assertEquals(resp.id, 300);
-        assertEquals(resp.width, 55);
+        // Server must assign distinct forwarded IDs
+        assertNotEquals(req1.id, req2.id);
+
+        // Respond to both (in reverse order for extra coverage)
+        browser.sendMetricsResponse(req2.id, 20, 5, 1);
+        browser.sendMetricsResponse(req1.id, 40, 10, 3);
+
+        // Each session should receive its response with original id=1
+        const resp1 = await r1b.readMessage<MetricsResponseMessage>();
+        const resp2 = await r2.readMessage<MetricsResponseMessage>();
+
+        assertEquals(resp1.id, 1);
+        assertEquals(resp1.width, 40);
+        assertEquals(resp2.id, 1);
+        assertEquals(resp2.width, 20);
 
         r1b.close();
         await delay(100);
