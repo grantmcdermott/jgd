@@ -268,7 +268,14 @@ export class SocketServer {
                             // if the user has navigated back to view a historical plot.
                             this.history.replaceLatest(session.id, msg.plot);
                         }
-                        if (accepted) this.webviewProvider.showPlot(msg.plot);
+                        if (accepted) {
+                            // Always render from history so the webview sees
+                            // the full accumulated ops (not just an incremental
+                            // fragment).  Mirrors the Deno server's
+                            // replayCurrentPlot() pattern.
+                            const current = this.history.currentPlot();
+                            this.webviewProvider.showPlot(current ?? msg.plot);
+                        }
                     }
                     break;
 
