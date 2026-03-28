@@ -162,15 +162,21 @@ See the \dQuote{Frame message} section for the full schema.
 \strong{metrics_request} -- Requests font metrics from the browser.
 
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{"type": "metrics_request", "id": 1, "kind": "strWidth",
- "str": "Hello", "family": "sans", "face": 1, "size": 12, "cex": 1\}
+ "str": "Hello",
+ "gc": \{"font": \{"family": "sans", "face": 1, "size": 12\}\}\}
 }\if{html}{\out{</div>}}
 
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{"type": "metrics_request", "id": 2, "kind": "metricInfo",
- "c": 77, "family": "sans", "face": 1, "size": 12, "cex": 1\}
+ "c": 77,
+ "gc": \{"font": \{"family": "sans", "face": 1, "size": 12\}\}\}
 }\if{html}{\out{</div>}}
 \itemize{
 \item \strong{\code{id}}: Request identifier (integer); the response must echo it.
-\item \strong{\code{kind}}: \code{"strWidth"} (string width) or \code{"metricInfo"} (glyph metrics).
+\item \strong{\code{kind}}: \code{"strWidth"} (string width) or \code{"metricInfo"}
+(glyph metrics).
+\item \strong{\code{gc}}: Graphics context with a \code{font} object containing
+\code{family} (string), \code{face} (integer), and \code{size} (computed
+\code{cex * ps}, in points).
 }
 
 \strong{close} -- Signals that \code{dev.off()} was called.
@@ -222,7 +228,7 @@ The frame message carries drawing operations from R to the server.
   "ext": \{\},
   "plot": \{
     "version": 1,
-    "sessionId": "R-12345",
+    "sessionId": "r-1234-1",
     "device": \{
       "width": 768,
       "height": 576,
@@ -419,8 +425,9 @@ other than \code{"op"}.
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{"op": "endGroup"\}
 }\if{html}{\out{</div>}}
 
-Groups nest arbitrarily. An \code{endGroup} triggers an immediate incremental
-frame flush (even when the device is held via \code{dev.hold()}).
+Groups nest arbitrarily. When the device is not held via
+\code{dev.hold()}, an \code{endGroup} triggers an immediate incremental
+frame flush.
 }
 
 \section{Resize protocol}{
@@ -441,7 +448,7 @@ R       -> Server:  \{"type":"frame","resizeReplay":true,
 \strong{History resize flow} (replay a historical plot):
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{Browser -> Server:  \{"type":"resize","width":800,"height":600,
-                     "plotIndex":2,"sessionId":"R-12345"\}
+                     "plotIndex":2,"sessionId":"r-1234-1"\}
 Server  -> R:       \{"type":"resize","width":800,"height":600,"plotIndex":2\}
 R       -> Server:  \{"type":"frame","resizeReplay":true,"plotIndex":2,
                      "incremental":false,...\}
@@ -462,14 +469,17 @@ NOT be deduplicated, because they target different display lists
 \section{Session ID management}{
 
 
-The \code{sessionId} in frame messages identifies the R process/device.
-R typically derives it from its PID (e.g., \code{"R-12345"}).
+The \code{sessionId} in frame messages identifies the R device instance.
+Servers should treat it as an opaque string. The reference
+implementation generates IDs in \verb{r-<pid>-<counter>} format
+(e.g., \code{"r-1234-1"}, \code{"r-1234-2"}), where the counter increments
+for each new device within the same R process.
 
-When the same R process opens a new device after closing the previous
-one, the server may see the same \code{sessionId} reused. Servers should
-disambiguate by appending a suffix (e.g., \code{"R-12345:1"}) to keep plot
-histories separate. The server's remapped \code{sessionId} is what the
-browser sees; \code{plotIndex} resizes use it for routing.
+Since each device instance produces a unique \code{sessionId}, reuse is
+unlikely. However, as a defensive measure, servers may disambiguate
+by appending a suffix (e.g., \code{"r-1234-1:1"}) if a retired
+\code{sessionId} reappears. The server's (possibly remapped) \code{sessionId}
+is what the browser sees; \code{plotIndex} resizes use it for routing.
 }
 
 \section{Extension fields}{

@@ -143,16 +143,22 @@
 #'
 #' ```json
 #' {"type": "metrics_request", "id": 1, "kind": "strWidth",
-#'  "str": "Hello", "family": "sans", "face": 1, "size": 12, "cex": 1}
+#'  "str": "Hello",
+#'  "gc": {"font": {"family": "sans", "face": 1, "size": 12}}}
 #' ```
 #'
 #' ```json
 #' {"type": "metrics_request", "id": 2, "kind": "metricInfo",
-#'  "c": 77, "family": "sans", "face": 1, "size": 12, "cex": 1}
+#'  "c": 77,
+#'  "gc": {"font": {"family": "sans", "face": 1, "size": 12}}}
 #' ```
 #'
 #' - **`id`**: Request identifier (integer); the response must echo it.
-#' - **`kind`**: `"strWidth"` (string width) or `"metricInfo"` (glyph metrics).
+#' - **`kind`**: `"strWidth"` (string width) or `"metricInfo"`
+#'   (glyph metrics).
+#' - **`gc`**: Graphics context with a `font` object containing
+#'   `family` (string), `face` (integer), and `size` (computed
+#'   `cex * ps`, in points).
 #'
 #' **close** -- Signals that `dev.off()` was called.
 #'
@@ -201,7 +207,7 @@
 #'   "ext": {},
 #'   "plot": {
 #'     "version": 1,
-#'     "sessionId": "R-12345",
+#'     "sessionId": "r-1234-1",
 #'     "device": {
 #'       "width": 768,
 #'       "height": 576,
@@ -393,8 +399,9 @@
 #' {"op": "endGroup"}
 #' ```
 #'
-#' Groups nest arbitrarily. An `endGroup` triggers an immediate incremental
-#' frame flush (even when the device is held via `dev.hold()`).
+#' Groups nest arbitrarily. When the device is not held via
+#' `dev.hold()`, an `endGroup` triggers an immediate incremental
+#' frame flush.
 #'
 #' @section Resize protocol:
 #'
@@ -415,7 +422,7 @@
 #'
 #' ```
 #' Browser -> Server:  {"type":"resize","width":800,"height":600,
-#'                      "plotIndex":2,"sessionId":"R-12345"}
+#'                      "plotIndex":2,"sessionId":"r-1234-1"}
 #' Server  -> R:       {"type":"resize","width":800,"height":600,"plotIndex":2}
 #' R       -> Server:  {"type":"frame","resizeReplay":true,"plotIndex":2,
 #'                      "incremental":false,...}
@@ -434,14 +441,17 @@
 #'
 #' @section Session ID management:
 #'
-#' The `sessionId` in frame messages identifies the R process/device.
-#' R typically derives it from its PID (e.g., `"R-12345"`).
+#' The `sessionId` in frame messages identifies the R device instance.
+#' Servers should treat it as an opaque string. The reference
+#' implementation generates IDs in `r-<pid>-<counter>` format
+#' (e.g., `"r-1234-1"`, `"r-1234-2"`), where the counter increments
+#' for each new device within the same R process.
 #'
-#' When the same R process opens a new device after closing the previous
-#' one, the server may see the same `sessionId` reused. Servers should
-#' disambiguate by appending a suffix (e.g., `"R-12345:1"`) to keep plot
-#' histories separate. The server's remapped `sessionId` is what the
-#' browser sees; `plotIndex` resizes use it for routing.
+#' Since each device instance produces a unique `sessionId`, reuse is
+#' unlikely. However, as a defensive measure, servers may disambiguate
+#' by appending a suffix (e.g., `"r-1234-1:1"`) if a retired
+#' `sessionId` reappears. The server's (possibly remapped) `sessionId`
+#' is what the browser sees; `plotIndex` resizes use it for routing.
 #'
 #' @section Extension fields:
 #'
