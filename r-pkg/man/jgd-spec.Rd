@@ -130,6 +130,8 @@ stale files, since \verb{~/.cache} is not cleared on reboot.
 \item Server implementors may omit discovery file support entirely.
 Clients can always connect directly via
 \code{jgd(socket = "<uri>")}.
+\item The discovery file has no explicit version field. Readers
+should ignore unknown fields for forward compatibility.
 }
 }
 
@@ -155,7 +157,8 @@ protocol version rather than raising an error.
 \item \strong{\code{transport}}: Transport in use: \code{"tcp"}, \code{"unix"}, or
 \code{"npipe"} (string)
 \item \strong{\code{serverInfo}}: A flat JSON object whose values are all
-strings (optional). Canonical key: \code{httpUrl}.
+strings (optional). Canonical key: \code{httpUrl}. When absent or
+empty, R represents it as an empty named character vector.
 }
 }
 
@@ -214,6 +217,9 @@ See the \dQuote{Frame message} section for the full schema.
 it.
 \item \strong{\code{kind}}: \code{"strWidth"} (string width) or \code{"metricInfo"}
 (glyph metrics).
+\item \strong{\code{str}} (string, \code{strWidth} only): The string to measure.
+\item \strong{\code{c}} (integer, \code{metricInfo} only): Unicode code point of
+the character to measure (e.g., 77 for \code{"M"}).
 \item \strong{\code{gc}}: Graphics context with a \code{font} object containing
 \code{family} (string), \code{face} (integer), and \code{size} (computed
 \code{cex * ps}, in points).
@@ -235,8 +241,9 @@ it.
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{"type": "resize", "width": 800, "height": 600\}
 }\if{html}{\out{</div>}}
 \itemize{
-\item \strong{\code{width}}, \strong{\code{height}}: New viewport dimensions in CSS
-pixels (positive integers).
+\item \strong{\code{width}}, \strong{\code{height}}: New viewport dimensions in device
+pixels (positive integers). These become the device's width
+and height directly (no DPI scaling is applied).
 \item \strong{\code{plotIndex}} (integer, optional): If present, replay the
 historical plot identified by its R-assigned plot number (the
 \code{plotNumber} from earlier frames) instead of the current plot.
@@ -284,6 +291,8 @@ New plot example:
 \}
 }\if{html}{\out{</div>}}
 
+(Minimal example; real frames typically start with a \code{clip} op.)
+
 Historical resize replay example:
 
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{
@@ -311,7 +320,8 @@ resize.
 was replayed. This is the absolute R-side plot number (the
 same 0-based value previously sent as \code{plotNumber} when the
 plot was created). It may diverge from the renderer's current
-history array index after deletions or evictions.
+history array index after deletions or evictions. See also
+\dQuote{Resize protocol} for the full resize flow.
 \item \strong{\code{plotNumber}} (integer, optional): Absolute 0-based
 sequence number for plots (e.g., 0 for the first, 1 for the
 second). Present on all frames for the current plot (including
@@ -384,7 +394,9 @@ noted per operation):
 \item \strong{\code{fill}}: Fill color (RGBA string or \code{null}).
 \item \strong{\code{lwd}}: Line width in pixels (number).
 \item \strong{\code{lty}}: Line type as an array of dash lengths. Solid lines
-produce an empty array \verb{[]}. Each element is the product of a
+and blank (invisible) lines both produce an empty array \verb{[]}.
+When the line is blank, \code{col} is \code{null}, so renderers can
+distinguish via the color. Each element is the product of a
 dash nibble and \code{lwd}.
 \item \strong{\code{lend}}: Line end cap: \code{"round"}, \code{"butt"}, or \code{"square"}.
 \item \strong{\code{ljoin}}: Line join: \code{"round"}, \code{"miter"}, or \code{"bevel"}.
@@ -512,8 +524,8 @@ fields other than \code{"op"}.
 
 Groups nest arbitrarily. When the device is not held via
 \code{dev.hold()}, an \code{endGroup} triggers an immediate frame flush.
-The flush is complete if nothing has been flushed yet on the
-current page, and incremental otherwise.
+The flush is complete if nothing has been flushed yet since the
+last \code{newPage}, and incremental otherwise.
 }
 
 \section{Resize protocol}{
@@ -657,7 +669,8 @@ first message from R (not before).
 R and the renderer. Clients may impose their own timeouts
 and fall back to local metric computation if no response
 arrives.
-\item Forward \code{close} messages to renderers.
+\item Forward \code{close} messages to renderers and clean up the
+session state (remove metrics routing entries, etc.).
 }
 
 Optional:

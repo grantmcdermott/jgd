@@ -116,6 +116,8 @@
 #' - Server implementors may omit discovery file support entirely.
 #'   Clients can always connect directly via
 #'   `jgd(socket = "<uri>")`.
+#' - The discovery file has no explicit version field. Readers
+#'   should ignore unknown fields for forward compatibility.
 #'
 #' @section server_info message:
 #'
@@ -139,7 +141,8 @@
 #' - **`transport`**: Transport in use: `"tcp"`, `"unix"`, or
 #'   `"npipe"` (string)
 #' - **`serverInfo`**: A flat JSON object whose values are all
-#'   strings (optional). Canonical key: `httpUrl`.
+#'   strings (optional). Canonical key: `httpUrl`. When absent or
+#'   empty, R represents it as an empty named character vector.
 #'
 #' @section R-side representation:
 #'
@@ -195,6 +198,9 @@
 #'   it.
 #' - **`kind`**: `"strWidth"` (string width) or `"metricInfo"`
 #'   (glyph metrics).
+#' - **`str`** (string, `strWidth` only): The string to measure.
+#' - **`c`** (integer, `metricInfo` only): Unicode code point of
+#'   the character to measure (e.g., 77 for `"M"`).
 #' - **`gc`**: Graphics context with a `font` object containing
 #'   `family` (string), `face` (integer), and `size` (computed
 #'   `cex * ps`, in points).
@@ -215,8 +221,9 @@
 #' {"type": "resize", "width": 800, "height": 600}
 #' ```
 #'
-#' - **`width`**, **`height`**: New viewport dimensions in CSS
-#'   pixels (positive integers).
+#' - **`width`**, **`height`**: New viewport dimensions in device
+#'   pixels (positive integers). These become the device's width
+#'   and height directly (no DPI scaling is applied).
 #' - **`plotIndex`** (integer, optional): If present, replay the
 #'   historical plot identified by its R-assigned plot number (the
 #'   `plotNumber` from earlier frames) instead of the current plot.
@@ -262,6 +269,8 @@
 #' }
 #' ```
 #'
+#' (Minimal example; real frames typically start with a `clip` op.)
+#'
 #' Historical resize replay example:
 #'
 #' ```json
@@ -290,7 +299,8 @@
 #'   was replayed. This is the absolute R-side plot number (the
 #'   same 0-based value previously sent as `plotNumber` when the
 #'   plot was created). It may diverge from the renderer's current
-#'   history array index after deletions or evictions.
+#'   history array index after deletions or evictions. See also
+#'   \dQuote{Resize protocol} for the full resize flow.
 #' - **`plotNumber`** (integer, optional): Absolute 0-based
 #'   sequence number for plots (e.g., 0 for the first, 1 for the
 #'   second). Present on all frames for the current plot (including
@@ -356,7 +366,9 @@
 #' - **`fill`**: Fill color (RGBA string or `null`).
 #' - **`lwd`**: Line width in pixels (number).
 #' - **`lty`**: Line type as an array of dash lengths. Solid lines
-#'   produce an empty array `[]`. Each element is the product of a
+#'   and blank (invisible) lines both produce an empty array `[]`.
+#'   When the line is blank, `col` is `null`, so renderers can
+#'   distinguish via the color. Each element is the product of a
 #'   dash nibble and `lwd`.
 #' - **`lend`**: Line end cap: `"round"`, `"butt"`, or `"square"`.
 #' - **`ljoin`**: Line join: `"round"`, `"miter"`, or `"bevel"`.
@@ -486,8 +498,8 @@
 #'
 #' Groups nest arbitrarily. When the device is not held via
 #' `dev.hold()`, an `endGroup` triggers an immediate frame flush.
-#' The flush is complete if nothing has been flushed yet on the
-#' current page, and incremental otherwise.
+#' The flush is complete if nothing has been flushed yet since the
+#' last `newPage`, and incremental otherwise.
 #'
 #' @section Resize protocol:
 #'
@@ -619,7 +631,8 @@
 #'    R and the renderer. Clients may impose their own timeouts
 #'    and fall back to local metric computation if no response
 #'    arrives.
-#' 7. Forward `close` messages to renderers.
+#' 7. Forward `close` messages to renderers and clean up the
+#'    session state (remove metrics routing entries, etc.).
 #'
 #' Optional:
 #'

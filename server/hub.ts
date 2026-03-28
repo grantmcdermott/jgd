@@ -301,7 +301,12 @@ export class Hub {
   private handleMetricsRequest(session: RSession, line: string): void {
     let msg: Record<string, unknown>;
     try {
-      msg = JSON.parse(line);
+      const parsed = JSON.parse(line);
+      if (typeof parsed !== "object" || parsed === null) {
+        console.error("metrics request is not an object");
+        return;
+      }
+      msg = parsed;
     } catch {
       console.error("failed to parse metrics request");
       return;
@@ -370,7 +375,11 @@ export class Hub {
   handleMetricsResponse(line: string): void {
     let msg: Record<string, unknown>;
     try {
-      msg = JSON.parse(line);
+      const parsed = JSON.parse(line);
+      if (typeof parsed !== "object" || parsed === null) {
+        return;
+      }
+      msg = parsed;
     } catch {
       console.error("failed to parse metrics response");
       return;
