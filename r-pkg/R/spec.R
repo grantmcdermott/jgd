@@ -11,9 +11,11 @@
 #'
 #' @section Transport protocols:
 #'
-#' The R client connects to the server using one of the following URI schemes:
+#' The R client connects to the server using one of the following
+#' URI schemes:
 #'
-#' - `unix:///path/to/socket` -- Unix domain socket (Linux/macOS default)
+#' - `unix:///path/to/socket` -- Unix domain socket (Linux/macOS
+#'   default)
 #' - `npipe:////./pipe/name` -- Windows named pipe (Windows default,
 #'   Docker-standard 4-slash form)
 #' - `tcp://host:port` -- TCP socket (any platform)
@@ -22,35 +24,52 @@
 #'
 #' @section Message format:
 #'
-#' All messages are single-line JSON objects terminated by `\n` (NDJSON).
-#' Each message contains a `"type"` field identifying the message kind.
-#' Encoding is always UTF-8.
+#' All messages are single-line JSON objects terminated by `\n`
+#' (NDJSON). Each message contains a `"type"` field identifying the
+#' message kind. Encoding is always UTF-8.
+#'
+#' Receivers should ignore unknown top-level fields in any message
+#' (forward-compatible). Unknown `"type"` values should be silently
+#' discarded rather than treated as errors.
+#'
+#' @section Coordinate system:
+#'
+#' All coordinates in drawing operations are in **device pixels**
+#' (i.e., `inches * dpi`). The origin `(0, 0)` is the **top-left**
+#' corner of the device surface. The X axis increases to the right
+#' and the Y axis increases downward.
 #'
 #' @section Connection handshake:
 #'
-#' The welcome message is **deferred**: the server waits until it receives
-#' the first message from R before sending it. This avoids a race condition
-#' on Windows named pipes where writing before the first read completes can
-#' cause data loss.
+#' The welcome message is **deferred**: the server waits until it
+#' receives the first message from R before sending it. This avoids
+#' a race condition on Windows named pipes where writing before the
+#' first read completes can cause data loss.
 #'
 #' ```
 #' R -> Server:  {"type":"ping"}
 #' Server -> R:  {"type":"server_info", ...}
 #' ```
 #'
-#' The R client reads up to 3 lines with a 200 ms timeout per read to
-#' account for potential message reordering. Non-`server_info` messages
-#' received during handshake are silently discarded.
+#' The R client reads up to 3 lines with a 200 ms timeout per read
+#' to account for potential message reordering. Non-`server_info`
+#' messages received during handshake are silently discarded.
 #'
-#' If the server does not send a welcome within the timeout, the device
-#' operates normally without server metadata. [jgd_server_info()] returns
-#' `NULL` in this case.
+#' If the server does not send a welcome within the timeout, the
+#' device operates normally without server metadata.
+#' [jgd_server_info()] returns `NULL` in this case.
+#'
+#' The server should also tolerate receiving a `frame` message
+#' before `ping` (e.g., if a future R client skips the ping). The
+#' first received message of any type should trigger the deferred
+#' welcome.
 #'
 #' @section Discovery file:
 #'
-#' The discovery file is an **optional** JSON file that allows the R client
-#' to find the server without an explicit socket address. It is a hint for
-#' auto-connection only; the welcome message is the single source of truth.
+#' The discovery file is an **optional** JSON file that allows the R
+#' client to find the server without an explicit socket address. It
+#' is a hint for auto-connection only; the welcome message is the
+#' single source of truth.
 #'
 #' **Location** (platform-specific):
 #'
@@ -72,22 +91,26 @@
 #' }
 #' ```
 #'
-#' - **`serverName`** (string, required): Human-readable server name.
-#' - **`socketPath`** (string, required): Socket URI where R should connect.
+#' - **`serverName`** (string, required): Human-readable server
+#'   name.
+#' - **`socketPath`** (string, required): Socket URI where R should
+#'   connect.
 #' - **`pid`** (integer, required): Process ID of the server.
-#' - **`serverInfo`** (object, optional): Flat key-value pairs with string
-#'   values. Canonical key: `httpUrl` (HTTP endpoint URL).
+#' - **`serverInfo`** (object, optional): Flat key-value pairs with
+#'   string values. Canonical key: `httpUrl` (HTTP endpoint URL).
 #'
 #' **Lifecycle:**
 #'
-#' - Written atomically (temp file + rename) after all listeners are ready.
-#' - Server should remove the file on graceful shutdown, but only after
-#'   confirming it still owns the file (PID check).
-#' - Clients should verify liveness (e.g., PID check) before using stale
-#'   files, since `~/.cache` is not cleared on reboot.
+#' - Written atomically (temp file + rename) after all listeners
+#'   are ready.
+#' - Server should remove the file on graceful shutdown, but only
+#'   after confirming it still owns the file (PID check).
+#' - Clients should verify liveness (e.g., PID check) before using
+#'   stale files, since `~/.cache` is not cleared on reboot.
 #' - Multiple server instances may coexist; the last writer wins.
 #' - Server implementors may omit discovery file support entirely.
-#'   Clients can always connect directly via `jgd(socket = "<uri>")`.
+#'   Clients can always connect directly via
+#'   `jgd(socket = "<uri>")`.
 #'
 #' @section server_info message:
 #'
@@ -105,22 +128,25 @@
 #'
 #' - **`type`**: `"server_info"` (string, always present)
 #' - **`serverName`**: Human-readable server name (string)
-#' - **`protocolVersion`**: Protocol version number, currently `1` (integer)
-#' - **`transport`**: Transport in use: `"tcp"`, `"unix"`, or `"npipe"`
-#'   (string)
-#' - **`serverInfo`**: A flat JSON object whose values are all strings
-#'   (optional). Canonical key: `httpUrl`.
+#' - **`protocolVersion`**: Protocol version number, currently `1`
+#'   (integer). Receivers should ignore messages with an unknown
+#'   protocol version rather than raising an error.
+#' - **`transport`**: Transport in use: `"tcp"`, `"unix"`, or
+#'   `"npipe"` (string)
+#' - **`serverInfo`**: A flat JSON object whose values are all
+#'   strings (optional). Canonical key: `httpUrl`.
 #'
 #' @section R-side representation:
 #'
-#' [jgd_server_info()] returns a named list with four elements, or `NULL`
-#' if no welcome was received:
+#' [jgd_server_info()] returns a named list with four elements, or
+#' `NULL` if no welcome was received:
 #'
 #' - **`server_name`**: The server name (character scalar)
 #' - **`protocol_version`**: The protocol version (integer scalar)
 #' - **`transport`**: The transport protocol (character scalar)
-#' - **`server_info`**: A named character vector of key-value pairs from the
-#'   `serverInfo` object (e.g. `c(httpUrl = "http://...")`)
+#' - **`server_info`**: A named character vector of key-value pairs
+#'   from the `serverInfo` object
+#'   (e.g. `c(httpUrl = "http://...")`)
 #'
 #' `jgd_server_info()` returns `NULL` when:
 #'
@@ -130,7 +156,8 @@
 #'
 #' @section R-to-server messages:
 #'
-#' **ping** -- Heartbeat; triggers the deferred welcome on first send.
+#' **ping** -- Heartbeat; triggers the deferred welcome on first
+#' send.
 #'
 #' ```json
 #' {"type": "ping"}
@@ -139,21 +166,24 @@
 #' **frame** -- A complete or incremental set of drawing operations.
 #' See the \dQuote{Frame message} section for the full schema.
 #'
-#' **metrics_request** -- Requests font metrics from the browser.
+#' **metrics_request** -- Requests font metrics from the renderer.
 #'
 #' ```json
 #' {"type": "metrics_request", "id": 1, "kind": "strWidth",
 #'  "str": "Hello",
-#'  "gc": {"font": {"family": "sans", "face": 1, "size": 12}}}
+#'  "gc": {"font": {"family": "sans", "face": 1,
+#'                   "size": 12}}}
 #' ```
 #'
 #' ```json
 #' {"type": "metrics_request", "id": 2, "kind": "metricInfo",
 #'  "c": 77,
-#'  "gc": {"font": {"family": "sans", "face": 1, "size": 12}}}
+#'  "gc": {"font": {"family": "sans", "face": 1,
+#'                   "size": 12}}}
 #' ```
 #'
-#' - **`id`**: Request identifier (integer); the response must echo it.
+#' - **`id`**: Request identifier (integer); the response must echo
+#'   it.
 #' - **`kind`**: `"strWidth"` (string width) or `"metricInfo"`
 #'   (glyph metrics).
 #' - **`gc`**: Graphics context with a `font` object containing
@@ -170,19 +200,19 @@
 #'
 #' **server_info** -- Welcome message (see above).
 #'
-#' **resize** -- Browser viewport change.
+#' **resize** -- Renderer viewport change.
 #'
 #' ```json
 #' {"type": "resize", "width": 800, "height": 600}
 #' ```
 #'
-#' - **`width`**, **`height`**: New viewport dimensions in CSS pixels
-#'   (positive integers).
+#' - **`width`**, **`height`**: New viewport dimensions in CSS
+#'   pixels (positive integers).
 #' - **`plotIndex`** (integer, optional): If present, replay the
 #'   historical plot identified by its R-assigned plot number (the
 #'   `plotNumber` from earlier frames) instead of the current plot.
 #'
-#' **metrics_response** -- Font metrics from the browser.
+#' **metrics_response** -- Font metrics from the renderer.
 #'
 #' ```json
 #' {"type": "metrics_response", "id": 1, "width": 48.5,
@@ -190,12 +220,14 @@
 #' ```
 #'
 #' - **`id`**: Must match the request `id`.
-#' - Server should apply a 2-second timeout and send a zero-value fallback
-#'   (`width: 0, ascent: 0, descent: 0`) if no response arrives.
+#' - Server should apply a 2-second timeout and send a zero-value
+#'   fallback (`width: 0, ascent: 0, descent: 0`) if no response
+#'   arrives.
 #'
 #' @section Frame message:
 #'
-#' The frame message carries drawing operations from R to the server.
+#' The frame message carries drawing operations from R to the
+#' server.
 #'
 #' New plot example:
 #'
@@ -235,38 +267,42 @@
 #' **Top-level fields:**
 #'
 #' - **`type`**: `"frame"` (always present).
-#' - **`incremental`** (boolean, always present): If `true`, `ops` contains
-#'   only operations added since the last flush (delta). If `false`, `ops`
-#'   contains the complete drawing for the page.
-#' - **`newPage`** (boolean, optional): Present and `true` when this is a
-#'   fresh plot (not a delta, not a resize replay).
-#' - **`resizeReplay`** (boolean, optional): Present and `true` when this
-#'   frame is a replay of a display list triggered by a resize.
-#' - **`plotIndex`** (integer, optional): Present during `resizeReplay`
-#'   when a historical plot (not the current one) was replayed.
-#'   This is the absolute R-side plot number (the same 0-based
-#'   value previously sent as `plotNumber` when the plot was
-#'   created). It may diverge from the browser's current history
-#'   array index after deletions or evictions.
-#' - **`plotNumber`** (integer, optional): Absolute 0-based sequence
-#'   number for plots (e.g., 0 for the first, 1 for the second).
-#'   Present on new plots and on resize replays of the current
-#'   plot. Omitted on historical resize replays where `plotIndex`
-#'   is present.
-#' - **`ext`** (object, optional): Frame-level extension data set via
-#'   [jgd_frame_ext()]. Free-form JSON; servers should preserve and forward
-#'   it to renderers.
+#' - **`incremental`** (boolean, always present): If `true`, `ops`
+#'   contains only operations added since the last flush (delta).
+#'   If `false`, `ops` contains the complete drawing for the page.
+#' - **`newPage`** (boolean, optional): Present and `true` when
+#'   this is a fresh plot (not a delta, not a resize replay).
+#' - **`resizeReplay`** (boolean, optional): Present and `true`
+#'   when this frame is a replay of a display list triggered by a
+#'   resize.
+#' - **`plotIndex`** (integer, optional): Present during
+#'   `resizeReplay` when a historical plot (not the current one)
+#'   was replayed. This is the absolute R-side plot number (the
+#'   same 0-based value previously sent as `plotNumber` when the
+#'   plot was created). It may diverge from the renderer's current
+#'   history array index after deletions or evictions.
+#' - **`plotNumber`** (integer, optional): Absolute 0-based
+#'   sequence number for plots (e.g., 0 for the first, 1 for the
+#'   second). Present on all frames for the current plot (including
+#'   incremental and resize replay frames). Omitted only on
+#'   historical resize replays where `plotIndex` is present.
+#' - **`ext`** (object, optional): Frame-level extension data set
+#'   via [jgd_frame_ext()]. Present only when set (not sent as
+#'   `null` or `{}`). Free-form JSON; servers should preserve and
+#'   forward it to renderers.
 #'
 #' **plot object:**
 #'
 #' - **`version`** (integer): Protocol version, currently `1`.
-#' - **`sessionId`** (string): Identifies the R session/device. Used for
-#'   routing resize requests to the correct R process.
+#' - **`sessionId`** (string): Identifies the R session/device.
+#'   Used for routing resize requests to the correct R process.
 #' - **`device`** (object):
 #'   - **`width`**, **`height`**: Device dimensions in pixels.
 #'   - **`dpi`**: Dots per inch.
-#'   - **`bg`**: Background color as an RGBA string (see \dQuote{Color format}).
-#' - **`ops`** (array): Drawing operations (see \dQuote{Drawing operations}).
+#'   - **`bg`**: Background color as an RGBA string
+#'     (see \dQuote{Color format}).
+#' - **`ops`** (array): Drawing operations
+#'   (see \dQuote{Drawing operations}).
 #'
 #' @section Color format:
 #'
@@ -283,7 +319,8 @@
 #'
 #' @section Graphics context:
 #'
-#' Drawing operations that produce visible output include a `"gc"` object:
+#' Most drawing operations include a `"gc"` object (exceptions are
+#' noted per operation):
 #'
 #' ```json
 #' {
@@ -307,26 +344,30 @@
 #' - **`col`**: Stroke color (RGBA string or `null`).
 #' - **`fill`**: Fill color (RGBA string or `null`).
 #' - **`lwd`**: Line width in pixels (number).
-#' - **`lty`**: Line type as an array of dash lengths. Solid lines produce
-#'   an empty array `[]`. Each element is the product of a dash nibble and
-#'   `lwd`.
-#' - **`lend`**: Line end cap style: `"round"`, `"butt"`, or `"square"`.
-#' - **`ljoin`**: Line join style: `"round"`, `"miter"`, or `"bevel"`.
+#' - **`lty`**: Line type as an array of dash lengths. Solid lines
+#'   produce an empty array `[]`. Each element is the product of a
+#'   dash nibble and `lwd`.
+#' - **`lend`**: Line end cap: `"round"`, `"butt"`, or `"square"`.
+#' - **`ljoin`**: Line join: `"round"`, `"miter"`, or `"bevel"`.
 #' - **`lmitre`**: Miter limit (number).
 #' - **`font`**:
-#'   - **`family`**: Font family name (string; empty string if default).
+#'   - **`family`**: Font family name (string; empty string if
+#'     default).
 #'   - **`face`**: Font face: 1 = plain, 2 = bold, 3 = italic,
 #'     4 = bold italic, 5 = symbol.
 #'   - **`size`**: Computed font size in points (`cex * ps`).
 #'   - **`lineheight`**: Line height multiplier (number).
-#' - **`ext`** (object, optional): Per-operation extension data set via
-#'   [jgd_ext()]. Free-form JSON.
+#' - **`ext`** (object, optional): Per-operation extension data set
+#'   via [jgd_ext()]. Present only when set. Free-form JSON.
 #'
 #' @section Drawing operations:
 #'
-#' Each element of the `ops` array is a JSON object with an `"op"` field.
-#' Most drawing operations include a `"gc"` field (see
+#' Each element of the `ops` array is a JSON object with an `"op"`
+#' field. Most drawing operations include a `"gc"` field (see
 #' \dQuote{Graphics context}). Exceptions are noted per operation.
+#'
+#' All coordinates are in device pixels with a top-left origin (see
+#' \dQuote{Coordinate system}).
 #'
 #' **clip** -- Set the clipping rectangle. No `gc`.
 #'
@@ -337,25 +378,29 @@
 #' **line** -- A single line segment.
 #'
 #' ```json
-#' {"op": "line", "x1": 100, "y1": 200, "x2": 300, "y2": 400, "gc": {}}
+#' {"op": "line", "x1": 100, "y1": 200,
+#'  "x2": 300, "y2": 400, "gc": {}}
 #' ```
 #'
 #' **polyline** -- Connected line segments (not closed).
 #'
 #' ```json
-#' {"op": "polyline", "x": [1, 2, 3], "y": [4, 5, 6], "gc": {}}
+#' {"op": "polyline", "x": [1, 2, 3],
+#'  "y": [4, 5, 6], "gc": {}}
 #' ```
 #'
 #' **polygon** -- Closed polygon (filled and/or stroked).
 #'
 #' ```json
-#' {"op": "polygon", "x": [1, 2, 3], "y": [4, 5, 6], "gc": {}}
+#' {"op": "polygon", "x": [1, 2, 3],
+#'  "y": [4, 5, 6], "gc": {}}
 #' ```
 #'
 #' **rect** -- Rectangle.
 #'
 #' ```json
-#' {"op": "rect", "x0": 10, "y0": 20, "x1": 100, "y1": 80, "gc": {}}
+#' {"op": "rect", "x0": 10, "y0": 20,
+#'  "x1": 100, "y1": 80, "gc": {}}
 #' ```
 #'
 #' **circle** -- Circle.
@@ -371,31 +416,40 @@
 #'  "rot": 0, "hadj": 0.5, "gc": {}}
 #' ```
 #'
+#' - **`str`**: The text content (string).
 #' - **`rot`**: Rotation angle in degrees (counter-clockwise).
-#' - **`hadj`**: Horizontal adjustment (0 = left-aligned, 0.5 = centered,
-#'   1 = right-aligned).
+#' - **`hadj`**: Horizontal adjustment (0 = left-aligned,
+#'   0.5 = centered, 1 = right-aligned).
 #'
 #' **path** -- Complex path with subpaths and a fill rule.
 #'
 #' ```json
 #' {"op": "path", "winding": "nonzero",
-#'  "subpaths": [[[10, 20], [30, 40], [50, 20]]], "gc": {}}
+#'  "subpaths": [[[10, 20], [30, 40], [50, 20]]],
+#'  "gc": {}}
 #' ```
 #'
 #' - **`winding`**: Fill rule: `"nonzero"` or `"evenodd"`.
-#' - **`subpaths`**: Array of subpaths. Each subpath is an array of
-#'   `[x, y]` coordinate pairs.
+#' - **`subpaths`**: Array of subpaths. Each subpath is an array
+#'   of `[x, y]` coordinate pairs.
 #'
 #' **raster** -- Raster image. No `gc`.
 #'
 #' ```json
-#' {"op": "raster", "x": 0, "y": 0, "w": 100, "h": 80,
+#' {"op": "raster", "x": 0, "y": 576, "w": 100, "h": -80,
 #'  "rot": 0, "interpolate": true,
-#'  "pw": 200, "ph": 160, "data": "data:image/png;base64,..."}
+#'  "pw": 200, "ph": 160,
+#'  "data": "data:image/png;base64,..."}
 #' ```
 #'
-#' - **`w`**, **`h`**: Displayed width and height in device coordinates.
-#' - **`pw`**, **`ph`**: Pixel width and height of the source image.
+#' - **`x`**, **`y`**: Bottom-left corner of the destination
+#'   rectangle in device coordinates.
+#' - **`w`**, **`h`**: Displayed width and height. May be
+#'   **negative** to indicate a horizontal or vertical flip;
+#'   renderers should use the absolute value for sizing and adjust
+#'   the anchor point accordingly.
+#' - **`pw`**, **`ph`**: Pixel width and height of the source
+#'   image.
 #' - **`rot`**: Rotation angle in degrees.
 #' - **`interpolate`**: Whether to interpolate when scaling.
 #' - **`data`**: Base64-encoded PNG as a data URI.
@@ -403,15 +457,17 @@
 #' **beginGroup** -- Start a drawing group (experimental). No `gc`.
 #'
 #' ```json
-#' {"op": "beginGroup", "ext": {"filter": "blur(5px)", "opacity": 0.8}}
+#' {"op": "beginGroup",
+#'  "ext": {"filter": "blur(5px)", "opacity": 0.8}}
 #' ```
 #'
-#' - **`ext`** (object, optional): Group-level extension data passed via
-#'   [jgd_begin_group()]. Free-form JSON. Common keys: `filter` (CSS filter
-#'   string), `opacity` (number 0--1), `blendMode` (CSS blend mode string).
+#' - **`ext`** (object, optional): Group-level extension data
+#'   passed via [jgd_begin_group()]. Present only when set.
+#'   Free-form JSON. Common keys: `filter` (CSS filter string),
+#'   `opacity` (number 0--1), `blendMode` (CSS blend mode string).
 #'
-#' **endGroup** -- End the most recently opened group. No `gc`, no fields
-#' other than `"op"`.
+#' **endGroup** -- End the most recently opened group. No `gc`, no
+#' fields other than `"op"`.
 #'
 #' ```json
 #' {"op": "endGroup"}
@@ -424,71 +480,113 @@
 #'
 #' @section Resize protocol:
 #'
-#' The server receives resize messages from the browser and forwards them
-#' to R. R replays the display list at the new dimensions and sends back
-#' a frame message.
+#' The server receives resize messages from the renderer and
+#' forwards them to R. R replays the display list at the new
+#' dimensions and sends back a frame message.
 #'
 #' **Normal resize flow:**
 #'
 #' ```
-#' Browser -> Server:  {"type":"resize","width":800,"height":600}
-#' Server  -> R:       {"type":"resize","width":800,"height":600}
-#' R       -> Server:  {"type":"frame","resizeReplay":true,
-#'                      "incremental":false,...}
+#' Renderer -> Server:  {"type":"resize","width":800,
+#'                       "height":600}
+#' Server   -> R:       {"type":"resize","width":800,
+#'                       "height":600}
+#' R        -> Server:  {"type":"frame",
+#'                       "resizeReplay":true,
+#'                       "incremental":false,...}
 #' ```
 #'
 #' **History resize flow** (replay a historical plot):
 #'
 #' ```
-#' Browser -> Server:  {"type":"resize","width":800,"height":600,
-#'                      "plotIndex":2,"sessionId":"r-1234-1"}
-#' Server  -> R:       {"type":"resize","width":800,"height":600,"plotIndex":2}
-#' R       -> Server:  {"type":"frame","resizeReplay":true,"plotIndex":2,
-#'                      "incremental":false,...}
+#' Renderer -> Server:  {"type":"resize","width":800,
+#'                       "height":600,"plotIndex":2,
+#'                       "sessionId":"r-1234-1"}
+#' Server   -> R:       {"type":"resize","width":800,
+#'                       "height":600,"plotIndex":2}
+#' R        -> Server:  {"type":"frame",
+#'                       "resizeReplay":true,
+#'                       "plotIndex":2,
+#'                       "incremental":false,...}
 #' ```
 #'
-#' Note: The server strips `sessionId` before forwarding to R. History
-#' resizes are routed only to the R session that owns the target plot.
+#' Note: The server strips `sessionId` before forwarding to R.
+#' History resizes are routed only to the R session that owns the
+#' target plot.
 #'
 #' **Resize deduplication:**
 #'
-#' Servers should deduplicate consecutive normal resizes with identical
-#' dimensions for each R session. However, if the previous resize was a
-#' `plotIndex` resize, the next normal resize at the same dimensions must
-#' NOT be deduplicated, because they target different display lists
-#' (historical snapshot vs. current plot).
+#' Servers should deduplicate consecutive normal resizes with
+#' identical dimensions for each R session. However, if the
+#' previous resize was a `plotIndex` resize, the next normal resize
+#' at the same dimensions must NOT be deduplicated, because they
+#' target different display lists (historical snapshot vs. current
+#' plot).
+#'
+#' @section Multiple R sessions:
+#'
+#' A server may accept connections from multiple R processes
+#' simultaneously. Each R connection has its own `sessionId` and
+#' independent display list. Servers should:
+#'
+#' - Route `metrics_request` messages to the renderer and route
+#'   the matching `metrics_response` back to the originating R
+#'   session (keyed by request `id`).
+#' - Route `plotIndex` resizes to the R session that owns the
+#'   target plot (identified by `sessionId` in the resize message).
+#' - Broadcast normal resizes to all connected R sessions.
+#' - Broadcast `frame` and `close` messages to all connected
+#'   renderers.
 #'
 #' @section Session ID management:
 #'
-#' The `sessionId` in frame messages identifies the R device instance.
-#' Servers should treat it as an opaque string. The reference
-#' implementation generates IDs in `r-<pid>-<counter>` format
-#' (e.g., `"r-1234-1"`, `"r-1234-2"`), where the counter increments
-#' for each new device within the same R process.
+#' The `sessionId` in frame messages identifies the R device
+#' instance. Servers should treat it as an opaque string. The
+#' reference implementation generates IDs in
+#' `r-<pid>-<counter>` format (e.g., `"r-1234-1"`,
+#' `"r-1234-2"`), where the counter increments for each new
+#' device within the same R process.
 #'
-#' Since each device instance produces a unique `sessionId`, reuse is
-#' unlikely. However, as a defensive measure, servers may disambiguate
-#' by appending a suffix (e.g., `"r-1234-1:1"`) if a retired
-#' `sessionId` reappears. The server's (possibly remapped) `sessionId`
-#' is what the browser sees; `plotIndex` resizes use it for routing.
+#' Since each device instance produces a unique `sessionId`,
+#' reuse is unlikely. However, as a defensive measure, servers
+#' may disambiguate by appending a suffix (e.g., `"r-1234-1:1"`)
+#' if a retired `sessionId` reappears. The server's (possibly
+#' remapped) `sessionId` is what the renderer sees; `plotIndex`
+#' resizes use it for routing.
+#'
+#' @section Connection lifecycle:
+#'
+#' **Graceful close:** R sends `{"type":"close"}` when
+#' `dev.off()` is called. The server should forward this to
+#' renderers and clean up routing state for that session.
+#'
+#' **Ungraceful disconnect:** If the R connection drops without a
+#' `close` message (e.g., R process crash), the server should
+#' detect the broken connection (EOF or socket error), clean up
+#' the session, and optionally notify renderers.
+#'
+#' **Incomplete lines:** If a connection drops mid-line (no
+#' trailing `\n`), the partial data should be discarded.
 #'
 #' @section Extension fields:
 #'
 #' Extension fields (`ext`) appear at three levels:
 #'
-#' - **Frame-level**: Top-level `ext` on the frame message. Set via
-#'   [jgd_frame_ext()] in R. Applies to the entire frame.
-#' - **Graphics context level**: `ext` inside the `gc` object. Set via
-#'   [jgd_ext()] in R. Applies to all drawing operations while active.
-#' - **Group level**: `ext` on `beginGroup` operations. Passed via
-#'   [jgd_begin_group()] in R. Applies only to that group.
+#' - **Frame-level**: Top-level `ext` on the frame message. Set
+#'   via [jgd_frame_ext()] in R. Applies to the entire frame.
+#' - **Graphics context level**: `ext` inside the `gc` object.
+#'   Set via [jgd_ext()] in R. Applies to all drawing operations
+#'   while active.
+#' - **Group level**: `ext` on `beginGroup` operations. Passed
+#'   via [jgd_begin_group()] in R. Applies only to that group.
 #'
-#' All `ext` fields are free-form JSON objects. Servers should preserve
-#' and forward them to renderers without validation. Renderers should
-#' ignore unknown keys.
+#' All `ext` fields are free-form JSON objects. They are present
+#' only when explicitly set in R (never sent as `null` or empty
+#' `{}`). Servers should preserve and forward them to renderers
+#' without validation. Renderers should ignore unknown keys.
 #'
-#' Extension fields survive display list replays (resize), so historical
-#' plot snapshots retain their `ext` data.
+#' Extension fields survive display list replays (resize), so
+#' historical plot snapshots retain their `ext` data.
 #'
 #' @section Implementing a server:
 #'
@@ -496,23 +594,30 @@
 #'
 #' 1. Listen on a Unix socket, named pipe, or TCP port.
 #' 2. Accept R connections and read NDJSON lines.
-#' 3. Send a deferred `server_info` welcome after receiving the first
-#'    message from R (not before).
-#' 4. Forward `frame` messages to connected browsers/renderers.
-#' 5. Forward `resize` messages from browsers to R.
-#' 6. Handle `metrics_request`/`metrics_response` routing between R and
-#'    browser, with a 2-second timeout and zero-value fallback.
-#' 7. Forward `close` messages to browsers.
+#' 3. Send a deferred `server_info` welcome after receiving the
+#'    first message from R (not before).
+#' 4. Forward `frame` messages to connected renderers.
+#' 5. Forward `resize` messages from renderers to R.
+#' 6. Handle `metrics_request`/`metrics_response` routing between
+#'    R and the renderer, with a 2-second timeout and zero-value
+#'    fallback.
+#' 7. Forward `close` messages to renderers.
 #'
 #' Optional:
 #'
 #' - Write a discovery file on startup, remove on shutdown.
 #' - Implement resize deduplication.
 #' - Implement session ID remapping for reused IDs.
-#' - Serve an HTTP endpoint for the browser UI.
+#' - Serve an HTTP endpoint for the renderer UI.
+#'
+# TODO: Message size limits are intentionally unspecified.  The
+# reference R client uses a 4096-byte read buffer (transport.h),
+# which may truncate very large messages (e.g., raster data URIs).
+# This is an implementation limitation, not a protocol constraint.
+# A future protocol version may address this if needed.
 #'
 #' @name jgd-spec
 #' @aliases jgd-protocol
-#' @seealso [jgd()], [jgd_server_info()], [jgd_ext()], [jgd_frame_ext()],
-#'   [jgd_begin_group()]
+#' @seealso [jgd()], [jgd_server_info()], [jgd_ext()],
+#'   [jgd_frame_ext()], [jgd_begin_group()]
 NULL
