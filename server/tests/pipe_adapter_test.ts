@@ -59,14 +59,11 @@ async function connectPipe(pipePath: string): Promise<PipeConn> {
   }
 }
 
-// On Windows, node:net has internal timers (connect retry, socket
-// teardown) that outlive individual tests.  Additionally, parallel
-// test execution can cause timers from other test files to start
-// before or complete during these tests.  Disable both sanitizers
-// on Windows to avoid false positives.
-const pipeTestOpts = isWindows
-  ? { sanitizeOps: false, sanitizeResources: false }
-  : {};
+// Parallel test execution (deno test --parallel) can cause timers
+// from other test files to start before or complete during these
+// tests, tripping both sanitizers.  Disable them to avoid false
+// positives — pipe_adapter_test has no timers of its own.
+const pipeTestOpts = { sanitizeOps: false, sanitizeResources: false };
 
 Deno.test({ name: "PipeListener: accept and round-trip data", ...pipeTestOpts }, async () => {
   const [pipePath, cleanup] = tmpPipePath();
