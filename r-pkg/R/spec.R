@@ -51,9 +51,11 @@
 #' Server -> R:  {"type":"server_info", ...}
 #' ```
 #'
-#' The R client reads up to 3 lines with a 200 ms timeout per read
-#' to account for potential message reordering. Non-`server_info`
-#' messages received during handshake are silently discarded.
+#' The R client performs an initial read with a 200 ms timeout and,
+#' if it receives a non-`server_info` line, may perform up to two
+#' additional 200 ms reads to account for potential message
+#' reordering. Non-`server_info` messages received during handshake
+#' are silently discarded.
 #'
 #' If the server does not send a welcome within the timeout, the
 #' device operates normally without a live server connection.
@@ -156,10 +158,10 @@
 #' the function falls back to it (`connected = FALSE`) with fields
 #' such as `server_name`, `socket_path`, `pid`, and `server_info`.
 #'
-#' `jgd_server_info()` returns `NULL` when:
-#'
-#' - The current device is not a jgd device
-#' - Neither welcome metadata nor discovery file is available
+#' `jgd_server_info()` returns `NULL` only when neither a
+#' connected device's welcome nor a valid discovery file is
+#' available. Note that the discovery fallback applies regardless
+#' of whether the current device is a jgd device.
 #'
 #' @section R-to-server messages:
 #'

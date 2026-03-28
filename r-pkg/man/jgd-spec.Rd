@@ -62,9 +62,11 @@ first read completes can cause data loss.
 Server -> R:  \{"type":"server_info", ...\}
 }\if{html}{\out{</div>}}
 
-The R client reads up to 3 lines with a 200 ms timeout per read
-to account for potential message reordering. Non-\code{server_info}
-messages received during handshake are silently discarded.
+The R client performs an initial read with a 200 ms timeout and,
+if it receives a non-\code{server_info} line, may perform up to two
+additional 200 ms reads to account for potential message
+reordering. Non-\code{server_info} messages received during handshake
+are silently discarded.
 
 If the server does not send a welcome within the timeout, the
 device operates normally without a live server connection.
@@ -176,11 +178,10 @@ When no welcome was received but a discovery file is available,
 the function falls back to it (\code{connected = FALSE}) with fields
 such as \code{server_name}, \code{socket_path}, \code{pid}, and \code{server_info}.
 
-\code{jgd_server_info()} returns \code{NULL} when:
-\itemize{
-\item The current device is not a jgd device
-\item Neither welcome metadata nor discovery file is available
-}
+\code{jgd_server_info()} returns \code{NULL} only when neither a
+connected device's welcome nor a valid discovery file is
+available. Note that the discovery fallback applies regardless
+of whether the current device is a jgd device.
 }
 
 \section{R-to-server messages}{
