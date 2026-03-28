@@ -302,7 +302,7 @@ export class Hub {
     let msg: Record<string, unknown>;
     try {
       const parsed = JSON.parse(line);
-      if (typeof parsed !== "object" || parsed === null) {
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
         console.error("metrics request is not an object");
         return;
       }
@@ -376,7 +376,8 @@ export class Hub {
     let msg: Record<string, unknown>;
     try {
       const parsed = JSON.parse(line);
-      if (typeof parsed !== "object" || parsed === null) {
+      if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+        console.error("metrics response is not an object");
         return;
       }
       msg = parsed;
