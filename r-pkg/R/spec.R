@@ -236,10 +236,9 @@
 #' ```
 #'
 #' - **`id`**: Must match the request `id`.
-#' - The reference R client waits up to 500 ms for a matching
-#'   `metrics_response`; if none arrives, it falls back to local
-#'   font metric computation. Servers are not required to
-#'   synthesize fallback responses.
+#' - The R client handles its own timeout and falls back to local
+#'   font metric computation if no matching response arrives.
+#'   Servers are not required to synthesize fallback responses.
 #'
 #' @section Frame message:
 #'
