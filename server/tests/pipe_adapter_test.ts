@@ -59,7 +59,11 @@ async function connectPipe(pipePath: string): Promise<PipeConn> {
   }
 }
 
-Deno.test("PipeListener: accept and round-trip data", async () => {
+// node:net on Windows has internal timers (e.g. connect retry,
+// socket teardown) that may outlive the test and trip the sanitizer.
+const pipeTestOpts = { sanitizeOps: false, sanitizeResources: false };
+
+Deno.test({ name: "PipeListener: accept and round-trip data", ...pipeTestOpts }, async () => {
   const [pipePath, cleanup] = tmpPipePath();
   try {
     const listener = new PipeListener();
@@ -102,7 +106,7 @@ Deno.test("PipeListener: accept and round-trip data", async () => {
   }
 });
 
-Deno.test("PipeListener: close terminates async iterator", async () => {
+Deno.test({ name: "PipeListener: close terminates async iterator", ...pipeTestOpts }, async () => {
   const [pipePath, cleanup] = tmpPipePath();
   try {
     const listener = new PipeListener();
@@ -126,7 +130,7 @@ Deno.test("PipeListener: close terminates async iterator", async () => {
   }
 });
 
-Deno.test("PipeListener: multiple connections", async () => {
+Deno.test({ name: "PipeListener: multiple connections", ...pipeTestOpts }, async () => {
   const [pipePath, cleanup] = tmpPipePath();
   try {
     const listener = new PipeListener();
