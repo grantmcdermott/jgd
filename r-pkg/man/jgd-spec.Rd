@@ -197,8 +197,9 @@ See the \dQuote{Frame message} section for the full schema.
 \itemize{
 \item \strong{\code{width}}, \strong{\code{height}}: New viewport dimensions in CSS pixels
 (positive integers).
-\item \strong{\code{plotIndex}} (integer, optional): If present, replay the historical
-plot at this 0-based index instead of the current plot.
+\item \strong{\code{plotIndex}} (integer, optional): If present, replay the
+historical plot identified by its R-assigned plot number (the
+\code{plotNumber} from earlier frames) instead of the current plot.
 }
 
 \strong{metrics_response} -- Font metrics from the browser.
@@ -218,12 +219,12 @@ plot at this 0-based index instead of the current plot.
 
 The frame message carries drawing operations from R to the server.
 
+New plot example:
+
 \if{html}{\out{<div class="sourceCode json">}}\preformatted{\{
   "type": "frame",
   "incremental": false,
   "newPage": true,
-  "resizeReplay": false,
-  "plotIndex": 0,
   "plotNumber": 0,
   "ext": \{\},
   "plot": \{
@@ -240,6 +241,17 @@ The frame message carries drawing operations from R to the server.
 \}
 }\if{html}{\out{</div>}}
 
+Historical resize replay example:
+
+\if{html}{\out{<div class="sourceCode json">}}\preformatted{\{
+  "type": "frame",
+  "incremental": false,
+  "resizeReplay": true,
+  "plotIndex": 0,
+  "plot": \{ "..." \}
+\}
+}\if{html}{\out{</div>}}
+
 \strong{Top-level fields:}
 \itemize{
 \item \strong{\code{type}}: \code{"frame"} (always present).
@@ -252,10 +264,15 @@ fresh plot (not a delta, not a resize replay).
 frame is a replay of a display list triggered by a resize.
 \item \strong{\code{plotIndex}} (integer, optional): Present during \code{resizeReplay}
 when a historical plot (not the current one) was replayed.
-0-based index into the plot history.
-\item \strong{\code{plotNumber}} (integer, optional): Absolute 0-based sequence number
-for new plots (e.g., 0 for the first plot, 1 for the second).
-Absent during resize replays.
+This is the absolute R-side plot number (the same 0-based
+value previously sent as \code{plotNumber} when the plot was
+created). It may diverge from the browser's current history
+array index after deletions or evictions.
+\item \strong{\code{plotNumber}} (integer, optional): Absolute 0-based sequence
+number for plots (e.g., 0 for the first, 1 for the second).
+Present on new plots and on resize replays of the current
+plot. Omitted on historical resize replays where \code{plotIndex}
+is present.
 \item \strong{\code{ext}} (object, optional): Frame-level extension data set via
 \code{\link[=jgd_frame_ext]{jgd_frame_ext()}}. Free-form JSON; servers should preserve and forward
 it to renderers.
@@ -426,8 +443,9 @@ other than \code{"op"}.
 }\if{html}{\out{</div>}}
 
 Groups nest arbitrarily. When the device is not held via
-\code{dev.hold()}, an \code{endGroup} triggers an immediate incremental
-frame flush.
+\code{dev.hold()}, an \code{endGroup} triggers an immediate frame flush.
+The flush is complete if nothing has been flushed yet on the
+current page, and incremental otherwise.
 }
 
 \section{Resize protocol}{

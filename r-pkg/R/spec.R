@@ -178,8 +178,9 @@
 #'
 #' - **`width`**, **`height`**: New viewport dimensions in CSS pixels
 #'   (positive integers).
-#' - **`plotIndex`** (integer, optional): If present, replay the historical
-#'   plot at this 0-based index instead of the current plot.
+#' - **`plotIndex`** (integer, optional): If present, replay the
+#'   historical plot identified by its R-assigned plot number (the
+#'   `plotNumber` from earlier frames) instead of the current plot.
 #'
 #' **metrics_response** -- Font metrics from the browser.
 #'
@@ -196,13 +197,13 @@
 #'
 #' The frame message carries drawing operations from R to the server.
 #'
+#' New plot example:
+#'
 #' ```json
 #' {
 #'   "type": "frame",
 #'   "incremental": false,
 #'   "newPage": true,
-#'   "resizeReplay": false,
-#'   "plotIndex": 0,
 #'   "plotNumber": 0,
 #'   "ext": {},
 #'   "plot": {
@@ -219,6 +220,18 @@
 #' }
 #' ```
 #'
+#' Historical resize replay example:
+#'
+#' ```json
+#' {
+#'   "type": "frame",
+#'   "incremental": false,
+#'   "resizeReplay": true,
+#'   "plotIndex": 0,
+#'   "plot": { "..." }
+#' }
+#' ```
+#'
 #' **Top-level fields:**
 #'
 #' - **`type`**: `"frame"` (always present).
@@ -231,10 +244,15 @@
 #'   frame is a replay of a display list triggered by a resize.
 #' - **`plotIndex`** (integer, optional): Present during `resizeReplay`
 #'   when a historical plot (not the current one) was replayed.
-#'   0-based index into the plot history.
-#' - **`plotNumber`** (integer, optional): Absolute 0-based sequence number
-#'   for new plots (e.g., 0 for the first plot, 1 for the second).
-#'   Absent during resize replays.
+#'   This is the absolute R-side plot number (the same 0-based
+#'   value previously sent as `plotNumber` when the plot was
+#'   created). It may diverge from the browser's current history
+#'   array index after deletions or evictions.
+#' - **`plotNumber`** (integer, optional): Absolute 0-based sequence
+#'   number for plots (e.g., 0 for the first, 1 for the second).
+#'   Present on new plots and on resize replays of the current
+#'   plot. Omitted on historical resize replays where `plotIndex`
+#'   is present.
 #' - **`ext`** (object, optional): Frame-level extension data set via
 #'   [jgd_frame_ext()]. Free-form JSON; servers should preserve and forward
 #'   it to renderers.
@@ -400,8 +418,9 @@
 #' ```
 #'
 #' Groups nest arbitrarily. When the device is not held via
-#' `dev.hold()`, an `endGroup` triggers an immediate incremental
-#' frame flush.
+#' `dev.hold()`, an `endGroup` triggers an immediate frame flush.
+#' The flush is complete if nothing has been flushed yet on the
+#' current page, and incremental otherwise.
 #'
 #' @section Resize protocol:
 #'
