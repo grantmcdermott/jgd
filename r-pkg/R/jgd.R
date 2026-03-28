@@ -17,6 +17,14 @@
 #' details about `newPage`, `flush_frame`, and `poll_resize` events, which
 #' is useful for diagnosing resize/replay issues.
 #' @return Invisible `NULL`. The device is opened as a side effect.
+#' @examples
+#' \dontrun{
+#' jgd()
+#' plot(1:10)
+#' lines(1:10, col = "red", lwd = 3)
+#' hist(rnorm(1000), col = "steelblue")
+#' dev.off()
+#' }
 #' @export
 jgd = function(
   width = 8,

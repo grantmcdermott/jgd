@@ -120,7 +120,7 @@
 # TODO: Document discovery file format (location, content, lifecycle)
 # TODO: Document frame message format (plot ops, device dimensions, incremental flag)
 
-#' @name jgd-spec
-#' @aliases jgd-protocol
+#' @name jgd_spec
+#' @aliases jgd_protocol
 #' @seealso [jgd()], [jgd_server_info()]
 NULL
