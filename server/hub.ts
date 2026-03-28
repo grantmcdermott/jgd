@@ -14,8 +14,15 @@ export interface BrowserClient {
 export class Hub {
   sessions = new Map<string, RSession>();
   clients = new Set<BrowserClient>();
-  /** Maps metrics request ID → R session ID for routing responses. */
-  metricsRouting = new Map<number, string>();
+  /**
+   * Maps server-assigned metrics ID → originating session ID and
+   * original request ID.  The server assigns a globally unique ID
+   * when forwarding to the browser, so concurrent R processes with
+   * overlapping numeric IDs don't collide.
+   */
+  metricsRouting = new Map<number, { sessionId: string; originalId: number }>();
+  /** Monotonically increasing counter for server-assigned metrics IDs. */
+  private metricsIdCounter = 0;
   /**
    * SessionIds that have been used by now-dead connections.  When a new
    * connection registers the same sessionId (e.g. R uses PID-based IDs
@@ -48,9 +55,9 @@ export class Hub {
       this.retiredSessionIds.clear();
     }
     // Clean up any pending metrics routing entries for this session
-    for (const [reqId, sessId] of this.metricsRouting) {
-      if (sessId === id) {
-        this.metricsRouting.delete(reqId);
+    for (const [key, entry] of this.metricsRouting) {
+      if (entry.sessionId === id) {
+        this.metricsRouting.delete(key);
       }
     }
     console.error(
@@ -82,9 +89,9 @@ export class Hub {
     session.id = finalId;
     this.sessions.set(finalId, session);
     // Update any pending metrics routing entries to use the new session ID
-    for (const [reqId, sessId] of this.metricsRouting) {
-      if (sessId === oldId) {
-        this.metricsRouting.set(reqId, finalId);
+    for (const [key, entry] of this.metricsRouting) {
+      if (entry.sessionId === oldId) {
+        entry.sessionId = finalId;
       }
     }
   }
@@ -292,14 +299,14 @@ export class Hub {
    * Route a metrics request from R to browsers, with timeout fallback.
    */
   private handleMetricsRequest(session: RSession, line: string): void {
-    let id: number;
+    let msg: Record<string, unknown>;
     try {
-      const msg = JSON.parse(line);
-      id = msg.id;
+      msg = JSON.parse(line);
     } catch {
       console.error("failed to parse metrics request");
       return;
     }
+    const id = msg.id;
 
     if (typeof id !== "number" || !Number.isFinite(id)) {
       console.error("metrics request has invalid id");
@@ -319,33 +326,39 @@ export class Hub {
       return;
     }
 
-    // Store routing: requestID → sessionID
-    this.metricsRouting.set(id, session.id);
+    // Assign a server-global unique ID to avoid collisions when
+    // multiple R processes send requests with the same numeric id.
+    const serverId = ++this.metricsIdCounter;
+    this.metricsRouting.set(serverId, {
+      sessionId: session.id,
+      originalId: id,
+    });
 
-    // Forward to browsers
-    this.broadcastToClients(line);
+    // Forward to browsers with the remapped ID
+    msg.id = serverId;
+    this.broadcastToClients(JSON.stringify(msg));
 
     // Timeout: if no response in 2s, send zero-value fallback.
-    // Look up the session ID from metricsRouting at fire time (not capture
+    // Look up the entry from metricsRouting at fire time (not capture
     // time) so that updateSessionId() renames are reflected correctly.
     setTimeout(() => {
-      const currentSessionId = this.metricsRouting.get(id);
-      if (currentSessionId === undefined) return; // already responded or session gone
-      this.metricsRouting.delete(id);
+      const entry = this.metricsRouting.get(serverId);
+      if (entry === undefined) return; // already responded or session gone
+      this.metricsRouting.delete(serverId);
       const fallback = JSON.stringify({
         type: "metrics_response",
-        id,
+        id: entry.originalId,
         width: 0,
         ascent: 0,
         descent: 0,
       });
-      const target = this.sessions.get(currentSessionId);
+      const target = this.sessions.get(entry.sessionId);
       if (target) {
         target.trySend(fallback);
       }
       if (this.verbose) {
         console.error(
-          `metrics timeout for request ${id}, sent fallback to session ${currentSessionId}`,
+          `metrics timeout for request ${serverId} (original ${entry.originalId}), sent fallback to session ${entry.sessionId}`,
         );
       }
     }, 2000);
@@ -355,29 +368,31 @@ export class Hub {
    * Route a metrics response from a browser to the originating R session.
    */
   handleMetricsResponse(line: string): void {
-    let id: number;
+    let msg: Record<string, unknown>;
     try {
-      const msg = JSON.parse(line);
-      id = msg.id;
+      msg = JSON.parse(line);
     } catch {
       console.error("failed to parse metrics response");
       return;
     }
+    const id = msg.id;
 
     if (typeof id !== "number" || !Number.isFinite(id)) {
       return;
     }
 
-    const sessionId = this.metricsRouting.get(id);
-    if (sessionId === undefined) {
+    const entry = this.metricsRouting.get(id);
+    if (entry === undefined) {
       // Already timed out or duplicate
       return;
     }
     this.metricsRouting.delete(id);
 
-    const session = this.sessions.get(sessionId);
+    // Restore the original request ID before sending to R
+    msg.id = entry.originalId;
+    const session = this.sessions.get(entry.sessionId);
     if (session) {
-      session.trySend(line);
+      session.trySend(JSON.stringify(msg));
     }
   }
 

@@ -95,11 +95,10 @@ Deno.test("multi-session routing", async (t) => {
         const req = await browser.waitForType<MetricsRequestMessage>(
           "metrics_request",
         );
-        assertEquals(req.id, 300);
+        // Server remaps IDs; respond with the server-assigned ID
+        browser.sendMetricsResponse(req.id, 55, 12, 4);
 
-        browser.sendMetricsResponse(300, 55, 12, 4);
-
-        // r2 should receive the response
+        // r2 should receive the response with original ID restored
         const resp = await r2.readMessage<MetricsResponseMessage>();
         assertEquals(resp.id, 300);
         assertEquals(resp.width, 55);
