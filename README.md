@@ -1,6 +1,11 @@
 # jgd — JSON Graphics Device for R
 
-![Experimental](https://img.shields.io/badge/status-experimental-orange)
+<!-- badges: start -->
+<a href="https://CRAN.R-project.org/package=jgd"><img src="https://www.r-pkg.org/badges/version/jgd" class="img-fluid" alt="CRAN version"></a>
+<a href="https://grantmcdermott.r-universe.dev"><img src="https://grantmcdermott.r-universe.dev/badges/jgd" class="img-fluid" alt="R-universe version"></a>
+<a href="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml"><img src="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml/badge.svg" class="img-fluid" alt="R CMD check"></a>
+<a href="https://github.com/grantmcdermott/jgd/blob/main/r-pkg/LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" class="img-fluid" alt="License"></a>
+<!-- badges: end -->
 
 **jgd** is a lightweight (C-based, zero dependency) R graphics device. It
 works by serializing R plotting operations into JSON and then streaming to
@@ -15,11 +20,8 @@ The **jgd** protocol is designed to be frontend-agnostic. While VS Code was our
 initial development focus, in principle any client able to read JSON could use
 it to render R plots (e.g., Neovim, Emacs, or a custom web app).
 
-**Caveats:** The package is experimental and may have some rough edges despite
-our best efforts at thorough local testing. The communication protocol between
-R and the renderer is still in development and not yet stable.
-Finally, we want to be transparent that this project has made _heavy_ use of
-AI-assisted pair programming (Claude). It is highly doubtful that we would have
+Please note that this project has made heavy use of AI-assisted pair
+programming (both Claude and Copilot). It is highly doubtful that we would have
 been able to put this together without AI help.
 
 ## Installation
@@ -29,7 +31,7 @@ displaying plots.
 
 ### R package
 
-Install from R-universe:
+We plan to submit to CRAN soon. In the meantime, please install from R-universe:
 
 ```r
 install.packages('jgd', repos = 'https://grantmcdermott.r-universe.dev')
@@ -134,7 +136,7 @@ history.
 The primary motivation for this package is supporting a nicer R graphics
 experience in VS Code. At present, the VS Code [R
 extension](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer) provides
-fairly crude "native" graphics support, since plots are displayed at PNGs. As a
+fairly crude "native" graphics support, since plots are displayed as PNGs. As a
 result, users have for some time relied on the nice
 [httpgd](https://github.com/nx10/httpgd) package for a better graphics
 experience; indeed, the official R extension docs even recommend using it.
@@ -223,7 +225,7 @@ using the browser's Canvas2D API.
 - **Incremental updates**: `plot()` + `lines()` = one history entry
 - **Text rotation**, **transparent colors**, **clip regions**, **line types**,
   **raster images** (base64-encoded PNG)
-- **Auto-discovery**: `JGD_SOCKET` environment variable or `jgd-discovery.json`
+- **Auto-discovery**: `JGD_SOCKET` environment variable or `discovery.json`
   file for automatic connection
 - **Export**: PNG and SVG from the toolbar dropdown, with custom dimensions
   (inches + DPI)
