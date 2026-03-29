@@ -1,7 +1,6 @@
 # jgd — JSON Graphics Device for R
 
 <!-- badges: start -->
-<a href="https://CRAN.R-project.org/package=jgd"><img src="https://www.r-pkg.org/badges/version/jgd" class="img-fluid" alt="CRAN version"></a>
 <a href="https://grantmcdermott.r-universe.dev"><img src="https://grantmcdermott.r-universe.dev/badges/jgd" class="img-fluid" alt="R-universe version"></a>
 <a href="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml"><img src="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml/badge.svg" class="img-fluid" alt="R CMD check"></a>
 <a href="https://github.com/grantmcdermott/jgd/blob/main/r-pkg/LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" class="img-fluid" alt="License"></a>
@@ -9,20 +8,17 @@
 
 **jgd** is a lightweight (C-based, zero dependency) R graphics device. It
 works by serializing R plotting operations into JSON and then streaming to
-an external renderer. Two renderers are currently available:
+an external renderer. We provide two official renderers for displaying plots:
 
 - A **VS Code extension** with an integrated plot pane
 - A **standalone Deno server** for rendering inside a web browser
 
 ![Screenshot of jgd running in VS Code](jgd-ss.png)
 
-The **jgd** protocol is designed to be frontend-agnostic. While VS Code was our
-initial development focus, in principle any client able to read JSON could use
-it to render R plots (e.g., Neovim, Emacs, or a custom web app).
-
-Please note that this project has made heavy use of AI-assisted pair
-programming (both Claude and Copilot). It is highly doubtful that we would have
-been able to put this together without AI help.
+Please note that users aren't limited to these two options. The **jgd** protocol
+is designed to be frontend-agnostic; any client able to read JSON could use it
+to render R plots (e.g., Neovim, Emacs, or a custom web app). Please feel free
+to build or contribute your own!
 
 ## Installation
 
@@ -431,6 +427,20 @@ saved per-snapshot, and restored on plotIndex replay.
 | `server/` | Deno reference server (HTTP/WebSocket renderer) |
 | `vscode-ext/` | VS Code extension |
 | `tests/` | End-to-end tests |
+
+## Acknowledgements
+
+While we adopt a different implementation approach, **jgd** was inspired by
+[Florian Rupprecht](https://github.com/nx10)'s
+[httpgd](https://github.com/nx10/httpgd) and
+[unigd](https://github.com/nx10/unigd) projects, which demonstrate the value of
+an external web-based graphics device for R. We are also grateful to R Core for
+designing and maintaining R's flexible graphics engine, whose clean C callback
+interface made this project feasible.
+
+This project has made heavy use of AI-assisted pair programming (both
+Claude and Copilot). It is highly doubtful that we would have been able
+to put this together without AI help.
 
 ## License
 
