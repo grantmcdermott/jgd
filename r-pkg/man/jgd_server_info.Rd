@@ -7,19 +7,38 @@
 jgd_server_info()
 }
 \value{
-A named list, or \code{NULL}. When connected:
-\code{connected} (logical), \code{server_name} (character),
-\code{protocol_version} (integer), \code{transport} (character),
-\code{server_info} (named character vector).
-When not connected (discovery file):
-\code{connected} (logical), \code{server_name} (character),
-\code{socket_path} (character), \code{pid} (integer),
-\code{server_info} (named character vector).
+A named list, or \code{NULL}.
+
+When connected:
+\itemize{
+\item \strong{\code{connected}}: \code{TRUE}
+\item \strong{\code{server_name}}: Server name (character)
+\item \strong{\code{protocol_version}}: Protocol version (integer)
+\item \strong{\code{transport}}: Transport protocol (character)
+\item \strong{\code{server_info}}: Named character vector of key-value pairs
+from the server's \code{serverInfo} object
+(e.g. \code{c(httpUrl = "http://...")}); empty if absent
+}
+
+When not connected (discovery file fallback):
+\itemize{
+\item \strong{\code{connected}}: \code{FALSE}
+\item \strong{\code{server_name}}: Server name (character)
+\item \strong{\code{socket_path}}: Socket URI (character)
+\item \strong{\code{pid}}: Server process ID (integer)
+\item \strong{\code{server_info}}: Named character vector (as above)
+}
 }
 \description{
-Returns metadata about the jgd server. When a jgd device is open and
-connected, returns the welcome message information with \code{connected = TRUE}.
-Otherwise, falls back to reading the discovery file and returns information
-with \code{connected = FALSE}. Returns \code{NULL} if no information is available
-from either source.
+Returns metadata about the jgd server. When a jgd device is open
+and connected, returns the welcome message information with
+\code{connected = TRUE}. Otherwise, falls back to reading the
+discovery file and returns information with \code{connected = FALSE}.
+Returns \code{NULL} if no information is available from either source.
+}
+\details{
+The discovery fallback applies regardless of whether the current
+device is a jgd device. This means \code{jgd_server_info()} can
+return a non-\code{NULL} result even when no jgd device is open, as
+long as a valid discovery file exists.
 }

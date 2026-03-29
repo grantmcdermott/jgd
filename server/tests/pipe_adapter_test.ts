@@ -59,7 +59,13 @@ async function connectPipe(pipePath: string): Promise<PipeConn> {
   }
 }
 
-Deno.test("PipeListener: accept and round-trip data", async () => {
+// Parallel test execution (deno test --parallel) can cause timers
+// from other test files to start before or complete during these
+// tests, tripping both sanitizers.  Disable them to avoid false
+// positives — pipe_adapter_test has no timers of its own.
+const pipeTestOpts = { sanitizeOps: false, sanitizeResources: false };
+
+Deno.test({ name: "PipeListener: accept and round-trip data", ...pipeTestOpts }, async () => {
   const [pipePath, cleanup] = tmpPipePath();
   try {
     const listener = new PipeListener();
@@ -102,7 +108,7 @@ Deno.test("PipeListener: accept and round-trip data", async () => {
   }
 });
 
-Deno.test("PipeListener: close terminates async iterator", async () => {
+Deno.test({ name: "PipeListener: close terminates async iterator", ...pipeTestOpts }, async () => {
   const [pipePath, cleanup] = tmpPipePath();
   try {
     const listener = new PipeListener();
@@ -126,7 +132,7 @@ Deno.test("PipeListener: close terminates async iterator", async () => {
   }
 });
 
-Deno.test("PipeListener: multiple connections", async () => {
+Deno.test({ name: "PipeListener: multiple connections", ...pipeTestOpts }, async () => {
   const [pipePath, cleanup] = tmpPipePath();
   try {
     const listener = new PipeListener();

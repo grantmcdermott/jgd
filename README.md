@@ -223,7 +223,7 @@ using the browser's Canvas2D API.
 - **Text rotation**, **transparent colors**, **clip regions**, **line types**,
   **raster images** (base64-encoded PNG)
 - **Auto-discovery**: `JGD_SOCKET` environment variable or `discovery.json`
-  file for automatic connection
+  file for automatic connection (see `?jgd_spec` for details)
 - **Export**: PNG and SVG from the toolbar dropdown, with custom dimensions
   (inches + DPI)
 - **Cross-platform**: Unix domain sockets on macOS/Linux, named pipes on
@@ -412,7 +412,8 @@ saved per-snapshot, and restored on plotIndex replay.
 
 - [x] **Windows support**: Named pipes (default) and TCP transport
 - [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
-- [ ] **Protocol stabilization**: Stabilize and document the NDJSON protocol
+- [x] **Protocol stabilization**: Stabilize and document the NDJSON protocol
+  (see `?jgd-spec`)
 - [ ] **CRAN submission**: Package the R side for CRAN distribution
 - [ ] **R extension integration**: Incorporate the code from this package into
   the main VS Code R extension (if the upstream maintainers agree).
