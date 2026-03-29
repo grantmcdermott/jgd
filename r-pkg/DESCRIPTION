@@ -9,9 +9,9 @@ Authors@R: c(
     )
 Description: A graphics device that records R plotting operations and streams
     them as JSON over a Unix domain socket to an external renderer. The device
-    acts as a pure recorder with no rendering dependencies -- all rendering
+    acts as a pure recorder with no rendering dependencies; all rendering
     occurs in the client (e.g. a VS Code webview or any NDJSON-capable
-    frontend).
+    frontend). Official renderers are available from the project homepage.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

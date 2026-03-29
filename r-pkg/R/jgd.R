@@ -1,22 +1,49 @@
 #' JSON Graphics Device
 #'
 #' Opens a graphics device that streams plot operations as JSON to an external
-#' renderer (e.g. a VS Code extension) over a Unix domain socket.
+#' renderer (e.g. VS Code extension or browser) over a Unix domain socket.
 #'
 #' @param width Device width in inches (default 8).
 #' @param height Device height in inches (default 6).
 #' @param dpi Resolution in dots per inch (default 96).
 #' @param socket Socket address for the rendering server. Supports URI formats
 #'   (`tcp://host:port`, `unix:///path/to/socket`) or raw Unix socket paths.
-#'   If `NULL` (default), use the `jgd.socket` R option, falling back to the `JGD_SOCKET`
-#'   environment variable. If `JGD_SOCKET` environment variable is also unset,
-#'   the device discovers the socket via the discovery file.
+#'   If `NULL` (default), use the `jgd.socket` R option, falling back to the
+#'  `JGD_SOCKET`environment variable. If `JGD_SOCKET` environment variable is
+#'  also unset, the device discovers the socket via the discovery file.
+#' @section Displaying plots with `jgd`:
+#' It is important to note that `jgd()` does not display any plots; it only
+#' streams them (i.e., converts them to a format that a JSON renderer
+#' understands). To actually _display_ your plots with `jgd`, you'll need an
+#' appropriate frontend. We provide two official renderers, both available for
+#' install from the project repository:
+#' \url{https://github.com/grantmcdermott/jgd}.
+#'
+#' - **VS Code extension.** An integrated plot pane for VS Code.
+#' - **Deno server.** A standalone browser-based renderer.
+#'
+#' Users aren't limited to these two options. The `jgd` protocol is deliberately
+#' frontend-agnostic; you can render plots with any client that reads NDJSON.
+#' Again, please see the project repository for full documentation:
+#' \url{https://github.com/grantmcdermott/jgd}
+#' 
 #' @section Debugging:
 #' Set `options(jgd.debug = TRUE)` before opening the device to enable
 #' frame-level diagnostic output on stderr (via `REprintf`).  This logs
 #' details about `newPage`, `flush_frame`, and `poll_resize` events, which
 #' is useful for diagnosing resize/replay issues.
 #' @return Invisible `NULL`. The device is opened as a side effect.
+#' @examples
+#' \dontrun{
+#' # Requires a running renderer (e.g., VS Code extension or Deno server).
+#' # See the "Displaying plots" section above.
+#' library(jgd)
+#' jgd()
+#' plot(1:10)
+#' lines(1:10, col = "red", lwd = 3)
+#' hist(rnorm(1000), col = "steelblue")
+#' dev.off()
+#' }
 #' @export
 jgd = function(
   width = 8,

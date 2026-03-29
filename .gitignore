@@ -26,3 +26,5 @@ Thumbs.db
 # Editor
 .vscode/
 !.vscode/launch.json
+
+SCRATCH/
