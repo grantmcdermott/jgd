@@ -39,20 +39,36 @@ jgd = function(
 
 #' Get server information
 #'
-#' Returns metadata about the jgd server. When a jgd device is open and
-#' connected, returns the welcome message information with `connected = TRUE`.
-#' Otherwise, falls back to reading the discovery file and returns information
-#' with `connected = FALSE`. Returns `NULL` if no information is available
-#' from either source.
+#' Returns metadata about the jgd server. When a jgd device is open
+#' and connected, returns the welcome message information with
+#' `connected = TRUE`. Otherwise, falls back to reading the
+#' discovery file and returns information with `connected = FALSE`.
+#' Returns `NULL` if no information is available from either source.
 #'
-#' @return A named list, or `NULL`. When connected:
-#'   `connected` (logical), `server_name` (character),
-#'   `protocol_version` (integer), `transport` (character),
-#'   `server_info` (named character vector).
-#'   When not connected (discovery file):
-#'   `connected` (logical), `server_name` (character),
-#'   `socket_path` (character), `pid` (integer),
-#'   `server_info` (named character vector).
+#' The discovery fallback applies regardless of whether the current
+#' device is a jgd device. This means `jgd_server_info()` can
+#' return a non-`NULL` result even when no jgd device is open, as
+#' long as a valid discovery file exists.
+#'
+#' @return A named list, or `NULL`.
+#'
+#'   When connected:
+#'
+#'   - **`connected`**: `TRUE`
+#'   - **`server_name`**: Server name (character)
+#'   - **`protocol_version`**: Protocol version (integer)
+#'   - **`transport`**: Transport protocol (character)
+#'   - **`server_info`**: Named character vector of key-value pairs
+#'     from the server's `serverInfo` object
+#'     (e.g. `c(httpUrl = "http://...")`); empty if absent
+#'
+#'   When not connected (discovery file fallback):
+#'
+#'   - **`connected`**: `FALSE`
+#'   - **`server_name`**: Server name (character)
+#'   - **`socket_path`**: Socket URI (character)
+#'   - **`pid`**: Server process ID (integer)
+#'   - **`server_info`**: Named character vector (as above)
 #' @export
 jgd_server_info = function() {
   path = file.path(jgd_cache_dir(), "discovery.json")
