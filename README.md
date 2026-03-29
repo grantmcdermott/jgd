@@ -305,11 +305,11 @@ wrappers with proper argument checking, e.g.:
 
 ```r
 # Hypothetical wrapper package
-jgd_blend <- function(mode = "source-over") {
+jgd_blend = function(mode = "source-over") {
   jgd_ext(jsonlite::toJSON(list(blendMode = mode), auto_unbox = TRUE))
 }
 
-jgd_shadow <- function(blur = 0, color = "black", offsetX = 0, offsetY = 0) {
+jgd_shadow = function(blur = 0, color = "black", offsetX = 0, offsetY = 0) {
   jgd_ext(jsonlite::toJSON(
     list(shadow = list(blur = blur, color = color, offsetX = offsetX, offsetY = offsetY)),
     auto_unbox = TRUE
