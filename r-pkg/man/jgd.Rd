@@ -15,17 +15,36 @@ jgd(width = 8, height = 6, dpi = 96, socket = NULL)
 
 \item{socket}{Socket address for the rendering server. Supports URI formats
 (\verb{tcp://host:port}, \verb{unix:///path/to/socket}) or raw Unix socket paths.
-If \code{NULL} (default), use the \code{jgd.socket} R option, falling back to the \code{JGD_SOCKET}
-environment variable. If \code{JGD_SOCKET} environment variable is also unset,
-the device discovers the socket via the discovery file.}
+If \code{NULL} (default), use the \code{jgd.socket} R option, falling back to the
+\code{JGD_SOCKET}environment variable. If \code{JGD_SOCKET} environment variable is
+also unset, the device discovers the socket via the discovery file.}
 }
 \value{
 Invisible \code{NULL}. The device is opened as a side effect.
 }
 \description{
 Opens a graphics device that streams plot operations as JSON to an external
-renderer (e.g. a VS Code extension) over a Unix domain socket.
+renderer (e.g. VS Code extension or browser) over a Unix domain socket.
 }
+\section{Displaying plots with \code{jgd}}{
+
+It is important to note that \code{jgd()} does not display any plots; it only
+streams them (i.e., converts them to a format that a JSON renderer
+understands). To actually \emph{display} your plots with \code{jgd}, you'll need an
+appropriate frontend. We provide two official renderers, both available for
+install from the project repository:
+\url{https://github.com/grantmcdermott/jgd}.
+\itemize{
+\item \strong{VS Code extension.} An integrated plot pane for VS Code.
+\item \strong{Deno server.} A standalone browser-based renderer.
+}
+
+Users aren't limited to these two options. The \code{jgd} protocol is deliberately
+frontend-agnostic; you can render plots with any client that reads NDJSON.
+Again, please see the project repository for full documentation:
+\url{https://github.com/grantmcdermott/jgd}
+}
+
 \section{Debugging}{
 
 Set \code{options(jgd.debug = TRUE)} before opening the device to enable
@@ -36,6 +55,9 @@ is useful for diagnosing resize/replay issues.
 
 \examples{
 \dontrun{
+# Requires a running renderer (e.g., VS Code extension or Deno server).
+# See the "Display plots" section above.
+library(jgd)
 jgd()
 plot(1:10)
 lines(1:10, col = "red", lwd = 3)
