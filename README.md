@@ -17,8 +17,8 @@ an external renderer. We provide two official renderers for displaying plots:
 
 Please note that users aren't limited to these two options. The **jgd** protocol
 is designed to be frontend-agnostic; any client able to read JSON could use it
-to render R plots (e.g., Neovim, Emacs, or a custom web app). Please feel free
-to build or contribute your own!
+to render R plots (e.g., Neovim, Emacs, or a custom web app). We encourage users
+to build alternatives and would welcome additional contributions.
 
 ## Installation
 
@@ -112,11 +112,13 @@ plot(cars)
 abline(lm(dist ~ speed, data = cars), col = "red", lwd = 2)
 
 # tinyplot
+# install.packages("tinyplot")
 library(tinyplot)
 plt(bill_dep ~ bill_len | body_mass, facet = ~island,
     data = penguins, theme = "clean")
 
 # ggplot2
+# install.packages("ggplot2")
 library(ggplot2)
 ggplot(penguins, aes(bill_len, bill_dep, col = species)) +
   geom_point() +
@@ -125,7 +127,9 @@ ggplot(penguins, aes(bill_len, bill_dep, col = species)) +
 ```
 
 Use ◀ ▶ in the plot pane (or `Alt+Left` / `Alt+Right`) to navigate plot
-history.
+history, and press ✕ to remove the current plot. Resizing the pane automatically
+causes the plots to be resized too. Use the `Export` dropdown to save plots as
+PNG or SVG at custom dimensions (inches × DPI).
 
 ## Motivation
 
