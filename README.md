@@ -10,10 +10,10 @@
 works by serializing R plotting operations into JSON and then streaming to
 an external renderer. We provide two official renderers for displaying plots:
 
-- A **VS Code extension** with an integrated plot pane
+- A **VS Code extension** with an integrated plot pane (demo below)
 - A **standalone Deno server** for rendering inside a web browser
 
-![Screenshot of jgd running in VS Code](jgd-ss.png)
+<video src="jgd-demo.mp4" autoplay loop muted playsinline width="100%"></video>
 
 Please note that users aren't limited to these two options. The **jgd** protocol
 is designed to be frontend-agnostic; any client able to read JSON could use it
@@ -129,6 +129,8 @@ Use ◀ ▶ in the plot pane (or `Alt+Left` / `Alt+Right`) to navigate plot
 history, and press ✕ to remove the current plot. Resizing the pane automatically
 causes the plots to be resized too. Use the `Export` dropdown to save plots as
 PNG or SVG at custom dimensions (inches × DPI).
+
+![Screenshot of jgd running in VS Code](jgd-ss.png)
 
 ## Motivation
 
