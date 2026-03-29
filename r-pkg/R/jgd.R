@@ -36,7 +36,7 @@
 #' @examples
 #' \dontrun{
 #' # Requires a running renderer (e.g., VS Code extension or Deno server).
-#' # See the "Display plots" section above.
+#' # See the "Displaying plots" section above.
 #' library(jgd)
 #' jgd()
 #' plot(1:10)
