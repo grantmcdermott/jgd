@@ -599,8 +599,8 @@
 #' - Implement session ID remapping for reused IDs.
 #' - Serve an HTTP endpoint for the renderer UI.
 #'
-#' @name jgd-spec
-#' @aliases jgd-protocol
+#' @name jgd_spec
+#' @aliases jgd_protocol
 #' @seealso [jgd()], [jgd_server_info()], [jgd_ext()],
 #'   [jgd_frame_ext()], [jgd_begin_group()]
 NULL

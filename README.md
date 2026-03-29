@@ -1,26 +1,24 @@
 # jgd — JSON Graphics Device for R
 
-![Experimental](https://img.shields.io/badge/status-experimental-orange)
+<!-- badges: start -->
+<a href="https://grantmcdermott.r-universe.dev"><img src="https://grantmcdermott.r-universe.dev/badges/jgd" class="img-fluid" alt="R-universe version"></a>
+<a href="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml"><img src="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml/badge.svg" class="img-fluid" alt="R CMD check"></a>
+<a href="https://github.com/grantmcdermott/jgd/blob/main/r-pkg/LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" class="img-fluid" alt="License"></a>
+<!-- badges: end -->
 
 **jgd** is a lightweight (C-based, zero dependency) R graphics device. It
 works by serializing R plotting operations into JSON and then streaming to
-an external renderer. Two renderers are currently available:
+an external renderer. We provide two official renderers for displaying plots:
 
 - A **VS Code extension** with an integrated plot pane
 - A **standalone Deno server** for rendering inside a web browser
 
 ![Screenshot of jgd running in VS Code](jgd-ss.png)
 
-The **jgd** protocol is designed to be frontend-agnostic. While VS Code was our
-initial development focus, in principle any client able to read JSON could use
-it to render R plots (e.g., Neovim, Emacs, or a custom web app).
-
-**Caveats:** The package is experimental and may have some rough edges despite
-our best efforts at thorough local testing. The NDJSON wire protocol is
-documented in `?jgd-spec`; extension fields (`ext`) remain experimental.
-Finally, we want to be transparent that this project has made _heavy_ use of
-AI-assisted pair programming (Claude). It is highly doubtful that we would have
-been able to put this together without AI help.
+Please note that users aren't limited to these two options. The **jgd** protocol
+is designed to be frontend-agnostic; any client able to read JSON could use it
+to render R plots (e.g., Neovim, Emacs, or a custom web app). Please feel free
+to build or contribute your own!
 
 ## Installation
 
@@ -29,7 +27,7 @@ displaying plots.
 
 ### R package
 
-Install from R-universe:
+We plan to submit to CRAN soon. In the meantime, please install from R-universe:
 
 ```r
 install.packages('jgd', repos = 'https://grantmcdermott.r-universe.dev')
@@ -134,23 +132,20 @@ history.
 The primary motivation for this package is supporting a nicer R graphics
 experience in VS Code. At present, the VS Code [R
 extension](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer) provides
-fairly crude "native" graphics support, since plots are displayed at PNGs. As a
+fairly crude "native" graphics support, since plots are displayed as PNGs. As a
 result, users have for some time relied on the nice
 [httpgd](https://github.com/nx10/httpgd) package for a better graphics
 experience; indeed, the official R extension docs even recommend using it.
-However, the `httpgd` alternative has become increasingly tricky to work with
-due to repeated CRAN removals and lack of maintenance bandwidth. In brief, this
-is because it embeds a full C++ SVG rendering stack and HTTP server inside the R
-process, which is powerful but fragile. At the time of writing, both `httpgd`
-and its core [unigd](https://github.com/nx10/unigd) dependency are unavailable
-on CRAN due to a variety of C++ toolchain issues: non-API entry points, compiler
-compatibility failures, etc. (See
-[here](https://cran-archive.r-project.org/web/checks/2025/2025-04-23_check_results_httpgd.html)
-and
-[here](https://cran-archive.r-project.org/web/checks/2026/2026-02-06_check_results_unigd.html)).
+However, the `httpgd` alternative has historically been tricky to rely on
+due to periodic CRAN removals and maintenance challenges. This is because it
+embeds a full C++ SVG rendering stack and HTTP server inside the R process,
+which is powerful but fragile. Both `httpgd` and its core
+[unigd](https://github.com/nx10/unigd) dependency have been removed from CRAN
+multiple times due to C++ toolchain issues (non-API entry points, compiler
+compatibility failures, etc.), and while they are currently available again,
+we were motivated to try a different approach. The result is **jgd**.
 
-**jgd** takes a different approach. First, it doesn't render anything; it just
-records. All rendering happens in the client (a VS Code webview, a browser tab,
+**jgd** doesn't render anything; it just records. All rendering happens in the client (a VS Code webview, a browser tab,
 or any future frontend). Second, it is very lightweight. The core of the R
 package is written in pure C with zero external dependencies. The only system
 dependencies are the POSIX socket API (macOS/Linux) and Winsock (Windows),
@@ -224,7 +219,7 @@ using the browser's Canvas2D API.
 - **Text rotation**, **transparent colors**, **clip regions**, **line types**,
   **raster images** (base64-encoded PNG)
 - **Auto-discovery**: `JGD_SOCKET` environment variable or `discovery.json`
-  file for automatic connection (see `?jgd-spec` for details)
+  file for automatic connection (see `?jgd_spec` for details)
 - **Export**: PNG and SVG from the toolbar dropdown, with custom dimensions
   (inches + DPI)
 - **Cross-platform**: Unix domain sockets on macOS/Linux, named pipes on
@@ -432,6 +427,20 @@ saved per-snapshot, and restored on plotIndex replay.
 | `server/` | Deno reference server (HTTP/WebSocket renderer) |
 | `vscode-ext/` | VS Code extension |
 | `tests/` | End-to-end tests |
+
+## Acknowledgements
+
+While we adopt a different implementation approach, **jgd** was inspired by
+[Florian Rupprecht](https://github.com/nx10)'s
+[httpgd](https://github.com/nx10/httpgd) and
+[unigd](https://github.com/nx10/unigd) projects, which demonstrate the value of
+an external web-based graphics device for R. We are also grateful to R Core for
+designing and maintaining R's flexible graphics engine, whose clean C callback
+interface made this project feasible.
+
+This project has made heavy use of AI-assisted pair programming (both
+Claude and Copilot). It is highly doubtful that we would have been able
+to put this together without AI help.
 
 ## License
 
