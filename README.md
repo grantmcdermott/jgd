@@ -140,19 +140,16 @@ fairly crude "native" graphics support, since plots are displayed as PNGs. As a
 result, users have for some time relied on the nice
 [httpgd](https://github.com/nx10/httpgd) package for a better graphics
 experience; indeed, the official R extension docs even recommend using it.
-However, the `httpgd` alternative has become increasingly tricky to work with
-due to repeated CRAN removals and lack of maintenance bandwidth. In brief, this
-is because it embeds a full C++ SVG rendering stack and HTTP server inside the R
-process, which is powerful but fragile. At the time of writing, both `httpgd`
-and its core [unigd](https://github.com/nx10/unigd) dependency are unavailable
-on CRAN due to a variety of C++ toolchain issues: non-API entry points, compiler
-compatibility failures, etc. (See
-[here](https://cran-archive.r-project.org/web/checks/2025/2025-04-23_check_results_httpgd.html)
-and
-[here](https://cran-archive.r-project.org/web/checks/2026/2026-02-06_check_results_unigd.html)).
+However, the `httpgd` alternative has historically been tricky to rely on
+due to periodic CRAN removals and maintenance challenges. This is because it
+embeds a full C++ SVG rendering stack and HTTP server inside the R process,
+which is powerful but fragile. Both `httpgd` and its core
+[unigd](https://github.com/nx10/unigd) dependency have been removed from CRAN
+multiple times due to C++ toolchain issues (non-API entry points, compiler
+compatibility failures, etc.), and while they are currently available again,
+we were motivated to try a different approach. The result is **jgd**.
 
-**jgd** takes a different approach. First, it doesn't render anything; it just
-records. All rendering happens in the client (a VS Code webview, a browser tab,
+**jgd** doesn't render anything; it just records. All rendering happens in the client (a VS Code webview, a browser tab,
 or any future frontend). Second, it is very lightweight. The core of the R
 package is written in pure C with zero external dependencies. The only system
 dependencies are the POSIX socket API (macOS/Linux) and Winsock (Windows),
