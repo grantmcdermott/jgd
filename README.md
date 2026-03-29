@@ -105,17 +105,16 @@ library(jgd)
 jgd()
 
 # Base graphics
-plot(1:10)
-lines(1:10, col = "red", lwd = 3)
-hist(rnorm(1000), col = "steelblue")
 plot(cars)
 abline(lm(dist ~ speed, data = cars), col = "red", lwd = 2)
+hist(rnorm(1000), col = "steelblue")
 
 # tinyplot
 # install.packages("tinyplot")
 library(tinyplot)
-plt(bill_dep ~ bill_len | body_mass, facet = ~island,
+plt(bill_dep ~ bill_len | species, facet = ~island,
     data = penguins, theme = "clean")
+plt_add(type = "lm")
 
 # ggplot2
 # install.packages("ggplot2")
