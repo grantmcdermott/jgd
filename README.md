@@ -16,7 +16,7 @@ an external renderer. We provide two official renderers for displaying plots:
 <video src="https://github.com/user-attachments/assets/913c00e9-69ab-4d0e-a3b4-18e11f8573cb" autoplay loop muted playsinline width="100%"></video>
 
 Please note that users aren't limited to these two options. The **jgd** protocol
-is designed to be frontend-agnostic; any client able to read JSON could use it
+is designed to be frontend agnostic; any client able to read JSON could use it
 to render R plots (e.g., Neovim, Emacs, or a custom web app). We encourage users
 to build alternatives and would welcome additional contributions.
 
