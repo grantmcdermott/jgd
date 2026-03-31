@@ -14,7 +14,7 @@ extension and a standalone Deno server with browser UI.
 ```
 R Process (jgd R package, pure C)
   DevDesc callbacks → JSON serializer → socket/pipe client
-    ↕ NDJSON over Unix socket / named pipe / TCP
+    ↕ JSON over Unix socket / named pipe / TCP
 Frontend (VS Code extension OR Deno server)
   Listener → Plot history → Canvas2D renderer (webview / browser)
 ```
@@ -22,7 +22,7 @@ Frontend (VS Code extension OR Deno server)
 ### Protocol
 
 - Transport: Unix domain sockets (macOS/Linux), named pipes (Windows default), TCP (all platforms)
-- Framing: NDJSON (newline-delimited JSON)
+- Framing: JSONL (JSON Lines)
 - Message types: `frame`, `metrics_request`, `metrics_response`, `resize`, `close`, `server_info`
 - Handshake: server sends `server_info` + initial `resize` on first message from R (deferred welcome)
 
@@ -42,14 +42,14 @@ Frontend (VS Code extension OR Deno server)
 ### Deno server (`server/`)
 - `main.ts` — CLI entry, accepts connections via Unix socket, named pipe, or TCP
 - `hub.ts` — Routes messages between R sessions and browser clients
-- `r_session.ts` — Per-connection NDJSON parsing and write-back
+- `r_session.ts` — Per-connection JSON parsing and write-back
 - `named_pipe.ts` — Windows named pipe support
 - `websocket.ts` / `static.ts` / `web_assets.ts` — HTTP/WebSocket for browser frontend
 - `discovery.ts` — Socket path discovery
 
 ### VS Code extension (`vscode-ext/`)
 - `extension.ts` — Activation, commands, `JGD_SOCKET` env var injection
-- `socket-server.ts` — Socket server + NDJSON framing + per-session resize state
+- `socket-server.ts` — Socket server + JSON framing + per-session resize state
 - `webview-provider.ts` — Webview panel + Canvas2D renderer
 - `plot-history.ts` — Per-session plot history with back/forward navigation
 
@@ -109,7 +109,7 @@ ggplot(mtcars, aes(wt, mpg)) + geom_point(aes(color = factor(cyl))) + theme_mini
 - JSON null for transparent colors
 - Incremental vs commit: `mode(0)` sends `incremental: true`, `newPage` sends new frame
 - Deferred + live resize: pending dimensions applied on next newPage or via GEplayDisplayList
-- Frontend-agnostic: any NDJSON client can render the plots
+- Frontend-agnostic: any JSON client can render the plots
 - `latestDeleted` flag in PlotHistory prevents resize from resurrecting deleted plots
 
 ## Known Limitations

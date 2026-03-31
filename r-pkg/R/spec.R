@@ -1,8 +1,8 @@
-#' jgd NDJSON Protocol Specification
+#' jgd JSONL Protocol Specification
 #'
 #' @description
-#' The jgd device communicates with a rendering server over NDJSON
-#' (newline-delimited JSON). Messages are exchanged over a persistent
+#' The jgd device communicates with a rendering server over JSONL
+#' (JSON Lines). Messages are exchanged over a persistent
 #' connection using one of three transport protocols: Unix domain sockets
 #' (Linux/macOS), Windows named pipes, or TCP.
 #'
@@ -25,7 +25,7 @@
 #' @section Message format:
 #'
 #' All messages are single-line JSON objects terminated by `\n`
-#' (NDJSON). Each message contains a `"type"` field identifying the
+#' (JSONL). Each message contains a `"type"` field identifying the
 #' message kind. Encoding is always UTF-8.
 #'
 #' Receivers should ignore unknown top-level fields in any message
@@ -581,7 +581,7 @@
 #' A minimal server implementation needs to:
 #'
 #' 1. Listen on a Unix socket, named pipe, or TCP port.
-#' 2. Accept R connections and read NDJSON lines.
+#' 2. Accept R connections and read JSONL lines.
 #' 3. Send a deferred `server_info` welcome after receiving the
 #'    first message from R (not before).
 #' 4. Forward `frame` messages to connected renderers.

@@ -184,7 +184,7 @@ latter cases.
 │  └───────────────────────────────────────────┘  │  │
 └─────────────────────────────────────────────────┘  │
      Unix domain sockets (macOS/Linux),              │
-     named pipes (Windows), or TCP — NDJSON          │
+     named pipes (Windows), or TCP — JSON            │
 ┌─────────────────────────────────────────────────┐  │
 │  Server (Deno reference server or VS Code ext.) │◄─┘
 │                                                 │
@@ -413,7 +413,7 @@ saved per-snapshot, and restored on plotIndex replay.
 
 - [x] **Windows support**: Named pipes (default) and TCP transport
 - [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
-- [x] **Protocol stabilization**: Stabilize and document the NDJSON protocol
+- [x] **Protocol stabilization**: Stabilize and document the JSON protocol
   (see `?jgd-spec`)
 - [ ] **CRAN submission**: Package the R side for CRAN distribution
 - [ ] **R extension integration**: Incorporate the code from this package into

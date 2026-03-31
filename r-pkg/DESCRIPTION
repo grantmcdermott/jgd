@@ -7,11 +7,11 @@ Authors@R: c(
         person("Tatsuya", "Shima", role = c("aut"),
             email = "ts1s1andn@gmail.com")
     )
-Description: A graphics device that records R plotting operations and streams
-    them as JSON over a Unix domain socket to an external renderer. The device
-    acts as a pure recorder with no rendering dependencies; all rendering
-    occurs in the client (e.g. a VS Code webview or any NDJSON-capable
-    frontend). Official renderers are available from the project homepage.
+Description: A graphics device that translates R plotting operations into JSON
+    and streams them over a local connection to an external renderer. The device
+    acts as a pure recorder with no rendering dependencies; all display
+    occurs in the client (e.g. a VS Code extension or a web browser). Official
+    display frontends are available from the project homepage.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

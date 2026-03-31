@@ -11,7 +11,7 @@ import { parseSocketUri } from "../../socket_uri.ts";
 import { connect as nodeConnect } from "node:net";
 
 /**
- * Simulates an R session connecting to the server via Unix socket or TCP (NDJSON).
+ * Simulates an R session connecting to the server via Unix socket or TCP (JSON).
  */
 export class RClient {
   #conn: RConn | null = null;
@@ -56,7 +56,7 @@ export class RClient {
 
   }
 
-  /** Send a JSON message followed by newline (NDJSON). */
+  /** Send a JSON message followed by newline. */
   async send(msg: ServerMessage | Record<string, unknown>): Promise<void> {
     const data = this.#encoder.encode(JSON.stringify(msg) + "\n");
     await this.#writer!.write(data);
@@ -106,7 +106,7 @@ export class RClient {
     await this.send(msg);
   }
 
-  /** Read the next raw NDJSON line with timeout (ms). */
+  /** Read the next raw JSON line with timeout (ms). */
   async #readRawLine(timeoutMs: number): Promise<string> {
     const deadline = Date.now() + timeoutMs;
 
@@ -148,7 +148,7 @@ export class RClient {
     throw new Error(`Timed out waiting for message (${timeoutMs}ms)`);
   }
 
-  /** Read the next NDJSON message, auto-consuming server_info welcomes. */
+  /** Read the next JSON message, auto-consuming server_info welcomes. */
   async readMessage<T = ServerMessage>(timeoutMs = 5000): Promise<T> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
