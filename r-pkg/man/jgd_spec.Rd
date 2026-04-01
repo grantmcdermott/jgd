@@ -3,10 +3,10 @@
 \name{jgd_spec}
 \alias{jgd_spec}
 \alias{jgd_protocol}
-\title{jgd NDJSON Protocol Specification}
+\title{jgd JSONL Protocol Specification}
 \description{
-The jgd device communicates with a rendering server over NDJSON
-(newline-delimited JSON). Messages are exchanged over a persistent
+The jgd device communicates with a rendering server over JSONL
+(JSON Lines). Messages are exchanged over a persistent
 connection using one of three transport protocols: Unix domain sockets
 (Linux/macOS), Windows named pipes, or TCP.
 
@@ -33,7 +33,7 @@ Raw Unix socket paths (without a URI scheme) are also accepted.
 
 
 All messages are single-line JSON objects terminated by \verb{\\n}
-(NDJSON). Each message contains a \code{"type"} field identifying the
+(JSONL). Each message contains a \code{"type"} field identifying the
 message kind. Encoding is always UTF-8.
 
 Receivers should ignore unknown top-level fields in any message
@@ -616,7 +616,7 @@ for the R API to set these fields.
 A minimal server implementation needs to:
 \enumerate{
 \item Listen on a Unix socket, named pipe, or TCP port.
-\item Accept R connections and read NDJSON lines.
+\item Accept R connections and read JSONL lines.
 \item Send a deferred \code{server_info} welcome after receiving the
 first message from R (not before).
 \item Forward \code{frame} messages to connected renderers.

@@ -40,8 +40,8 @@ install from the project repository:
 }
 
 Users aren't limited to these two options. The \code{jgd} protocol is deliberately
-frontend-agnostic; you can render plots with any client that reads NDJSON.
-Again, please see the project repository for full documentation:
+frontend-agnostic; you can render plots with any client that reads JSONL
+(JSON Lines). Again, please see the project repository for full documentation:
 \url{https://github.com/grantmcdermott/jgd}
 }
 

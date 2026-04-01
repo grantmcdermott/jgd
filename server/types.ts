@@ -90,7 +90,7 @@ export type ServerToBrowserMessage =
  * object, so a "type" inside a nested `{}` can't shadow the top-level one.
  * Falls back to empty string on malformed input.
  *
- * This is a fast-path optimisation for machine-serialized NDJSON from
+ * This is a fast-path optimisation for machine-serialized JSON from
  * controlled code (JSON.stringify).  It does not handle adversarial
  * payloads where string values contain embedded `"type":"..."` patterns.
  */

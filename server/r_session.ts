@@ -18,7 +18,7 @@ let sessionCounter = 0;
 
 /**
  * RSession represents a connected R process communicating over a Unix socket
- * using NDJSON (newline-delimited JSON).
+ * using JSONL (JSON Lines).
  */
 export class RSession {
   id: string;
@@ -71,7 +71,7 @@ export class RSession {
   }
 
   /**
-   * Read NDJSON messages from the connection and route through the hub.
+   * Read JSONL messages from the connection and route through the hub.
    * Returns when the connection is closed or an error occurs.
    */
   async run(): Promise<void> {

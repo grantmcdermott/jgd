@@ -1,4 +1,4 @@
-# Mock NDJSON servers for jgd testthat tests
+# Mock JSON servers for jgd testthat tests
 #
 # Two transport variants:
 #   start_mock_server_local() — local IPC socket via processx (Unix domain socket
@@ -9,7 +9,7 @@
 # 1. Listens on a socket
 # 2. Accepts one jgd device connection
 # 3. Responds to metrics_request messages with approximate values
-# 4. Collects all received NDJSON messages
+# 4. Collects all received JSON messages
 # 5. Returns collected messages when the device sends "close"
 
 start_mock_server_local = function(send_welcome = FALSE, transport = "unix") {
@@ -311,7 +311,7 @@ start_mock_server_tcp = function(send_welcome = FALSE, transport = "tcp") {
 }
 
 # Convenience: open jgd device connected to mock server, run expr, close,
-# and return all captured NDJSON messages.
+# and return all captured JSON messages.
 with_mock_jgd = function(
   expr,
   width = 4,
