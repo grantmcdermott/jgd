@@ -1,6 +1,7 @@
 # jgd — JSON Graphics Device for R
 
 <!-- badges: start -->
+<a href="https://CRAN.R-project.org/package=jgd"><img src="https://www.r-pkg.org/badges/version/jgd" class="img-fluid" alt="CRAN version"></a>
 <a href="https://grantmcdermott.r-universe.dev"><img src="https://grantmcdermott.r-universe.dev/badges/jgd" class="img-fluid" alt="R-universe version"></a>
 <a href="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml"><img src="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml/badge.svg" class="img-fluid" alt="R CMD check"></a>
 <a href="https://github.com/grantmcdermott/jgd/blob/main/r-pkg/LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" class="img-fluid" alt="License"></a>
@@ -27,13 +28,19 @@ displaying plots.
 
 ### R package
 
-We plan to submit to CRAN soon. In the meantime, please install from R-universe:
+The stable version of the **jgd** R package is available on CRAN:
+
+```r
+install.packages('jgd')
+```
+
+Or, you can grab the latest development version from R-universe:
 
 ```r
 install.packages('jgd', repos = 'https://grantmcdermott.r-universe.dev')
 ```
 
-Or, clone this repo and install locally:
+Another alternative is to clone this repo and install the dev version locally:
 
 ```sh
 git clone https://github.com/grantmcdermott/jgd.git
@@ -59,10 +66,11 @@ code --install-extension jgd-vscode-nightly.vsix
 
 Alternatively, you can also build and install the extension from source[^1]:
 
-```bash
+```bash 
+# git clone https://github.com/grantmcdermott/jgd.git ## clone first
 cd vscode-ext && npm install && npm run compile \
   && npx @vscode/vsce@3.7.1 package \
-  && code --install-extension jgd-vscode-0.0.1.vsix \
+  && code --install-extension jgd-vscode-0.1.0.vsix \
   && cd ..
 ```
 
@@ -82,6 +90,7 @@ deno run https://raw.githubusercontent.com/grantmcdermott/jgd/refs/heads/main/se
 Or, clone the repo and run locally:
 
 ```bash
+# git clone https://github.com/grantmcdermott/jgd.git ## clone first
 cd server && deno task start && cd ..
 ```
 
@@ -415,7 +424,7 @@ saved per-snapshot, and restored on plotIndex replay.
 - [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
 - [x] **Protocol stabilization**: Stabilize and document the JSON protocol
   (see `?jgd-spec`)
-- [ ] **CRAN submission**: Package the R side for CRAN distribution
+- [x] **CRAN submission**: Package the R side for CRAN distribution
 - [ ] **R extension integration**: Incorporate the code from this package into
   the main VS Code R extension (if the upstream maintainers agree).
 
