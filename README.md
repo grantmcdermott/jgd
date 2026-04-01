@@ -141,6 +141,41 @@ PNG or SVG at custom dimensions (inches × DPI).
 
 ![Screenshot of jgd running in VS Code](jgd-ss.png)
 
+### Extension API (experimental)
+
+**jgd** also includes an experimental API for styling effects beyond R's
+standard graphics parameters. These are passed as JSON strings and forwarded to
+the renderer, which can apply them using Canvas2D properties (blend modes,
+opacity, shadows, CSS filters, etc.). Three levels of extension are supported:
+
+- **Per-operation** (`jgd_ext()` / `with_jgd_ext()`): Styling applied to
+  every drawing operation's graphics context.
+- **Per-group** (`jgd_begin_group()` / `with_jgd_group()`): Bracket a set
+  of drawing operations so the renderer can apply effects to the group as a
+  whole.
+- **Per-frame** (`jgd_frame_ext()` / `with_jgd_frame_ext()`): Properties
+  attached to the entire frame, useful for post-processing effects.
+
+Here's a simple example where we add shadows to the point elements of a plot.
+
+```r
+library(jgd)
+jgd()
+
+plot(1:10, type = "n", main = "Shadowed points")
+# Add shadow to points (group scoping)
+with_jgd_group(
+  '{"shadow":{"blur":15,"color":"rgba(0,0,0,0.5)","offsetX":5,"offsetY":5}}',
+  points(1:10, pch = 19, cex = 3, col = "steelblue")
+)
+```
+
+![Example using jgd extension API for shadowed plots](jgd-shadow-ss.png)
+
+See `?jgd_ext` for the full list of supported fields and guidance on
+building higher-level wrapper packages. The protocol details are documented
+in `?jgd_spec`.
+
 ## Motivation
 
 The primary motivation for this package is supporting a nicer R graphics
@@ -248,39 +283,6 @@ using the browser's Canvas2D API.
   per-group effects via `jgd_begin_group()` / `jgd_end_group()`
 - **Frame-level extensions** (experimental): Frame-wide properties such as
   post-processing effects via `jgd_frame_ext()`
-
-## Experimental extension API
-
-**jgd** also includes an experimental API for styling effects beyond R's
-standard graphics parameters. These are passed as JSON strings and forwarded to
-the renderer, which can apply them using Canvas2D properties (blend modes,
-opacity, shadows, CSS filters, etc.). Three levels of extension are supported:
-
-- **Per-operation** (`jgd_ext()` / `with_jgd_ext()`): Styling applied to
-  every drawing operation's graphics context.
-- **Per-group** (`jgd_begin_group()` / `with_jgd_group()`): Bracket a set
-  of drawing operations so the renderer can apply effects to the group as a
-  whole.
-- **Per-frame** (`jgd_frame_ext()` / `with_jgd_frame_ext()`): Properties
-  attached to the entire frame, useful for post-processing effects.
-
-Here's a simple example where we add shadows to the point elements of a plot.
-
-```r
-library(jgd)
-jgd()
-
-plot(1:10, type = "n", main = "Shadowed points")
-# Add shadow to points (group scoping)
-with_jgd_group(
-  '{"shadow":{"blur":15,"color":"rgba(0,0,0,0.5)","offsetX":5,"offsetY":5}}',
-  points(1:10, pch = 19, cex = 3, col = "steelblue")
-)
-```
-
-See `?jgd_ext` for the full list of supported fields and guidance on
-building higher-level wrapper packages. The protocol details are documented
-in `?jgd_spec`.
 
 ## Roadmap
 
