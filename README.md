@@ -184,7 +184,7 @@ latter cases.
 │  └───────────────────────────────────────────┘  │  │
 └─────────────────────────────────────────────────┘  │
      Unix domain sockets (macOS/Linux),              │
-     named pipes (Windows), or TCP — JSON            │
+     named pipes (Windows), or TCP — JSONL           │
 ┌─────────────────────────────────────────────────┐  │
 │  Server (Deno reference server or VS Code ext.) │◄─┘
 │                                                 │
