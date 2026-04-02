@@ -66,7 +66,7 @@ code --install-extension jgd-vscode-nightly.vsix
 
 Alternatively, you can also build and install the extension from source[^1]:
 
-```bash 
+```bash
 # git clone https://github.com/grantmcdermott/jgd.git ## clone first
 cd vscode-ext && npm install && npm run compile \
   && npx @vscode/vsce@3.7.1 package \
