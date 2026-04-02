@@ -10,7 +10,9 @@
 Previous submission failed the Debian auto-check due to
 `-Wkeyword-macro` warnings from clang 21 in vendored cJSON code.
 Fixed by adding a targeted `#pragma clang diagnostic ignored` around
-the `true`/`false` macro definitions.
+the `true`/`false` macro definitions. Also added a `cleanup` script
+to remove compiled object files from the source tarball (a stale
+`cJSON.o` was causing installation failures on Windows and Debian).
 
 ## R CMD check results
 
