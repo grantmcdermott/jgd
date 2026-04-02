@@ -40,7 +40,23 @@ if [ -d "$PATCHES_DIR" ]; then
 /* Local modifications (applied automatically by dev/vendor-cjson.sh):\
  * - All sprintf calls replaced with snprintf for R CRAN compliance.\
  *   See src/cjson/patches/ for details.\
+ * - Suppress clang -Wkeyword-macro for true/false macro definitions\
+ *   (triggered by clang 21+ which treats these as C23 keywords).\
  */' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
+
+  # Suppress clang -Wkeyword-macro around true/false macro definitions.
+  # cJSON redefines true/false for C89 compat; clang 21+ warns because
+  # these are keywords in C23.
+  sed '/^\/\* define our own boolean type \*\/$/a\
+#if defined(__clang__)\
+#pragma clang diagnostic push\
+#pragma clang diagnostic ignored "-Wkeyword-macro"\
+#endif' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
+
+  sed '/^#define false ((cJSON_bool)0)$/a\
+#if defined(__clang__)\
+#pragma clang diagnostic pop\
+#endif' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
 fi
 
 echo "Vendored cJSON ${TAG} into ${DEST}"
