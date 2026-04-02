@@ -157,8 +157,67 @@ jgd_discover = function() {
 #'   via cJSON); an error is raised otherwise.  Packages built on top of jgd
 #'   (using e.g. jsonlite) should provide user-friendly wrappers.
 #' @return Called for its side effect; returns `NULL` invisibly.
+#'
+#' @section Supported extension fields:
+#' The Deno reference server and VS Code renderer currently support:
+#'
+#' \tabular{lll}{
+#'   **Field** \tab **Canvas2D property** \tab **Example** \cr
+#'   `blendMode` \tab `globalCompositeOperation` \tab `"multiply"` \cr
+#'   `opacity` \tab `globalAlpha` \tab `0.5` \cr
+#'   `shadow.blur` \tab `shadowBlur` \tab `10` \cr
+#'   `shadow.color` \tab `shadowColor` \tab `"rgba(0,0,0,0.5)"` \cr
+#'   `shadow.offsetX` \tab `shadowOffsetX` \tab `5` \cr
+#'   `shadow.offsetY` \tab `shadowOffsetY` \tab `5` \cr
+#'   `filter` \tab `filter` \tab `"blur(3px)"` \cr
+#' }
+#'
+#' Custom renderers may support additional fields. Unknown fields are
+#' silently ignored, so extensions are forward-compatible.
+#'
+#' @section Design for extension packages:
+#' `jgd_ext()` is intentionally low-level — it accepts a raw JSON string.
+#' Higher-level packages built on top of jgd can provide user-friendly
+#' wrappers with proper argument checking, e.g.:
+#'
+#' \preformatted{
+#' jgd_shadow = function(blur = 0, color = "black",
+#'                       offsetX = 0, offsetY = 0) {
+#'   jgd_ext(jsonlite::toJSON(
+#'     list(shadow = list(blur = blur, color = color,
+#'                        offsetX = offsetX, offsetY = offsetY)),
+#'     auto_unbox = TRUE
+#'   ))
+#' }
+#' }
+#'
+#' jgd itself has no dependency on jsonlite or any serialization library;
+#' upstream packages choose their own.
+#'
 #' @section Lifecycle:
 #' **Experimental.** This API may change in future versions.
+#' @seealso [with_jgd_ext()], [jgd_frame_ext()], [jgd_begin_group()],
+#'   [jgd_spec]
+#' @examples
+#' \dontrun{
+#' jgd()
+#'
+#' # Drop shadow (scoped -- automatically cleared after the block)
+#' with_jgd_ext(
+#'   '{"shadow":{"blur":15,"color":"rgba(0,0,0,0.5)","offsetX":5,"offsetY":5}}',
+#'   plot(1:10, pch = 19, cex = 3, col = "steelblue")
+#' )
+#'
+#' # Semi-transparent overlay
+#' with_jgd_ext('{"opacity":0.3}', {
+#'   plot(1:10, pch = 19, cex = 5, col = "red")
+#' })
+#'
+#' # Manual set/clear
+#' jgd_ext('{"blendMode":"multiply"}')
+#' plot(1:10)
+#' jgd_ext(NULL)
+#' }
 #' @export
 jgd_ext = function(json = NULL) {
   if (!is.null(json)) {

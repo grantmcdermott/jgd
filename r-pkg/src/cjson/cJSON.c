@@ -25,6 +25,8 @@
 /* Local modifications (applied automatically by dev/vendor-cjson.sh):
  * - All sprintf calls replaced with snprintf for R CRAN compliance.
  *   See src/cjson/patches/ for details.
+ * - Suppress clang -Wkeyword-macro for true/false macro definitions
+ *   (triggered by clang 21+ which treats these as C23 keywords).
  */
 
 /* disable warnings about old C89 functions in MSVC */
@@ -63,6 +65,10 @@
 #include "cJSON.h"
 
 /* define our own boolean type */
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wkeyword-macro"
+#endif
 #ifdef true
 #undef true
 #endif
@@ -72,6 +78,9 @@
 #undef false
 #endif
 #define false ((cJSON_bool)0)
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
 
 /* define isnan and isinf for ANSI C, if in C99 or above, isnan and isinf has been defined in math.h */
 #ifndef isinf

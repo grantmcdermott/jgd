@@ -33,14 +33,38 @@ if [ -d "$PATCHES_DIR" ]; then
     patch -d "$DEST" -p1 < "$p"
   done
 
-  # Insert modification notice after the license header.
-  # Uses a temp file instead of sed -i for macOS/BSD compatibility.
+  # Insert modification notice and suppress clang -Wkeyword-macro around
+  # true/false macro definitions (clang 21+ treats these as C23 keywords).
+  # Single awk pass instead of multiple sed invocations for portability.
   CJSON_FILE="${DEST}/cJSON.c"
-  sed '/^\/\* JSON parser in C\. \*\/$/a\
-/* Local modifications (applied automatically by dev/vendor-cjson.sh):\
- * - All sprintf calls replaced with snprintf for R CRAN compliance.\
- *   See src/cjson/patches/ for details.\
- */' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
+  awk '
+    /^\/\* JSON parser in C\. \*\/$/ {
+      print
+      print "/* Local modifications (applied automatically by dev/vendor-cjson.sh):"
+      print " * - All sprintf calls replaced with snprintf for R CRAN compliance."
+      print " *   See src/cjson/patches/ for details."
+      print " * - Suppress clang -Wkeyword-macro for true/false macro definitions"
+      print " *   (triggered by clang 21+ which treats these as C23 keywords)."
+      print " */"
+      next
+    }
+    /^\/\* define our own boolean type \*\/$/ {
+      print
+      print "#if defined(__clang__)"
+      print "#pragma clang diagnostic push"
+      print "#pragma clang diagnostic ignored \"-Wkeyword-macro\""
+      print "#endif"
+      next
+    }
+    /^#define false \(\(cJSON_bool\)0\)$/ {
+      print
+      print "#if defined(__clang__)"
+      print "#pragma clang diagnostic pop"
+      print "#endif"
+      next
+    }
+    { print }
+  ' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
 fi
 
 echo "Vendored cJSON ${TAG} into ${DEST}"

@@ -10,7 +10,7 @@ r-pkg/src/*.o
 r-pkg/src/*.so
 r-pkg/src/*.d
 r-pkg/src/symbols.rds
-r-pkg/*.Rcheck
+*.Rcheck
 Rplots.pdf
 
 # VS Code extension

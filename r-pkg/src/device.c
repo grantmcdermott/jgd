@@ -464,9 +464,9 @@ SEXP C_jgd_update_snapshot(void) {
  * redraw from grid's internal display list.
  *
  * Both GEplaySnapshot and R_FindNamespace can longjmp on error.
- * We guard GEplaySnapshot with R_ToplevelExec and use the safe
- * R_NamespaceRegistry lookup instead of R_FindNamespace to ensure
- * st->replaying is always reset even on error.
+ * We guard GEplaySnapshot with R_ToplevelExec and use
+ * R_tryEval(asNamespace("grid")) to safely look up the grid
+ * namespace without accessing non-API internals.
  */
 
 typedef struct {
@@ -603,13 +603,15 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
      * GE_RestoreSnapshotState skips the restore when the snapshot's
      * grid DL index <= 1 (only root viewport recorded). */
     if (base_dl_len <= 2) {
-#if defined(R_VERSION) && R_VERSION >= R_Version(4, 5, 0)
-        SEXP grid_ns = R_getVarEx(Rf_install("grid"), R_NamespaceRegistry, FALSE, R_UnboundValue);
-#else
-        SEXP grid_ns = Rf_findVarInFrame(R_NamespaceRegistry,
-                                         Rf_install("grid"));
-#endif
-        if (grid_ns != R_UnboundValue && grid_ns != R_NilValue) {
+        /* Look up the grid namespace via R_FindNamespace (experimental
+         * API).  Grid is a base package and will always be loaded
+         * when we reach this path (base_dl_len <= 2 means grid drew
+         * the plot), so the longjmp-on-not-found cannot trigger. */
+        SEXP grid_ns = R_NilValue;
+        SEXP grid_str = PROTECT(Rf_mkString("grid"));
+        grid_ns = R_FindNamespace(grid_str);
+        UNPROTECT(1);
+        if (grid_ns != R_NilValue) {
             /* Force-restore grid DL from snapshot (bypasses the
              * dlIndex > 1 gate in GE_RestoreSnapshotState). */
             restore_grid_dl_from_snapshot(st, snap, grid_ns);
