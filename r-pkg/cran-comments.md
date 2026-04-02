@@ -26,7 +26,7 @@ the `true`/`false` macro definitions.
 ## Additional notes
 
 - I get a "Possibly misspelled words in DESCRIPTION: `frontends` and
-  `renderer`" flag in the Win-builder check, but this is a false positive
+  `renderer`" flag in the Win-builder check, but these are false positives
   since both are used correctly in context.
 - This package contains compiled C code with no external library
   dependencies. The only vendored code is cJSON (src/cjson/), which has
