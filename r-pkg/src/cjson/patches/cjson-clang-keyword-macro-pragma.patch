@@ -1,0 +1,30 @@
+Suppress clang -Wkeyword-macro around true/false macro definitions.
+
+clang 21+ treats `true` and `false` as C23 keywords and warns when
+cJSON redefines them as macros for C89 compatibility. The warning was
+elevated to an R CMD check WARNING on CRAN's Debian flavor. Guard the
+two `#define`s with a tightly scoped push/pop pragma (clang only).
+
+--- a/cJSON.c
++++ b/cJSON.c
+@@ -64,6 +64,10 @@
+ #include "cJSON.h"
+ 
+ /* define our own boolean type */
++#if defined(__clang__)
++#pragma clang diagnostic push
++#pragma clang diagnostic ignored "-Wkeyword-macro"
++#endif
+ #ifdef true
+ #undef true
+ #endif
+@@ -73,6 +77,9 @@
+ #undef false
+ #endif
+ #define false ((cJSON_bool)0)
++#if defined(__clang__)
++#pragma clang diagnostic pop
++#endif
+ 
+ /* define isnan and isinf for ANSI C, if in C99 or above, isnan and isinf has been defined in math.h */
+ #ifndef isinf

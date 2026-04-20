@@ -25,42 +25,27 @@ gh api "repos/${REPO}/contents/cJSON.h?ref=${TAG}" -q '.content' | base64 -d > "
 
 echo "$TAG" > "${DEST}/VERSION"
 
-# Apply local patches required for R CRAN compliance
+# Apply local patches required for R CRAN compliance. See patches/*.patch
+# for the exact modifications (e.g. sprintf -> snprintf, clang -Wkeyword-macro
+# pragmas around true/false macros).
 if [ -d "$PATCHES_DIR" ]; then
   for p in "$PATCHES_DIR"/*.patch; do
     [ -f "$p" ] || continue
     echo "Applying patch: $(basename "$p")"
     patch -d "$DEST" -p1 < "$p"
   done
+  # GNU patch leaves .orig backups next to patched files; remove them.
+  find "$DEST" -maxdepth 1 -name '*.orig' -delete
 
-  # Insert modification notice and suppress clang -Wkeyword-macro around
-  # true/false macro definitions (clang 21+ treats these as C23 keywords).
-  # Single awk pass instead of multiple sed invocations for portability.
+  # Prepend a short notice at the top of cJSON.c pointing readers at the
+  # patches directory for the exact list of local modifications.
   CJSON_FILE="${DEST}/cJSON.c"
   awk '
     /^\/\* JSON parser in C\. \*\/$/ {
       print
-      print "/* Local modifications (applied automatically by dev/vendor-cjson.sh):"
-      print " * - All sprintf calls replaced with snprintf for R CRAN compliance."
-      print " *   See src/cjson/patches/ for details."
-      print " * - Suppress clang -Wkeyword-macro for true/false macro definitions"
-      print " *   (triggered by clang 21+ which treats these as C23 keywords)."
+      print "/* Local modifications applied by dev/vendor-cjson.sh."
+      print " * See src/cjson/patches/ for the exact unified diffs."
       print " */"
-      next
-    }
-    /^\/\* define our own boolean type \*\/$/ {
-      print
-      print "#if defined(__clang__)"
-      print "#pragma clang diagnostic push"
-      print "#pragma clang diagnostic ignored \"-Wkeyword-macro\""
-      print "#endif"
-      next
-    }
-    /^#define false \(\(cJSON_bool\)0\)$/ {
-      print
-      print "#if defined(__clang__)"
-      print "#pragma clang diagnostic pop"
-      print "#endif"
       next
     }
     { print }

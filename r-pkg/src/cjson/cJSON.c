@@ -22,11 +22,8 @@
 
 /* cJSON */
 /* JSON parser in C. */
-/* Local modifications (applied automatically by dev/vendor-cjson.sh):
- * - All sprintf calls replaced with snprintf for R CRAN compliance.
- *   See src/cjson/patches/ for details.
- * - Suppress clang -Wkeyword-macro for true/false macro definitions
- *   (triggered by clang 21+ which treats these as C23 keywords).
+/* Local modifications applied by dev/vendor-cjson.sh.
+ * See src/cjson/patches/ for the exact unified diffs.
  */
 
 /* disable warnings about old C89 functions in MSVC */
