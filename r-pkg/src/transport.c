@@ -13,7 +13,6 @@
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
-#pragma comment(lib, "ws2_32.lib")
 typedef SOCKET sock_t;
 #define SOCK_INVALID INVALID_SOCKET
 #define SOCK_CLOSE closesocket
@@ -645,4 +644,3 @@ void transport_close(jgd_transport_t *t) {
     t->connected = 0;
     t->readbuf_len = 0;
 }
-
