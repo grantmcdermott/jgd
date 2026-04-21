@@ -36,20 +36,6 @@ if [ -d "$PATCHES_DIR" ]; then
   done
   # GNU patch leaves .orig backups next to patched files; remove them.
   find "$DEST" -maxdepth 1 -name '*.orig' -delete
-
-  # Prepend a short notice at the top of cJSON.c pointing readers at the
-  # patches directory for the exact list of local modifications.
-  CJSON_FILE="${DEST}/cJSON.c"
-  awk '
-    /^\/\* JSON parser in C\. \*\/$/ {
-      print
-      print "/* Local modifications applied by dev/vendor-cjson.sh."
-      print " * See src/cjson/patches/ for the exact unified diffs."
-      print " */"
-      next
-    }
-    { print }
-  ' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
 fi
 
 echo "Vendored cJSON ${TAG} into ${DEST}"
