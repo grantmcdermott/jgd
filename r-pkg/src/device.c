@@ -20,21 +20,6 @@
 #include <stdio.h>
 #include <unistd.h>
 
-/* Preserve an early resize message encountered while waiting for server_info.
-   On slower transports (notably Windows named pipes), a browser-originated
-   resize can arrive before the deferred welcome.  Treat it exactly like any
-   other pending resize instead of discarding it. */
-static void jgd_preserve_welcome_resize(jgd_state_t *st, const char *buf) {
-    double w = 0.0, h = 0.0;
-    int plot_index = -1;
-
-    if (!jgd_try_parse_resize(buf, &w, &h, &plot_index)) return;
-
-    st->pending_w = w;
-    st->pending_h = h;
-    st->pending_plot_index = plot_index;
-}
-
 /* Read server_info welcome message after connecting.
    The server defers the welcome until it receives R's first message,
    so we send a ping to trigger it, then read back with a short timeout. */
@@ -45,27 +30,29 @@ static void jgd_read_welcome(jgd_state_t *st) {
 
     /* Read up to a few lines: the server sends server_info after receiving
        the ping, but message ordering may vary across implementations.
-       Windows named pipes in CI can also take noticeably longer to deliver
-       the deferred welcome than local runs. */
+       Use one longer read window instead of many short retries: on Windows
+       named pipes, repeated timed-out overlapped reads can destabilize the
+       connection more than a single patient wait. */
     char buf[2048];
-    for (int attempt = 0; attempt < 10; attempt++) {
-        int n = transport_recv_line(&st->transport, buf, sizeof(buf), 250);
-        if (n < 0) {
-            if (!st->transport.connected) return; /* hard error */
-            continue; /* timeout while waiting for the deferred welcome */
-        }
+    const int welcome_timeout_ms = 2500;
+    for (int attempt = 0; attempt < 3; attempt++) {
+        int n = transport_recv_line(&st->transport, buf, sizeof(buf), welcome_timeout_ms);
+        if (n < 0) return;   /* timeout or hard error */
         if (n == 0) continue; /* empty line — skip */
 
         cJSON *msg = cJSON_Parse(buf);
-        if (!msg) {
-            jgd_preserve_welcome_resize(st, buf);
-            continue;
-        }
+        if (!msg) continue;
 
         cJSON *type = cJSON_GetObjectItem(msg, "type");
         if (!cJSON_IsString(type) || strcmp(type->valuestring, "server_info") != 0) {
+            double w = 0.0, h = 0.0;
+            int plot_index = -1;
+            if (jgd_try_parse_resize(buf, &w, &h, &plot_index)) {
+                st->pending_w = w;
+                st->pending_h = h;
+                st->pending_plot_index = plot_index;
+            }
             cJSON_Delete(msg);
-            jgd_preserve_welcome_resize(st, buf);
             continue;
         }
 
