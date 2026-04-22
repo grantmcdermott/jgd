@@ -593,7 +593,8 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
     pfd.events = POLLIN;
     int pr = poll(&pfd, 1, timeout_ms);
     if (pr < 0) {
-        if (errno == EINTR) return -1;
+        int err = errno;
+        if (err == EINTR || err == EAGAIN) return -1;
         t->connected = 0;
         return -1;
     }
@@ -608,7 +609,7 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
     int sr = select(0, &readfds, NULL, NULL, &tv);
     if (sr < 0) {
         int err = SOCK_ERR;
-        if (err == WSAEINTR) return -1;
+        if (err == WSAEINTR || err == WSAEWOULDBLOCK) return -1;
         t->connected = 0;
         return -1;
     }
@@ -626,7 +627,18 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
         }
 
         int r = (int)recv(s, t->readbuf + t->readbuf_len, (int)space, 0);
-        if (r <= 0) {
+        if (r < 0) {
+#ifndef _WIN32
+            int err = errno;
+            if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK) return -1;
+#else
+            int err = SOCK_ERR;
+            if (err == WSAEINTR || err == WSAEWOULDBLOCK) return -1;
+#endif
+            t->connected = 0;
+            return -1;
+        }
+        if (r == 0) {
             t->connected = 0;
             return -1;
         }

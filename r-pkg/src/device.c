@@ -44,7 +44,17 @@ static void jgd_read_welcome(jgd_state_t *st) {
         if (n == 0) continue; /* empty line — skip */
 
         cJSON *msg = cJSON_Parse(buf);
-        if (!msg) continue;
+        if (!msg) {
+            double w = 0.0, h = 0.0;
+            if (jgd_try_parse_resize(buf, &w, &h, NULL)) {
+                st->pending_w = w;
+                st->pending_h = h;
+                /* Welcome-time resize must target current page only.
+                   Ignore plotIndex here to avoid stale historical state. */
+                st->pending_plot_index = -1;
+            }
+            continue;
+        }
 
         cJSON *type = cJSON_GetObjectItem(msg, "type");
         if (!cJSON_IsString(type) || strcmp(type->valuestring, "server_info") != 0) {
