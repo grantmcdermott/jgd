@@ -173,6 +173,14 @@ async function main() {
               console.error("\n--- Partial R stderr ---");
               console.error(stderr.trim().slice(-4000));
             }
+            if (client) {
+              const stats = client.stats();
+              console.error("\n--- Partial Mock Client Stats ---");
+              console.error(
+                `metrics=${stats.metricsRequests} (strWidth=${stats.strWidthRequests}, metricInfo=${stats.metricInfoRequests}), ` +
+                  `frames=${stats.framesReceived}, totalOps=${stats.totalOps}, lastFrameOps=${stats.lastFrameOps}`,
+              );
+            }
           })();
           return timeoutCleanup;
         },
