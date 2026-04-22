@@ -381,6 +381,16 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
     if (!t->connected) return -1;
 
 #ifdef _WIN32
+    /* Bound overlapped writes on Windows named pipes.  Without this, a
+     * server-side pipe instance that fails to drain reads promptly
+     * (observed with node:net after a prior R session disconnects on the
+     * same pipe path) can leave R hanging in WriteFile forever.  Five
+     * seconds is well above legitimate write latency for the small JSON
+     * lines we send, so a timeout signals a broken transport rather than
+     * a slow one; the caller (cb_strWidth, jgd_flush_frame, ...) falls
+     * back gracefully once t->connected is cleared. */
+    const DWORD send_timeout_ms = 5000;
+
     if (t->pipe_handle != INVALID_HANDLE_VALUE) {
         HANDLE h = (HANDLE)t->pipe_handle;
         size_t sent = 0;
@@ -394,7 +404,16 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
                     t->connected = 0;
                     return -1;
                 }
-                WaitForSingleObject(ov.hEvent, INFINITE);
+                DWORD wr = WaitForSingleObject(ov.hEvent, send_timeout_ms);
+                if (wr != WAIT_OBJECT_0) {
+                    /* Timeout or error: cancel the pending I/O and wait
+                     * for completion so the stack-local OVERLAPPED stays
+                     * valid until the kernel is done with it. */
+                    CancelIo(h);
+                    GetOverlappedResult(h, &ov, &written, TRUE);
+                    t->connected = 0;
+                    return -1;
+                }
                 if (!GetOverlappedResult(h, &ov, &written, FALSE)) {
                     t->connected = 0;
                     return -1;
@@ -417,7 +436,13 @@ int transport_send(jgd_transport_t *t, const char *data, size_t len) {
                     t->connected = 0;
                     return -1;
                 }
-                WaitForSingleObject(ov.hEvent, INFINITE);
+                DWORD wr = WaitForSingleObject(ov.hEvent, send_timeout_ms);
+                if (wr != WAIT_OBJECT_0) {
+                    CancelIo(h);
+                    GetOverlappedResult(h, &ov, &nw, TRUE);
+                    t->connected = 0;
+                    return -1;
+                }
                 if (!GetOverlappedResult(h, &ov, &nw, FALSE)) {
                     t->connected = 0;
                     return -1;
