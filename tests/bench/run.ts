@@ -66,6 +66,10 @@ function createStreamCollector(stream: ReadableStream<Uint8Array> | null) {
   };
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // --- Main ---
 console.log(`\n${"=".repeat(60)}`);
 console.log("  jgd Benchmark Suite");
@@ -102,6 +106,8 @@ try {
   const rProc = rCmd.spawn();
   const stdoutCollector = createStreamCollector(rProc.stdout);
   const stderrCollector = createStreamCollector(rProc.stderr);
+  let timeoutTriggered = false;
+  let timeoutCleanup: Promise<void> | null = null;
   const killRProcess = async (): Promise<boolean> => {
     let killRequested = false;
     try {
@@ -124,28 +130,41 @@ try {
     }
     return killRequested;
   };
-  const rStatus = await raceWithTimeout(
-    rProc.status,
-    benchTimeoutMs,
-    async () => {
-      const killRequested = await killRProcess();
-      const stdout = stdoutCollector.snapshot();
-      const stderr = stderrCollector.snapshot();
-      console.error(
-        `R benchmark timed out after ${benchTimeoutMs}ms` +
-          (killRequested ? " (kill requested)" : ""),
-      );
-      if (stdout.trim()) {
-        console.error("\n--- Partial R stdout ---");
-        console.error(stdout.trim().slice(-4000));
-      }
-      if (stderr.trim()) {
-        console.error("\n--- Partial R stderr ---");
-        console.error(stderr.trim().slice(-4000));
-      }
-    },
-    `R benchmark timeout after ${benchTimeoutMs}ms`,
-  );
+  let rStatus: Deno.CommandStatus;
+  try {
+    rStatus = await raceWithTimeout(
+      rProc.status,
+      benchTimeoutMs,
+      () => {
+        timeoutTriggered = true;
+        timeoutCleanup = (async () => {
+          const killRequested = await killRProcess();
+          const stdout = stdoutCollector.snapshot();
+          const stderr = stderrCollector.snapshot();
+          console.error(
+            `R benchmark timed out after ${benchTimeoutMs}ms` +
+              (killRequested ? " (kill requested)" : ""),
+          );
+          if (stdout.trim()) {
+            console.error("\n--- Partial R stdout ---");
+            console.error(stdout.trim().slice(-4000));
+          }
+          if (stderr.trim()) {
+            console.error("\n--- Partial R stderr ---");
+            console.error(stderr.trim().slice(-4000));
+          }
+        })();
+        return timeoutCleanup;
+      },
+      `R benchmark timeout after ${benchTimeoutMs}ms`,
+    );
+  } catch (error) {
+    if (timeoutTriggered && timeoutCleanup) {
+      await Promise.race([timeoutCleanup, sleep(3000)]);
+      await Promise.all([stdoutCollector.done, stderrCollector.done]);
+    }
+    throw error;
+  }
   await Promise.all([stdoutCollector.done, stderrCollector.done]);
   const stdout = stdoutCollector.snapshot();
   const stderr = stderrCollector.snapshot();
