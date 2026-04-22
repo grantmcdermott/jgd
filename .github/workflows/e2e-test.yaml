@@ -51,7 +51,13 @@ jobs:
 
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          # Pinned to 2.7.11 pending a regression introduced in 2.7.12:
+          # the native uv_pipe_t rewrite (denoland/deno#33165) causes the
+          # node:net pipe listener to stop accepting subsequent client
+          # connections after the first one disconnects on Windows, which
+          # hangs the second jgd() call in the benchmark. Revisit once a
+          # fixed upstream release is available.
+          deno-version: v2.7.11
 
       - name: Install jgd R package
         run: R CMD INSTALL r-pkg
