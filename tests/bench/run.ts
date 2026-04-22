@@ -24,6 +24,10 @@ const args = parseArgs(Deno.args, {
 });
 
 const noClient = args["no-client"];
+const benchTimeoutMs = Number.parseInt(
+  Deno.env.get("JGD_BENCH_TIMEOUT_MS") ?? "180000",
+  10,
+);
 
 // --- Main ---
 console.log(`\n${"=".repeat(60)}`);
@@ -58,12 +62,37 @@ try {
     stderr: "piped",
     env: { ...Deno.env.toObject(), JGD_BENCH_SOCKET: socketAddr },
   });
+  const rProc = rCmd.spawn();
+  let timedOut = false;
+  const timeoutId = setTimeout(() => {
+    timedOut = true;
+    try {
+      rProc.kill("SIGKILL");
+    } catch {
+      // Process already exited.
+    }
+  }, benchTimeoutMs);
 
-  const rResult = await rCmd.output();
+  const rResult = await rProc.output();
+  clearTimeout(timeoutId);
   const stdout = new TextDecoder().decode(rResult.stdout);
   const stderr = new TextDecoder().decode(rResult.stderr);
 
   if (!rResult.success) {
+    if (timedOut) {
+      console.error(
+        `R benchmark timed out after ${benchTimeoutMs}ms (killed process)`,
+      );
+      if (stdout.trim()) {
+        console.error("\n--- Partial R stdout ---");
+        console.error(stdout.trim().slice(-4000));
+      }
+      if (stderr.trim()) {
+        console.error("\n--- Partial R stderr ---");
+        console.error(stderr.trim().slice(-4000));
+      }
+      throw new Error(`R benchmark timeout after ${benchTimeoutMs}ms`);
+    }
     console.error(`R process exited with code ${rResult.code}`);
     if (stderr.trim()) console.error(stderr.trim());
     throw new Error(`R process failed with code ${rResult.code}`);
