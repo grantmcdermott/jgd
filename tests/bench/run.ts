@@ -64,13 +64,28 @@ try {
   });
   const rProc = rCmd.spawn();
   let timedOut = false;
+  const killRProcess = async () => {
+    try {
+      rProc.kill();
+      return;
+    } catch {
+      // Fall through to platform-specific hard kill below.
+    }
+    if (Deno.build.os === "windows") {
+      try {
+        await new Deno.Command("taskkill", {
+          args: ["/PID", String(rProc.pid), "/T", "/F"],
+          stdout: "null",
+          stderr: "null",
+        }).output();
+      } catch {
+        // Best effort only.
+      }
+    }
+  };
   const timeoutId = setTimeout(() => {
     timedOut = true;
-    try {
-      rProc.kill("SIGKILL");
-    } catch {
-      // Process already exited.
-    }
+    void killRProcess();
   }, benchTimeoutMs);
 
   const rResult = await rProc.output();
