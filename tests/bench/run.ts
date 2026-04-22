@@ -31,7 +31,10 @@ function parseBenchTimeoutMs(): number {
   if (raw === undefined || raw.trim() === "") return 180000;
 
   const parsed = Number(raw);
-  if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    const timeoutMs = Math.floor(parsed);
+    if (timeoutMs >= 1) return timeoutMs;
+  }
 
   throw new Error(
     `Invalid JGD_BENCH_TIMEOUT_MS="${raw}". Expected a positive number (milliseconds).`,
