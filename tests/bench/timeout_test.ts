@@ -1,10 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { raceWithTimeout } from "./timeout.ts";
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 Deno.test("raceWithTimeout rejects immediately when timeout fires", async () => {
   let resolveOperation: ((value: string) => void) | undefined;
   const operation = new Promise<string>((resolve) => {
@@ -13,24 +9,40 @@ Deno.test("raceWithTimeout rejects immediately when timeout fires", async () => 
 
   let onTimeoutCalled = false;
   let onTimeoutFinished = false;
+  let releaseOnTimeout: (() => void) | undefined;
+  const onTimeoutBlocker = new Promise<void>((resolve) => {
+    releaseOnTimeout = resolve;
+  });
+  let markOnTimeoutStarted: (() => void) | undefined;
+  const onTimeoutStarted = new Promise<void>((resolve) => {
+    markOnTimeoutStarted = resolve;
+  });
+  let markOnTimeoutFinished: (() => void) | undefined;
+  const onTimeoutFinishedSignal = new Promise<void>((resolve) => {
+    markOnTimeoutFinished = resolve;
+  });
 
   const raced = raceWithTimeout(
     operation,
     20,
     async () => {
       onTimeoutCalled = true;
-      await sleep(80);
+      markOnTimeoutStarted?.();
+      await onTimeoutBlocker;
       onTimeoutFinished = true;
+      markOnTimeoutFinished?.();
       resolveOperation?.("finished");
     },
     "timeout",
   );
 
+  await onTimeoutStarted;
   await assertRejects(() => raced, Error, "timeout");
   assertEquals(onTimeoutCalled, true);
   assertEquals(onTimeoutFinished, false);
 
-  await sleep(120);
+  releaseOnTimeout?.();
+  await onTimeoutFinishedSignal;
   assertEquals(onTimeoutFinished, true);
 });
 

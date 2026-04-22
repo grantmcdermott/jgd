@@ -8,7 +8,9 @@ export function raceWithTimeout<T>(
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       reject(new Error(message));
-      void onTimeout();
+      void Promise.resolve()
+        .then(() => onTimeout())
+        .catch(() => {});
     }, timeoutMs);
   });
 
