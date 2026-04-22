@@ -28,7 +28,7 @@ const benchTimeoutMs = parseBenchTimeoutMs();
 
 function parseBenchTimeoutMs(): number {
   const raw = Deno.env.get("JGD_BENCH_TIMEOUT_MS");
-  if (raw === undefined || raw.trim() === "") return 180000;
+  if (raw === undefined || raw.trim() === "") return 30000;
 
   const parsed = Number(raw);
   if (Number.isFinite(parsed) && parsed > 0) {
