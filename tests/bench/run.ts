@@ -41,6 +41,34 @@ function parseBenchTimeoutMs(): number {
   );
 }
 
+function createStreamCollector(stream: ReadableStream<Uint8Array> | null) {
+  let text = "";
+  const decoder = new TextDecoder();
+  const done = (async () => {
+    if (!stream) return;
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+        if (text.length > 200_000) text = text.slice(-200_000);
+      }
+      text += decoder.decode();
+    } catch {
+      // Best effort collection only.
+    }
+  })();
+  return {
+    done,
+    snapshot: () => text,
+  };
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 // --- Main ---
 console.log(`\n${"=".repeat(60)}`);
 console.log("  jgd Benchmark Suite");
@@ -75,8 +103,10 @@ try {
     env: { ...Deno.env.toObject(), JGD_BENCH_SOCKET: socketAddr },
   });
   const rProc = rCmd.spawn();
+  const stdoutCollector = createStreamCollector(rProc.stdout);
+  const stderrCollector = createStreamCollector(rProc.stderr);
   let timeoutTriggered = false;
-  let timeoutKillPromise: Promise<boolean> | null = null;
+  let timeoutKillIssued = false;
   const killRProcess = async (): Promise<boolean> => {
     let killRequested = false;
     try {
@@ -99,37 +129,48 @@ try {
     }
     return killRequested;
   };
-  const timeoutId = setTimeout(() => {
-    timeoutTriggered = true;
-    timeoutKillPromise = killRProcess();
-  }, benchTimeoutMs);
+  let timeoutId = -1;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      timeoutTriggered = true;
+      void (async () => {
+        timeoutKillIssued = await Promise.race([
+          killRProcess(),
+          sleep(2000).then(() => false),
+        ]);
 
-  const rResult = await rProc.output();
+        const stdout = stdoutCollector.snapshot();
+        const stderr = stderrCollector.snapshot();
+        console.error(
+          `R benchmark timed out after ${benchTimeoutMs}ms` +
+            (timeoutKillIssued ? " (kill requested)" : ""),
+        );
+        if (stdout.trim()) {
+          console.error("\n--- Partial R stdout ---");
+          console.error(stdout.trim().slice(-4000));
+        }
+        if (stderr.trim()) {
+          console.error("\n--- Partial R stderr ---");
+          console.error(stderr.trim().slice(-4000));
+        }
+        reject(new Error(`R benchmark timeout after ${benchTimeoutMs}ms`));
+      })();
+    }, benchTimeoutMs);
+  });
+
+  const rStatus = await Promise.race([rProc.status, timeoutPromise]);
   clearTimeout(timeoutId);
-  const timeoutKillIssued = timeoutKillPromise
-    ? await timeoutKillPromise
-    : false;
-  const stdout = new TextDecoder().decode(rResult.stdout);
-  const stderr = new TextDecoder().decode(rResult.stderr);
+  await Promise.all([stdoutCollector.done, stderrCollector.done]);
+  const stdout = stdoutCollector.snapshot();
+  const stderr = stderrCollector.snapshot();
 
-  if (!rResult.success) {
+  if (!rStatus.success) {
     if (timeoutTriggered && timeoutKillIssued) {
-      console.error(
-        `R benchmark timed out after ${benchTimeoutMs}ms (killed process)`,
-      );
-      if (stdout.trim()) {
-        console.error("\n--- Partial R stdout ---");
-        console.error(stdout.trim().slice(-4000));
-      }
-      if (stderr.trim()) {
-        console.error("\n--- Partial R stderr ---");
-        console.error(stderr.trim().slice(-4000));
-      }
       throw new Error(`R benchmark timeout after ${benchTimeoutMs}ms`);
     }
-    console.error(`R process exited with code ${rResult.code}`);
+    console.error(`R process exited with code ${rStatus.code}`);
     if (stderr.trim()) console.error(stderr.trim());
-    throw new Error(`R process failed with code ${rResult.code}`);
+    throw new Error(`R process failed with code ${rStatus.code}`);
   }
 
   if (stderr.trim()) {
