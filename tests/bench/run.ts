@@ -24,10 +24,19 @@ const args = parseArgs(Deno.args, {
 });
 
 const noClient = args["no-client"];
-const benchTimeoutMs = Number.parseInt(
-  Deno.env.get("JGD_BENCH_TIMEOUT_MS") ?? "180000",
-  10,
-);
+const benchTimeoutMs = parseBenchTimeoutMs();
+
+function parseBenchTimeoutMs(): number {
+  const raw = Deno.env.get("JGD_BENCH_TIMEOUT_MS");
+  if (raw === undefined || raw.trim() === "") return 180000;
+
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed > 0) return Math.floor(parsed);
+
+  throw new Error(
+    `Invalid JGD_BENCH_TIMEOUT_MS="${raw}". Expected a positive number (milliseconds).`,
+  );
+}
 
 // --- Main ---
 console.log(`\n${"=".repeat(60)}`);
@@ -63,38 +72,45 @@ try {
     env: { ...Deno.env.toObject(), JGD_BENCH_SOCKET: socketAddr },
   });
   const rProc = rCmd.spawn();
-  let timedOut = false;
-  const killRProcess = async () => {
+  let timeoutTriggered = false;
+  let timeoutKillPromise: Promise<boolean> | null = null;
+  const killRProcess = async (): Promise<boolean> => {
+    let killRequested = false;
     try {
       rProc.kill();
-      return;
+      killRequested = true;
     } catch {
-      // Fall through to platform-specific hard kill below.
+      // Continue to platform-specific hard kill below.
     }
     if (Deno.build.os === "windows") {
       try {
-        await new Deno.Command("taskkill", {
+        const result = await new Deno.Command("taskkill", {
           args: ["/PID", String(rProc.pid), "/T", "/F"],
           stdout: "null",
           stderr: "null",
         }).output();
+        killRequested = killRequested || result.success;
       } catch {
         // Best effort only.
       }
     }
+    return killRequested;
   };
   const timeoutId = setTimeout(() => {
-    timedOut = true;
-    void killRProcess();
+    timeoutTriggered = true;
+    timeoutKillPromise = killRProcess();
   }, benchTimeoutMs);
 
   const rResult = await rProc.output();
   clearTimeout(timeoutId);
+  const timeoutKillIssued = timeoutKillPromise
+    ? await timeoutKillPromise
+    : false;
   const stdout = new TextDecoder().decode(rResult.stdout);
   const stderr = new TextDecoder().decode(rResult.stderr);
 
   if (!rResult.success) {
-    if (timedOut) {
+    if (timeoutTriggered && timeoutKillIssued) {
       console.error(
         `R benchmark timed out after ${benchTimeoutMs}ms (killed process)`,
       );
