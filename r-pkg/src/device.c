@@ -37,7 +37,10 @@ static void jgd_read_welcome(jgd_state_t *st) {
     const int welcome_timeout_ms = 2500;
     for (int attempt = 0; attempt < 3; attempt++) {
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), welcome_timeout_ms);
-        if (n < 0) return;   /* timeout or hard error */
+        if (n < 0) {
+            if (!st->transport.connected) return; /* hard error */
+            continue; /* timeout while waiting for deferred welcome */
+        }
         if (n == 0) continue; /* empty line — skip */
 
         cJSON *msg = cJSON_Parse(buf);
@@ -46,11 +49,12 @@ static void jgd_read_welcome(jgd_state_t *st) {
         cJSON *type = cJSON_GetObjectItem(msg, "type");
         if (!cJSON_IsString(type) || strcmp(type->valuestring, "server_info") != 0) {
             double w = 0.0, h = 0.0;
-            int plot_index = -1;
-            if (jgd_try_parse_resize(buf, &w, &h, &plot_index)) {
+            if (jgd_try_parse_resize(buf, &w, &h, NULL)) {
                 st->pending_w = w;
                 st->pending_h = h;
-                st->pending_plot_index = plot_index;
+                /* Welcome-time resize must target current page only.
+                   Ignore plotIndex here to avoid stale historical state. */
+                st->pending_plot_index = -1;
             }
             cJSON_Delete(msg);
             continue;
@@ -160,9 +164,19 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
                    "Plots will be recorded but not displayed until connection is established.");
     }
 
+    /* On Windows named pipes, avoid a blocking welcome read during device
+       open because timed-out overlapped reads can destabilize startup in CI.
+       Server info is fetched lazily on demand by C_jgd_server_info. */
+#ifdef _WIN32
+    if (st->transport.connected &&
+        st->transport.pipe_handle == INVALID_HANDLE_VALUE) {
+        jgd_read_welcome(st);
+    }
+#else
     if (st->transport.connected) {
         jgd_read_welcome(st);
     }
+#endif
 
     pDevDesc dd = (pDevDesc)calloc(1, sizeof(DevDesc));
     if (!dd) {
@@ -869,7 +883,14 @@ SEXP C_jgd_server_info(SEXP s_path) {
 
     if (have_device) {
         st = (jgd_state_t *)gdd->dev->deviceSpecific;
-        if (!st || !st->server_info_received) {
+        if (!st) {
+            have_device = 0;
+        } else if (!st->server_info_received && st->transport.connected) {
+            /* Welcome is deferred on some transports/runtimes, so retry
+               once on demand before falling back to discovery.json. */
+            jgd_read_welcome(st);
+        }
+        if (have_device && !st->server_info_received) {
             have_device = 0;
         }
     }

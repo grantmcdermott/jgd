@@ -593,6 +593,7 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
     pfd.events = POLLIN;
     int pr = poll(&pfd, 1, timeout_ms);
     if (pr < 0) {
+        if (errno == EINTR) return -1;
         t->connected = 0;
         return -1;
     }
@@ -606,6 +607,8 @@ int transport_recv_line(jgd_transport_t *t, char *buf, size_t bufsize, int timeo
     tv.tv_usec = (timeout_ms % 1000) * 1000;
     int sr = select(0, &readfds, NULL, NULL, &tv);
     if (sr < 0) {
+        int err = SOCK_ERR;
+        if (err == WSAEINTR) return -1;
         t->connected = 0;
         return -1;
     }
