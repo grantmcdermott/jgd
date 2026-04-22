@@ -169,6 +169,11 @@ export class TestServer {
     this.pid = this.#process.pid;
   }
 
+  /** Snapshot of server stderr captured so far (drained in background). */
+  stderrSnapshot(): string {
+    return this.#stderrBuf.join("");
+  }
+
   get httpBaseUrl(): string {
     return `http://127.0.0.1:${this.httpPort}`;
   }

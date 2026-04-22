@@ -181,6 +181,11 @@ async function main() {
                   `frames=${stats.framesReceived}, totalOps=${stats.totalOps}, lastFrameOps=${stats.lastFrameOps}`,
               );
             }
+            const serverStderr = server.stderrSnapshot().trim();
+            if (serverStderr) {
+              console.error("\n--- Partial server stderr ---");
+              console.error(serverStderr.slice(-4000));
+            }
           })();
           return timeoutCleanup;
         },
