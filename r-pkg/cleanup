@@ -1,2 +1,2 @@
 #!/bin/sh
-rm -f src/*.o src/cjson/*.o src/*.so src/*.dll
+find src -type f \( -name '*.o' -o -name '*.so' -o -name '*.dll' \) -exec rm -f {} +
