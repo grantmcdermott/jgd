@@ -76,7 +76,9 @@ static long long jgd_now_ms(void) {
     }
 
     /* Last-resort fallback for old Windows toolchains/environments.
-       Known limitation: GetTickCount wraps every ~49.7 days (32-bit). */
+       Known limitation: GetTickCount is 32-bit and wraps every ~49.7 days.
+       PR #53 intentionally accepts this legacy limitation to keep the
+       R 4.1 i386 compatibility path simple and low-risk. */
     return (long long)GetTickCount();
 #else
     struct timespec ts;
@@ -109,7 +111,10 @@ static void jgd_read_welcome(jgd_state_t *st) {
         long long remaining_ll = deadline_ms - now_ms;
         if (remaining_ll <= 0) return;
         /* Guard wrap/inconsistency in fallback clocks without forcing
-           an early timeout; cap waits to the original timeout window. */
+           an early timeout; cap waits to the original timeout window.
+           Known limitation (intentional for legacy R 4.1 i386 path): if
+           the clock jumps backward (for example, 32-bit tick wrap), total
+           wall-clock wait here can exceed welcome_total_timeout_ms. */
         if (remaining_ll > (long long)welcome_total_timeout_ms) {
             remaining_ll = (long long)welcome_total_timeout_ms;
         }
