@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <limits.h>
 #include <unistd.h>
 
 static int jgd_parse_resize_message(cJSON *msg, double *w, double *h, int *plot_index) {
@@ -44,7 +45,41 @@ static int jgd_parse_resize_message(cJSON *msg, double *w, double *h, int *plot_
 
 static long long jgd_now_ms(void) {
 #ifdef _WIN32
-    return (long long)GetTickCount64();
+    typedef ULONGLONG(WINAPI *jgd_get_tick_count64_fn)(void);
+    HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+    if (kernel32) {
+        jgd_get_tick_count64_fn get_tick_count64 =
+            (jgd_get_tick_count64_fn)GetProcAddress(kernel32, "GetTickCount64");
+        if (get_tick_count64) {
+            return (long long)get_tick_count64();
+        }
+    }
+
+    {
+        LARGE_INTEGER freq;
+        LARGE_INTEGER counter;
+        if (QueryPerformanceFrequency(&freq) &&
+            freq.QuadPart > 0 &&
+            QueryPerformanceCounter(&counter)) {
+            long long seconds = (long long)(counter.QuadPart / freq.QuadPart);
+            if (seconds > LLONG_MAX / 1000LL) {
+                return LLONG_MAX;
+            }
+            long long whole_ms = seconds * 1000LL;
+            long long rem = (long long)(counter.QuadPart % freq.QuadPart);
+            long long frac_ms = (long long)(((long double)rem * 1000.0L) / (long double)freq.QuadPart);
+            if (whole_ms > LLONG_MAX - frac_ms) {
+                return LLONG_MAX;
+            }
+            return whole_ms + frac_ms;
+        }
+    }
+
+    /* Last-resort fallback for old Windows toolchains/environments.
+       Known limitation: GetTickCount is 32-bit and wraps every ~49.7 days.
+       PR #53 intentionally accepts this legacy limitation to keep the
+       R 4.1 i386 compatibility path simple and low-risk. */
+    return (long long)GetTickCount();
 #else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
@@ -66,11 +101,24 @@ static void jgd_read_welcome(jgd_state_t *st) {
        server_info is delayed or absent. */
     char buf[2048];
     const int welcome_total_timeout_ms = 2500;
-    const long long deadline_ms = jgd_now_ms() + welcome_total_timeout_ms;
+    long long now0_ms = jgd_now_ms();
+    const long long deadline_ms =
+        (now0_ms > LLONG_MAX - (long long)welcome_total_timeout_ms)
+            ? LLONG_MAX
+            : now0_ms + (long long)welcome_total_timeout_ms;
     for (;;) {
         long long now_ms = jgd_now_ms();
-        int remaining_ms = (int)(deadline_ms - now_ms);
-        if (remaining_ms <= 0) return;
+        long long remaining_ll = deadline_ms - now_ms;
+        if (remaining_ll <= 0) return;
+        /* Guard wrap/inconsistency in fallback clocks without forcing
+           an early timeout; cap waits to the original timeout window.
+           Known limitation (intentional for legacy R 4.1 i386 path): if
+           the clock jumps backward (for example, 32-bit tick wrap), total
+           wall-clock wait here can exceed welcome_total_timeout_ms. */
+        if (remaining_ll > (long long)welcome_total_timeout_ms) {
+            remaining_ll = (long long)welcome_total_timeout_ms;
+        }
+        int remaining_ms = (int)remaining_ll;
 
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), remaining_ms);
         if (n < 0) {
