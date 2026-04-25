@@ -33,7 +33,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          # Pinned to 2.7.11 pending a regression introduced in 2.7.12:
+          # on Windows, a node:net server on a named pipe stops firing
+          # 'connection' events after the first client disconnects, so
+          # listener tests for repeated clients can hang. Tracking in
+          # denoland/deno#33366. Revisit once fixed upstream.
+          deno-version: v2.7.11
       - run: deno task test
         working-directory: server
       - run: deno task test:e2e
