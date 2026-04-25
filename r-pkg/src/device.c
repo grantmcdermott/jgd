@@ -99,7 +99,11 @@ static void jgd_read_welcome(jgd_state_t *st) {
        server_info is delayed or absent. */
     char buf[2048];
     const int welcome_total_timeout_ms = 2500;
-    const long long deadline_ms = jgd_now_ms() + welcome_total_timeout_ms;
+    long long now0_ms = jgd_now_ms();
+    const long long deadline_ms =
+        (now0_ms > LLONG_MAX - (long long)welcome_total_timeout_ms)
+            ? LLONG_MAX
+            : now0_ms + (long long)welcome_total_timeout_ms;
     for (;;) {
         long long now_ms = jgd_now_ms();
         long long remaining_ll = deadline_ms - now_ms;
