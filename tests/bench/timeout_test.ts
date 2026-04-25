@@ -61,3 +61,26 @@ Deno.test("raceWithTimeout returns operation result before timeout", async () =>
   assertEquals(result, "ok");
   assertEquals(onTimeoutCalled, false);
 });
+
+Deno.test("raceWithTimeout sets timeout side effects before rejection is observed", async () => {
+  const operation = new Promise<string>(() => {});
+  let timeoutSideEffect = false;
+
+  const raced = raceWithTimeout(
+    operation,
+    1,
+    () => {
+      timeoutSideEffect = true;
+    },
+    "timeout",
+  );
+
+  await assertRejects(async () => {
+    try {
+      await raced;
+    } catch (error) {
+      assertEquals(timeoutSideEffect, true);
+      throw error;
+    }
+  }, Error, "timeout");
+});
