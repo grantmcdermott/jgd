@@ -14,6 +14,7 @@ import { dirname, fromFileUrl, join } from "@std/path";
 import { parseArgs } from "@std/cli/parse-args";
 import { TestServer } from "../../server/tests/helpers/server.ts";
 import { MockMetricsClient } from "./mock-metrics-client.ts";
+import { raceWithTimeout } from "./timeout.ts";
 import { toRSocketAddress } from "../helpers/r_process.ts";
 
 const scriptDir = dirname(fromFileUrl(import.meta.url));
@@ -24,73 +25,225 @@ const args = parseArgs(Deno.args, {
 });
 
 const noClient = args["no-client"];
+const timeoutRecoveryWaitMs = 3000;
 
-// --- Main ---
-console.log(`\n${"=".repeat(60)}`);
-console.log("  jgd Benchmark Suite");
-console.log(`${"=".repeat(60)}`);
+function parseBenchTimeoutMs(): number {
+  const raw = Deno.env.get("JGD_BENCH_TIMEOUT_MS");
+  if (raw === undefined || raw.trim() === "") return 30000;
 
-// Start server
-console.log("==> Starting server...");
-const server = new TestServer();
-await server.start();
-console.log(`    Socket: ${server.socketPath}`);
-console.log(`    HTTP:   ${server.httpBaseUrl}`);
-
-let client: MockMetricsClient | null = null;
-try {
-  // Connect mock client
-  if (!noClient) {
-    console.log("==> Connecting mock metrics client...");
-    client = new MockMetricsClient(server.wsUrl);
-    await client.connect();
-    await new Promise((r) => setTimeout(r, 500));
-    console.log("    Connected");
+  const parsed = Number(raw);
+  if (Number.isFinite(parsed) && parsed > 0) {
+    const timeoutMs = Math.floor(parsed);
+    if (timeoutMs >= 1) return timeoutMs;
   }
 
-  // Run R benchmarks
-  console.log("==> Running R benchmarks...");
-  const benchScript = join(scriptDir, "bench-plot.R");
-  const socketAddr = toRSocketAddress(server.socketPath);
-  const rCmd = new Deno.Command("Rscript", {
-    args: [benchScript],
-    stdout: "piped",
-    stderr: "piped",
-    env: { ...Deno.env.toObject(), JGD_BENCH_SOCKET: socketAddr },
-  });
-
-  const rResult = await rCmd.output();
-  const stdout = new TextDecoder().decode(rResult.stdout);
-  const stderr = new TextDecoder().decode(rResult.stderr);
-
-  if (!rResult.success) {
-    console.error(`R process exited with code ${rResult.code}`);
-    if (stderr.trim()) console.error(stderr.trim());
-    throw new Error(`R process failed with code ${rResult.code}`);
-  }
-
-  if (stderr.trim()) {
-    console.log("\n--- R stderr ---");
-    console.log(stderr.trim());
-  }
-
-  console.log("\n--- R output ---");
-  console.log(stdout.trim());
-
-  // Client stats
-  if (client) {
-    const stats = client.stats();
-    console.log("\n=== Mock Client Stats ===");
-    console.log(
-      `  Metrics requests: ${stats.metricsRequests} (strWidth: ${stats.strWidthRequests}, metricInfo: ${stats.metricInfoRequests})`,
-    );
-    console.log(`  Frames received:  ${stats.framesReceived}`);
-    console.log(`  Total ops:        ${stats.totalOps}`);
-  }
-} finally {
-  if (client) client.close();
-  await server.shutdown();
-  server.cleanup();
+  throw new Error(
+    `Invalid JGD_BENCH_TIMEOUT_MS="${raw}". Expected a positive number (milliseconds).`,
+  );
 }
 
-console.log("\n==> Done.");
+function createStreamCollector(stream: ReadableStream<Uint8Array> | null) {
+  let text = "";
+  const decoder = new TextDecoder();
+  const done = (async () => {
+    if (!stream) return;
+    const reader = stream.getReader();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        text += decoder.decode(value, { stream: true });
+        if (text.length > 200_000) text = text.slice(-200_000);
+      }
+      text += decoder.decode();
+    } catch {
+      // Best effort collection only.
+    } finally {
+      reader.releaseLock();
+    }
+  })();
+  return {
+    done,
+    snapshot: () => text,
+  };
+}
+
+async function waitUpTo<T>(promise: Promise<T>, waitMs: number): Promise<void> {
+  let timeoutId: number | undefined;
+  await Promise.race([
+    promise.then(() => undefined).catch(() => undefined),
+    new Promise<void>((resolve) => {
+      timeoutId = setTimeout(resolve, waitMs);
+    }),
+  ]).finally(() => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+  });
+}
+
+export async function settleTimeoutPath(
+  timeoutCleanup: Promise<void>,
+  collectors: Array<Promise<unknown>>,
+  waitMs = timeoutRecoveryWaitMs,
+): Promise<void> {
+  await waitUpTo(timeoutCleanup, waitMs);
+  await waitUpTo(Promise.all(collectors), waitMs);
+}
+
+async function main() {
+  const benchTimeoutMs = parseBenchTimeoutMs();
+
+  // --- Main ---
+  console.log(`\n${"=".repeat(60)}`);
+  console.log("  jgd Benchmark Suite");
+  console.log(`${"=".repeat(60)}`);
+
+  // Start server
+  console.log("==> Starting server...");
+  const server = new TestServer();
+  await server.start();
+  console.log(`    Socket: ${server.socketPath}`);
+  console.log(`    HTTP:   ${server.httpBaseUrl}`);
+
+  let client: MockMetricsClient | null = null;
+  try {
+    // Connect mock client
+    if (!noClient) {
+      console.log("==> Connecting mock metrics client...");
+      client = new MockMetricsClient(server.wsUrl);
+      await client.connect();
+      await new Promise((r) => setTimeout(r, 500));
+      console.log("    Connected");
+    }
+
+    // Run R benchmarks
+    console.log("==> Running R benchmarks...");
+    const benchScript = join(scriptDir, "bench-plot.R");
+    const socketAddr = toRSocketAddress(server.socketPath);
+    const rCmd = new Deno.Command("Rscript", {
+      args: [benchScript],
+      stdout: "piped",
+      stderr: "piped",
+      env: { ...Deno.env.toObject(), JGD_BENCH_SOCKET: socketAddr },
+    });
+    const rProc = rCmd.spawn();
+    const stdoutCollector = createStreamCollector(rProc.stdout);
+    const stderrCollector = createStreamCollector(rProc.stderr);
+    let timeoutTriggered = false;
+    let timeoutCleanup: Promise<void> | null = null;
+    const killRProcess = async (): Promise<boolean> => {
+      let killRequested = false;
+      try {
+        // Use SIGKILL on POSIX for fail-fast timeout cleanup.
+        if (Deno.build.os === "windows") {
+          rProc.kill();
+        } else {
+          rProc.kill("SIGKILL");
+        }
+        killRequested = true;
+      } catch {
+        // Continue to platform-specific hard kill below.
+      }
+      if (Deno.build.os === "windows") {
+        try {
+          const result = await new Deno.Command("taskkill", {
+            args: ["/PID", String(rProc.pid), "/T", "/F"],
+            stdout: "null",
+            stderr: "null",
+          }).output();
+          killRequested = killRequested || result.success;
+        } catch {
+          // Best effort only.
+        }
+      }
+      return killRequested;
+    };
+    let rStatus: Deno.CommandStatus;
+    try {
+      rStatus = await raceWithTimeout(
+        rProc.status,
+        benchTimeoutMs,
+        () => {
+          timeoutTriggered = true;
+          timeoutCleanup = (async () => {
+            const killRequested = await killRProcess();
+            const stdout = stdoutCollector.snapshot();
+            const stderr = stderrCollector.snapshot();
+            console.error(
+              `R benchmark timed out after ${benchTimeoutMs}ms` +
+                (killRequested ? " (kill requested)" : ""),
+            );
+            if (stdout.trim()) {
+              console.error("\n--- Partial R stdout ---");
+              console.error(stdout.trim().slice(-4000));
+            }
+            if (stderr.trim()) {
+              console.error("\n--- Partial R stderr ---");
+              console.error(stderr.trim().slice(-4000));
+            }
+            if (client) {
+              const stats = client.stats();
+              console.error("\n--- Partial Mock Client Stats ---");
+              console.error(
+                `metrics=${stats.metricsRequests} (strWidth=${stats.strWidthRequests}, metricInfo=${stats.metricInfoRequests}), ` +
+                  `frames=${stats.framesReceived}, totalOps=${stats.totalOps}, lastFrameOps=${stats.lastFrameOps}`,
+              );
+            }
+            const serverStderr = server.stderrSnapshot(4000).trim();
+            if (serverStderr) {
+              console.error("\n--- Partial server stderr ---");
+              console.error(serverStderr);
+            }
+          })();
+          return timeoutCleanup;
+        },
+        `R benchmark timeout after ${benchTimeoutMs}ms`,
+      );
+    } catch (error) {
+      if (timeoutTriggered && timeoutCleanup) {
+        await settleTimeoutPath(timeoutCleanup, [
+          stdoutCollector.done,
+          stderrCollector.done,
+        ]);
+      }
+      throw error;
+    }
+    await Promise.all([stdoutCollector.done, stderrCollector.done]);
+    const stdout = stdoutCollector.snapshot();
+    const stderr = stderrCollector.snapshot();
+
+    if (!rStatus.success) {
+      console.error(`R process exited with code ${rStatus.code}`);
+      if (stderr.trim()) console.error(stderr.trim());
+      throw new Error(`R process failed with code ${rStatus.code}`);
+    }
+
+    if (stderr.trim()) {
+      console.log("\n--- R stderr ---");
+      console.log(stderr.trim());
+    }
+
+    console.log("\n--- R output ---");
+    console.log(stdout.trim());
+
+    // Client stats
+    if (client) {
+      const stats = client.stats();
+      console.log("\n=== Mock Client Stats ===");
+      console.log(
+        `  Metrics requests: ${stats.metricsRequests} (strWidth: ${stats.strWidthRequests}, metricInfo: ${stats.metricInfoRequests})`,
+      );
+      console.log(`  Frames received:  ${stats.framesReceived}`);
+      console.log(`  Total ops:        ${stats.totalOps}`);
+    }
+  } finally {
+    if (client) client.close();
+    await server.shutdown();
+    server.cleanup();
+  }
+
+  console.log("\n==> Done.");
+}
+
+if (import.meta.main) {
+  await main();
+}

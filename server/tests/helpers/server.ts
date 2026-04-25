@@ -169,6 +169,33 @@ export class TestServer {
     this.pid = this.#process.pid;
   }
 
+  /**
+   * Snapshot of server stderr captured so far (drained in background).
+   * When maxChars is set, materialize only that tail to avoid large joins.
+   */
+  stderrSnapshot(maxChars?: number): string {
+    if (maxChars === undefined) {
+      return this.#stderrBuf.join("");
+    }
+    if (maxChars <= 0 || this.#stderrBuf.length === 0) {
+      return "";
+    }
+
+    const tail: string[] = [];
+    let remaining = maxChars;
+    for (let i = this.#stderrBuf.length - 1; i >= 0 && remaining > 0; i--) {
+      const chunk = this.#stderrBuf[i];
+      if (chunk.length <= remaining) {
+        tail.push(chunk);
+        remaining -= chunk.length;
+      } else {
+        tail.push(chunk.slice(chunk.length - remaining));
+        remaining = 0;
+      }
+    }
+    return tail.reverse().join("");
+  }
+
   get httpBaseUrl(): string {
     return `http://127.0.0.1:${this.httpPort}`;
   }
