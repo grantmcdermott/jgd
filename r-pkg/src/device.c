@@ -44,7 +44,26 @@ static int jgd_parse_resize_message(cJSON *msg, double *w, double *h, int *plot_
 
 static long long jgd_now_ms(void) {
 #ifdef _WIN32
-    return (long long)GetTickCount64();
+    typedef ULONGLONG(WINAPI *jgd_get_tick_count64_fn)(void);
+    static jgd_get_tick_count64_fn get_tick_count64 = NULL;
+    static int resolved = 0;
+
+    if (!resolved) {
+        HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+        if (kernel32) {
+            get_tick_count64 = (jgd_get_tick_count64_fn)GetProcAddress(
+                kernel32,
+                "GetTickCount64"
+            );
+        }
+        resolved = 1;
+    }
+
+    if (get_tick_count64) {
+        return (long long)get_tick_count64();
+    }
+
+    return (long long)GetTickCount();
 #else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
