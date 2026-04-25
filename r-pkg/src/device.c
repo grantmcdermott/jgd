@@ -76,12 +76,31 @@ static long long jgd_now_ms(void) {
     }
 
     {
-        FILETIME ft;
-        ULARGE_INTEGER ticks100ns;
-        GetSystemTimeAsFileTime(&ft);
-        ticks100ns.LowPart = ft.dwLowDateTime;
-        ticks100ns.HighPart = ft.dwHighDateTime;
-        return (long long)(ticks100ns.QuadPart / 10000ULL);
+        static volatile LONGLONG tick64 = -1;
+        DWORD tick32 = GetTickCount();
+
+        for (;;) {
+            LONGLONG prev = tick64;
+            ULONGLONG next;
+
+            if (prev < 0) {
+                next = (ULONGLONG)tick32;
+            } else {
+                DWORD prev_low = (DWORD)(prev & 0xFFFFFFFFULL);
+                ULONGLONG base = ((ULONGLONG)prev) & 0xFFFFFFFF00000000ULL;
+                next = base | (ULONGLONG)tick32;
+                if (tick32 < prev_low) {
+                    next += 0x100000000ULL;
+                }
+                if (next < (ULONGLONG)prev) {
+                    next = (ULONGLONG)prev;
+                }
+            }
+
+            if (InterlockedCompareExchange64(&tick64, (LONGLONG)next, prev) == prev) {
+                return (long long)next;
+            }
+        }
     }
 #else
     struct timespec ts;
