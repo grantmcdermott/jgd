@@ -11,6 +11,22 @@
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+
+typedef ULONGLONG(WINAPI *jgd_get_tick_count64_fn)(void);
+static INIT_ONCE jgd_tick64_once = INIT_ONCE_STATIC_INIT;
+static jgd_get_tick_count64_fn jgd_get_tick_count64_cached = NULL;
+
+static BOOL CALLBACK jgd_init_get_tick_count64(PINIT_ONCE init_once, PVOID param, PVOID *ctx) {
+    (void)init_once;
+    (void)param;
+    (void)ctx;
+    HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+    if (kernel32) {
+        jgd_get_tick_count64_cached =
+            (jgd_get_tick_count64_fn)GetProcAddress(kernel32, "GetTickCount64");
+    }
+    return TRUE;
+}
 #else
 #include <R_ext/eventloop.h>
 #endif
@@ -45,19 +61,9 @@ static int jgd_parse_resize_message(cJSON *msg, double *w, double *h, int *plot_
 
 static long long jgd_now_ms(void) {
 #ifdef _WIN32
-    typedef ULONGLONG(WINAPI *jgd_get_tick_count64_fn)(void);
-    static int tick64_resolved = 0;
-    static jgd_get_tick_count64_fn get_tick_count64 = NULL;
-    if (!tick64_resolved) {
-        HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
-        if (kernel32) {
-            get_tick_count64 =
-                (jgd_get_tick_count64_fn)GetProcAddress(kernel32, "GetTickCount64");
-        }
-        tick64_resolved = 1;
-    }
-    if (get_tick_count64) {
-        return (long long)get_tick_count64();
+    InitOnceExecuteOnce(&jgd_tick64_once, jgd_init_get_tick_count64, NULL, NULL);
+    if (jgd_get_tick_count64_cached) {
+        return (long long)jgd_get_tick_count64_cached();
     }
 
     {
@@ -80,6 +86,8 @@ static long long jgd_now_ms(void) {
         }
     }
 
+    /* Last-resort fallback for old Windows toolchains/environments.
+       Known limitation: GetTickCount wraps every ~49.7 days (32-bit). */
     return (long long)GetTickCount();
 #else
     struct timespec ts;
