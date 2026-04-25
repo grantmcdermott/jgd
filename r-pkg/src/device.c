@@ -103,9 +103,12 @@ static void jgd_read_welcome(jgd_state_t *st) {
     for (;;) {
         long long now_ms = jgd_now_ms();
         long long remaining_ll = deadline_ms - now_ms;
-        /* Guard wrap/inconsistency in fallback clocks: this wait loop should
-           never observe a remaining time greater than the original timeout. */
-        if (remaining_ll <= 0 || remaining_ll > (long long)welcome_total_timeout_ms) return;
+        if (remaining_ll <= 0) return;
+        /* Guard wrap/inconsistency in fallback clocks without forcing
+           an early timeout; cap waits to the original timeout window. */
+        if (remaining_ll > (long long)welcome_total_timeout_ms) {
+            remaining_ll = (long long)welcome_total_timeout_ms;
+        }
         int remaining_ms = (int)remaining_ll;
 
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), remaining_ms);
