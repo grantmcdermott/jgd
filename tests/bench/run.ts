@@ -58,6 +58,8 @@ function createStreamCollector(stream: ReadableStream<Uint8Array> | null) {
       text += decoder.decode();
     } catch {
       // Best effort collection only.
+    } finally {
+      reader.releaseLock();
     }
   })();
   return {
@@ -69,7 +71,7 @@ function createStreamCollector(stream: ReadableStream<Uint8Array> | null) {
 async function waitUpTo<T>(promise: Promise<T>, waitMs: number): Promise<void> {
   let timeoutId: number | undefined;
   await Promise.race([
-    promise.then(() => undefined),
+    promise.then(() => undefined).catch(() => undefined),
     new Promise<void>((resolve) => {
       timeoutId = setTimeout(resolve, waitMs);
     }),
