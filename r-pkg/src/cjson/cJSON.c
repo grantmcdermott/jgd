@@ -62,10 +62,8 @@
 #include "cJSON.h"
 
 /* define our own boolean type */
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wkeyword-macro"
-#endif
+/* In C23, true/false are language keywords and must not be macro-defined. */
+#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 202311L)
 #ifdef true
 #undef true
 #endif
@@ -75,8 +73,6 @@
 #undef false
 #endif
 #define false ((cJSON_bool)0)
-#if defined(__clang__)
-#pragma clang diagnostic pop
 #endif
 
 /* define isnan and isinf for ANSI C, if in C99 or above, isnan and isinf has been defined in math.h */
