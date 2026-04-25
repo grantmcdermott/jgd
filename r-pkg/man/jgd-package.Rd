@@ -5,7 +5,7 @@
 \alias{jgd-package}
 \title{jgd: JSON Graphics Device}
 \description{
-A graphics device that translates R plotting operations into JSON and streams them over a local connection to an external renderer. The device acts as a pure recorder with no rendering dependencies; all display occurs in the client (e.g. a VS Code extension or a web browser). Official display frontends are available from the project homepage.
+A graphics device that translates R plotting operations into JSON and streams them over a local connection to an external display application. The device acts as a pure recorder with no rendering dependencies; all rendering occurs in that application (e.g. a 'VS Code' extension or a web browser). Official display applications are available from the project homepage.
 }
 \seealso{
 Useful links:
