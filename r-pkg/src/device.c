@@ -102,8 +102,11 @@ static void jgd_read_welcome(jgd_state_t *st) {
     const long long deadline_ms = jgd_now_ms() + welcome_total_timeout_ms;
     for (;;) {
         long long now_ms = jgd_now_ms();
-        int remaining_ms = (int)(deadline_ms - now_ms);
-        if (remaining_ms <= 0) return;
+        long long remaining_ll = deadline_ms - now_ms;
+        /* Guard wrap/inconsistency in fallback clocks: this wait loop should
+           never observe a remaining time greater than the original timeout. */
+        if (remaining_ll <= 0 || remaining_ll > (long long)welcome_total_timeout_ms) return;
+        int remaining_ms = (int)remaining_ll;
 
         int n = transport_recv_line(&st->transport, buf, sizeof(buf), remaining_ms);
         if (n < 0) {
