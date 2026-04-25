@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <limits.h>
 #include <unistd.h>
 
 static int jgd_parse_resize_message(cJSON *msg, double *w, double *h, int *plot_index) {
@@ -60,11 +61,28 @@ static long long jgd_now_ms(void) {
         if (QueryPerformanceFrequency(&freq) &&
             freq.QuadPart > 0 &&
             QueryPerformanceCounter(&counter)) {
-            return (long long)((counter.QuadPart * 1000LL) / freq.QuadPart);
+            long long seconds = (long long)(counter.QuadPart / freq.QuadPart);
+            if (seconds > LLONG_MAX / 1000LL) {
+                return LLONG_MAX;
+            }
+            long long whole_ms = seconds * 1000LL;
+            long long rem = (long long)(counter.QuadPart % freq.QuadPart);
+            long long frac_ms = (long long)(((long double)rem * 1000.0L) / (long double)freq.QuadPart);
+            if (whole_ms > LLONG_MAX - frac_ms) {
+                return LLONG_MAX;
+            }
+            return whole_ms + frac_ms;
         }
     }
 
-    return (long long)GetTickCount();
+    {
+        FILETIME ft;
+        ULARGE_INTEGER ticks100ns;
+        GetSystemTimeAsFileTime(&ft);
+        ticks100ns.LowPart = ft.dwLowDateTime;
+        ticks100ns.HighPart = ft.dwHighDateTime;
+        return (long long)(ticks100ns.QuadPart / 10000ULL);
+    }
 #else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
