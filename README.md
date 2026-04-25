@@ -63,7 +63,7 @@ Alternatively, you can also build and install the extension from source[^1]:
 # git clone https://github.com/grantmcdermott/jgd.git ## clone first
 cd vscode-ext && npm install && npm run compile \
   && npx @vscode/vsce@3.7.1 package \
-  && code --install-extension jgd-vscode-0.1.0.vsix \
+  && code --install-extension jgd-vscode-*.vsix \
   && cd ..
 ```
 
