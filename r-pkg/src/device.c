@@ -80,7 +80,7 @@ static long long jgd_now_ms(void) {
         DWORD tick32 = GetTickCount();
 
         for (;;) {
-            LONGLONG prev = tick64;
+            LONGLONG prev = InterlockedCompareExchange64(&tick64, 0, 0);
             ULONGLONG next;
 
             if (prev < 0) {
@@ -89,6 +89,8 @@ static long long jgd_now_ms(void) {
                 DWORD prev_low = (DWORD)(prev & 0xFFFFFFFFULL);
                 ULONGLONG base = ((ULONGLONG)prev) & 0xFFFFFFFF00000000ULL;
                 next = base | (ULONGLONG)tick32;
+                /* This path is a last-resort fallback (after GetTickCount64 and QPC).
+                   It assumes calls are frequent enough to observe at most one wrap. */
                 if (tick32 < prev_low) {
                     next += 0x100000000ULL;
                 }
