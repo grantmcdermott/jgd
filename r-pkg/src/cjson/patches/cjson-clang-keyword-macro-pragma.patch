@@ -1,8 +1,8 @@
-Avoid redefining true/false macros when compiling as C23 or newer.
+Avoid redefining true/false macros when compiling as C2x/C23 or newer.
 
-In C23, true/false are language keywords and macro-redefining them
+In C2x/C23, true/false are language keywords and macro-redefining them
 triggers compiler diagnostics. Skip cJSON's legacy true/false macro
-definitions when __STDC_VERSION__ indicates C23+ so no diagnostic
+definitions when __STDC_VERSION__ indicates C2x+ so no diagnostic
 suppression pragmas are needed.
 
 --- a/cJSON.c
@@ -11,8 +11,8 @@ suppression pragmas are needed.
  #include "cJSON.h"
  
  /* define our own boolean type */
-+/* In C23, true/false are language keywords and must not be macro-defined. */
-+#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 202311L)
++/* In C2x/C23, true/false are language keywords and must not be macro-defined. */
++#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 202000L)
  #ifdef true
  #undef true
  #endif

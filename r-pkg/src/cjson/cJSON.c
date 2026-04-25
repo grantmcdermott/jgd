@@ -62,8 +62,8 @@
 #include "cJSON.h"
 
 /* define our own boolean type */
-/* In C23, true/false are language keywords and must not be macro-defined. */
-#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 202311L)
+/* In C2x/C23, true/false are language keywords and must not be macro-defined. */
+#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 202000L)
 #ifdef true
 #undef true
 #endif
