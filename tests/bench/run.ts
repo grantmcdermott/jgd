@@ -133,7 +133,12 @@ async function main() {
     const killRProcess = async (): Promise<boolean> => {
       let killRequested = false;
       try {
-        rProc.kill();
+        // Use SIGKILL on POSIX for fail-fast timeout cleanup.
+        if (Deno.build.os === "windows") {
+          rProc.kill();
+        } else {
+          rProc.kill("SIGKILL");
+        }
         killRequested = true;
       } catch {
         // Continue to platform-specific hard kill below.
@@ -183,10 +188,10 @@ async function main() {
                   `frames=${stats.framesReceived}, totalOps=${stats.totalOps}, lastFrameOps=${stats.lastFrameOps}`,
               );
             }
-            const serverStderr = server.stderrSnapshot().trim();
+            const serverStderr = server.stderrSnapshot(4000).trim();
             if (serverStderr) {
               console.error("\n--- Partial server stderr ---");
-              console.error(serverStderr.slice(-4000));
+              console.error(serverStderr);
             }
           })();
           return timeoutCleanup;

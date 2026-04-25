@@ -9,9 +9,11 @@ export function raceWithTimeout<T>(
     timeoutId = setTimeout(() => {
       try {
         const timeoutResult = onTimeout();
-        void Promise.resolve(timeoutResult).catch(() => {});
-      } catch {
-        // Best effort only.
+        void Promise.resolve(timeoutResult).catch((error) => {
+          console.error("raceWithTimeout onTimeout failed:", error);
+        });
+      } catch (error) {
+        console.error("raceWithTimeout onTimeout failed:", error);
       }
       reject(new Error(message));
     }, timeoutMs);
