@@ -1,0 +1,5 @@
+The jgd package bundles the cJSON library in src/cjson/ for JSON
+serialisation. cJSON is copyright (c) 2009-2017 Dave Gamble and
+cJSON contributors, distributed under the MIT license. The full
+upstream notice is preserved in the header of src/cjson/cJSON.c and
+src/cjson/cJSON.h. Upstream source: https://github.com/DaveGamble/cJSON

@@ -1,0 +1,17 @@
+Add a short header in vendored cJSON pointing to local patch files.
+
+This keeps the vendored source self-describing while ensuring the
+modification is tracked like the other local cJSON patches.
+
+--- a/cJSON.c
++++ b/cJSON.c
+@@ -21,6 +21,9 @@
+ 
+ /* cJSON */
+ /* JSON parser in C. */
++/* Local modifications applied by dev/vendor-cjson.sh.
++ * See src/cjson/patches/ for the exact unified diffs.
++ */
+ 
+ /* disable warnings about old C89 functions in MSVC */
+ #if !defined(_CRT_SECURE_NO_DEPRECATE) && defined(_MSC_VER)

@@ -22,8 +22,71 @@ an experimental, low-level API for injecting renderer-specific properties
 (e.g. blend modes, shadows, opacity) that go beyond R's standard graphics
 parameters.
 }
+\section{Supported extension fields}{
+
+The Deno reference server and VS Code renderer currently support:\tabular{lll}{
+   Field \tab Canvas2D property \tab Example \cr
+   \code{blendMode} \tab \code{globalCompositeOperation} \tab \code{"multiply"} \cr
+   \code{opacity} \tab \code{globalAlpha} \tab \code{0.5} \cr
+   \code{shadow.blur} \tab \code{shadowBlur} \tab \code{10} \cr
+   \code{shadow.color} \tab \code{shadowColor} \tab \code{"rgba(0,0,0,0.5)"} \cr
+   \code{shadow.offsetX} \tab \code{shadowOffsetX} \tab \code{5} \cr
+   \code{shadow.offsetY} \tab \code{shadowOffsetY} \tab \code{5} \cr
+   \code{filter} \tab \code{filter} \tab \code{"blur(3px)"} \cr
+}
+
+
+Custom renderers may support additional fields. Unknown fields are
+silently ignored, so extensions are forward-compatible.
+}
+
+\section{Design for extension packages}{
+
+\code{jgd_ext()} is intentionally low-level — it accepts a raw JSON string.
+Higher-level packages built on top of jgd can provide user-friendly
+wrappers with proper argument checking, e.g.:
+
+\if{html}{\out{<div class="sourceCode r">}}\preformatted{jgd_shadow = function(blur = 0, color = "black",
+                      offsetX = 0, offsetY = 0) \{
+  jgd_ext(jsonlite::toJSON(
+    list(shadow = list(blur = blur, color = color,
+                       offsetX = offsetX, offsetY = offsetY)),
+    auto_unbox = TRUE
+  ))
+\}
+}\if{html}{\out{</div>}}
+
+jgd itself has no dependency on jsonlite or any serialization library;
+upstream packages choose their own.
+}
+
 \section{Lifecycle}{
 
 \strong{Experimental.} This API may change in future versions.
 }
 
+\examples{
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
+jgd()
+
+# Drop shadow (scoped -- automatically cleared after the block)
+with_jgd_ext(
+  '{"shadow":{"blur":15,"color":"rgba(0,0,0,0.5)","offsetX":5,"offsetY":5}}',
+  plot(1:10, pch = 19, cex = 3, col = "steelblue")
+)
+
+# Semi-transparent overlay
+with_jgd_ext('{"opacity":0.3}', {
+  plot(1:10, pch = 19, cex = 5, col = "red")
+})
+
+# Manual set/clear
+jgd_ext('{"blendMode":"multiply"}')
+plot(1:10)
+jgd_ext(NULL)
+\dontshow{\}) # examplesIf}
+}
+\seealso{
+\code{\link[=with_jgd_ext]{with_jgd_ext()}}, \code{\link[=jgd_frame_ext]{jgd_frame_ext()}}, \code{\link[=jgd_begin_group]{jgd_begin_group()}},
+\link{jgd_spec}
+}

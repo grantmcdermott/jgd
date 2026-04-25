@@ -22,9 +22,8 @@
 
 /* cJSON */
 /* JSON parser in C. */
-/* Local modifications (applied automatically by dev/vendor-cjson.sh):
- * - All sprintf calls replaced with snprintf for R CRAN compliance.
- *   See src/cjson/patches/ for details.
+/* Local modifications applied by dev/vendor-cjson.sh.
+ * See src/cjson/patches/ for the exact unified diffs.
  */
 
 /* disable warnings about old C89 functions in MSVC */
@@ -34,11 +33,6 @@
 
 #ifdef __GNUC__
 #pragma GCC visibility push(default)
-#endif
-#if defined(_MSC_VER)
-#pragma warning (push)
-/* disable warning about single line comments in system headers */
-#pragma warning (disable : 4001)
 #endif
 
 #include <string.h>
@@ -52,10 +46,6 @@
 #ifdef ENABLE_LOCALES
 #include <locale.h>
 #endif
-
-#if defined(_MSC_VER)
-#pragma warning (pop)
-#endif
 #ifdef __GNUC__
 #pragma GCC visibility pop
 #endif
@@ -63,6 +53,8 @@
 #include "cJSON.h"
 
 /* define our own boolean type */
+/* In C2x/C23, true/false are language keywords and must not be macro-defined. */
+#if !defined(__STDC_VERSION__) || (__STDC_VERSION__ < 202000L)
 #ifdef true
 #undef true
 #endif
@@ -72,6 +64,7 @@
 #undef false
 #endif
 #define false ((cJSON_bool)0)
+#endif
 
 /* define isnan and isinf for ANSI C, if in C99 or above, isnan and isinf has been defined in math.h */
 #ifndef isinf
@@ -2052,20 +2045,11 @@ CJSON_PUBLIC(cJSON_bool) cJSON_AddItemToArray(cJSON *array, cJSON *item)
     return add_item_to_array(array, item);
 }
 
-#if defined(__clang__) || (defined(__GNUC__)  && ((__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ > 5))))
-    #pragma GCC diagnostic push
-#endif
-#ifdef __GNUC__
-#pragma GCC diagnostic ignored "-Wcast-qual"
-#endif
 /* helper function to cast away const */
 static void* cast_away_const(const void* string)
 {
     return (void*)string;
 }
-#if defined(__clang__) || (defined(__GNUC__)  && ((__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ > 5))))
-    #pragma GCC diagnostic pop
-#endif
 
 
 static cJSON_bool add_item_to_object(cJSON * const object, const char * const string, cJSON * const item, const internal_hooks * const hooks, const cJSON_bool constant_key)

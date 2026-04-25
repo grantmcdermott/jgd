@@ -25,22 +25,17 @@ gh api "repos/${REPO}/contents/cJSON.h?ref=${TAG}" -q '.content' | base64 -d > "
 
 echo "$TAG" > "${DEST}/VERSION"
 
-# Apply local patches required for R CRAN compliance
+# Apply local patches required for R CRAN compliance. See patches/*.patch
+# for the exact modifications (e.g. sprintf -> snprintf, clang -Wkeyword-macro
+# pragmas around true/false macros).
 if [ -d "$PATCHES_DIR" ]; then
   for p in "$PATCHES_DIR"/*.patch; do
     [ -f "$p" ] || continue
     echo "Applying patch: $(basename "$p")"
     patch -d "$DEST" -p1 < "$p"
   done
-
-  # Insert modification notice after the license header.
-  # Uses a temp file instead of sed -i for macOS/BSD compatibility.
-  CJSON_FILE="${DEST}/cJSON.c"
-  sed '/^\/\* JSON parser in C\. \*\/$/a\
-/* Local modifications (applied automatically by dev/vendor-cjson.sh):\
- * - All sprintf calls replaced with snprintf for R CRAN compliance.\
- *   See src/cjson/patches/ for details.\
- */' "$CJSON_FILE" > "${CJSON_FILE}.tmp" && mv "${CJSON_FILE}.tmp" "$CJSON_FILE"
+  # GNU patch leaves .orig backups next to patched files; remove them.
+  find "$DEST" -maxdepth 1 -name '*.orig' -delete
 fi
 
 echo "Vendored cJSON ${TAG} into ${DEST}"
