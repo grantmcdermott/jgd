@@ -45,22 +45,23 @@ static int jgd_parse_resize_message(cJSON *msg, double *w, double *h, int *plot_
 static long long jgd_now_ms(void) {
 #ifdef _WIN32
     typedef ULONGLONG(WINAPI *jgd_get_tick_count64_fn)(void);
-    static jgd_get_tick_count64_fn get_tick_count64 = NULL;
-    static int resolved = 0;
-
-    if (!resolved) {
-        HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
-        if (kernel32) {
-            get_tick_count64 = (jgd_get_tick_count64_fn)GetProcAddress(
-                kernel32,
-                "GetTickCount64"
-            );
+    HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+    if (kernel32) {
+        jgd_get_tick_count64_fn get_tick_count64 =
+            (jgd_get_tick_count64_fn)GetProcAddress(kernel32, "GetTickCount64");
+        if (get_tick_count64) {
+            return (long long)get_tick_count64();
         }
-        resolved = 1;
     }
 
-    if (get_tick_count64) {
-        return (long long)get_tick_count64();
+    {
+        LARGE_INTEGER freq;
+        LARGE_INTEGER counter;
+        if (QueryPerformanceFrequency(&freq) &&
+            freq.QuadPart > 0 &&
+            QueryPerformanceCounter(&counter)) {
+            return (long long)((counter.QuadPart * 1000LL) / freq.QuadPart);
+        }
     }
 
     return (long long)GetTickCount();
