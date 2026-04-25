@@ -1,2 +1,4 @@
 #!/bin/sh
-[ ! -d src ] || find src -type f \( -name '*.o' -o -name '*.so' -o -name '*.dll' \) -exec rm -f {} +
+if [ -d src ]; then
+  find src -type f \( -name '*.o' -o -name '*.so' -o -name '*.dll' \) -exec rm -f {} +
+fi

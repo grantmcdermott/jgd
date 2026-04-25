@@ -1,0 +1,53 @@
+Remove diagnostic-suppression pragmas to avoid CRAN pragma NOTE.
+
+This patch removes pragma-based warning suppression blocks in cJSON.c:
+- MSVC warning disable/push/pop around includes
+- GCC diagnostic push/ignored/pop around cast_away_const
+
+The functional code remains unchanged.
+
+--- a/cJSON.c
++++ b/cJSON.c
+@@ -34,11 +34,6 @@
+ #ifdef __GNUC__
+ #pragma GCC visibility push(default)
+ #endif
+-#if defined(_MSC_VER)
+-#pragma warning (push)
+-/* disable warning about single line comments in system headers */
+-#pragma warning (disable : 4001)
+-#endif
+ 
+ #include <string.h>
+ #include <stdio.h>
+@@ -52,9 +47,5 @@
+ #ifdef ENABLE_LOCALES
+ #include <locale.h>
+ #endif
+-
+-#if defined(_MSC_VER)
+-#pragma warning (pop)
+-#endif
+ #ifdef __GNUC__
+ #pragma GCC visibility pop
+@@ -2047,20 +2039,11 @@
+     return add_item_to_array(array, item);
+ }
+ 
+-#if defined(__clang__) || (defined(__GNUC__)  && ((__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ > 5))))
+-    #pragma GCC diagnostic push
+-#endif
+-#ifdef __GNUC__
+-#pragma GCC diagnostic ignored "-Wcast-qual"
+-#endif
+ /* helper function to cast away const */
+ static void* cast_away_const(const void* string)
+ {
+     return (void*)string;
+ }
+-#if defined(__clang__) || (defined(__GNUC__)  && ((__GNUC__ > 4) || ((__GNUC__ == 4) && (__GNUC_MINOR__ > 5))))
+-    #pragma GCC diagnostic pop
+-#endif
+ 
+ 
+ static cJSON_bool add_item_to_object(cJSON * const object, const char * const string, cJSON * const item, const internal_hooks * const hooks, const cJSON_bool constant_key)
