@@ -38,7 +38,10 @@ jobs:
 
       - uses: r-lib/actions/setup-r@v2
         with:
-          r-version: release
+          # Pinned while jgd is not yet compatible with R 4.6.0.
+          # Keep this on 4.5.x in this PR; R 4.6 support will be handled
+          # in a dedicated follow-up PR, then switch back to "release".
+          r-version: "4.5"
           use-public-rspm: true
 
       - uses: r-lib/actions/setup-r-dependencies@v2
@@ -48,7 +51,13 @@ jobs:
 
       - uses: denoland/setup-deno@v2
         with:
-          deno-version: v2.x
+          # Pinned to 2.7.11 pending a regression introduced in 2.7.12:
+          # on Windows, a node:net server on a named pipe stops firing
+          # 'connection' events after the first client disconnects, so
+          # the second jgd() call hangs its WriteFile waiting for a
+          # server-side reader that Deno never installs. Tracking in
+          # denoland/deno#33366. Revisit once fixed upstream.
+          deno-version: v2.7.11
 
       - name: Install jgd R package
         run: R CMD INSTALL r-pkg
@@ -63,4 +72,3 @@ jobs:
       - name: Run benchmarks
         run: deno task bench
         working-directory: tests
-        continue-on-error: true

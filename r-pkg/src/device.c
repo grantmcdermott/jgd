@@ -18,29 +18,90 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <time.h>
 #include <unistd.h>
+
+static int jgd_parse_resize_message(cJSON *msg, double *w, double *h, int *plot_index) {
+    cJSON *type = cJSON_GetObjectItem(msg, "type");
+    if (!cJSON_IsString(type) || strcmp(type->valuestring, "resize") != 0) {
+        return 0;
+    }
+    cJSON *wj = cJSON_GetObjectItem(msg, "width");
+    cJSON *hj = cJSON_GetObjectItem(msg, "height");
+    if (!cJSON_IsNumber(wj) || !cJSON_IsNumber(hj) ||
+        wj->valuedouble <= 0 || hj->valuedouble <= 0 ||
+        !R_FINITE(wj->valuedouble) || !R_FINITE(hj->valuedouble)) {
+        return 0;
+    }
+    *w = wj->valuedouble;
+    *h = hj->valuedouble;
+    if (plot_index) {
+        cJSON *pi = cJSON_GetObjectItem(msg, "plotIndex");
+        *plot_index = cJSON_IsNumber(pi) ? (int)pi->valuedouble : -1;
+    }
+    return 1;
+}
+
+static long long jgd_now_ms(void) {
+#ifdef _WIN32
+    return (long long)GetTickCount64();
+#else
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (long long)ts.tv_sec * 1000LL + (long long)(ts.tv_nsec / 1000000L);
+#endif
+}
 
 /* Read server_info welcome message after connecting.
    The server defers the welcome until it receives R's first message,
-   so we send a ping to trigger it, then read back with a short timeout. */
+   so we send a ping to trigger it, then read back within a bounded timeout. */
 static void jgd_read_welcome(jgd_state_t *st) {
     const char *ping = "{\"type\":\"ping\"}";
     if (transport_send(&st->transport, ping, strlen(ping)) != 0)
         return;
 
     /* Read up to a few lines: the server sends server_info after receiving
-       the ping, but message ordering may vary across implementations. */
+       the ping, but message ordering may vary across implementations. Use a
+       single overall deadline so open-time waits stay bounded even if
+       server_info is delayed or absent. */
     char buf[2048];
-    for (int attempt = 0; attempt < 3; attempt++) {
-        int n = transport_recv_line(&st->transport, buf, sizeof(buf), 200);
-        if (n < 0) return;   /* timeout or error — no point retrying */
+    const int welcome_total_timeout_ms = 2500;
+    const long long deadline_ms = jgd_now_ms() + welcome_total_timeout_ms;
+    for (;;) {
+        long long now_ms = jgd_now_ms();
+        int remaining_ms = (int)(deadline_ms - now_ms);
+        if (remaining_ms <= 0) return;
+
+        int n = transport_recv_line(&st->transport, buf, sizeof(buf), remaining_ms);
+        if (n < 0) {
+            if (!st->transport.connected) return; /* hard error */
+            continue; /* timeout while waiting for deferred welcome */
+        }
         if (n == 0) continue; /* empty line — skip */
 
         cJSON *msg = cJSON_Parse(buf);
-        if (!msg) continue;
+        if (!msg) {
+            double w = 0.0, h = 0.0;
+            if (jgd_try_parse_resize(buf, &w, &h, NULL)) {
+                st->pending_w = w;
+                st->pending_h = h;
+                /* Welcome-time resize must target current page only.
+                   Ignore plotIndex here to avoid stale historical state. */
+                st->pending_plot_index = -1;
+            }
+            continue;
+        }
 
         cJSON *type = cJSON_GetObjectItem(msg, "type");
         if (!cJSON_IsString(type) || strcmp(type->valuestring, "server_info") != 0) {
+            double w = 0.0, h = 0.0;
+            if (jgd_parse_resize_message(msg, &w, &h, NULL)) {
+                st->pending_w = w;
+                st->pending_h = h;
+                /* Welcome-time resize must target current page only.
+                   Ignore plotIndex here to avoid stale historical state. */
+                st->pending_plot_index = -1;
+            }
             cJSON_Delete(msg);
             continue;
         }
@@ -149,9 +210,19 @@ SEXP C_jgd(SEXP s_width, SEXP s_height, SEXP s_dpi, SEXP s_socket) {
                    "Plots will be recorded but not displayed until connection is established.");
     }
 
+    /* On Windows named pipes, avoid a blocking welcome read during device
+       open because timed-out overlapped reads can destabilize startup in CI.
+       Server info is fetched lazily on demand by C_jgd_server_info. */
+#ifdef _WIN32
+    if (st->transport.connected &&
+        st->transport.pipe_handle == INVALID_HANDLE_VALUE) {
+        jgd_read_welcome(st);
+    }
+#else
     if (st->transport.connected) {
         jgd_read_welcome(st);
     }
+#endif
 
     pDevDesc dd = (pDevDesc)calloc(1, sizeof(DevDesc));
     if (!dd) {
@@ -860,7 +931,14 @@ SEXP C_jgd_server_info(SEXP s_path) {
 
     if (have_device) {
         st = (jgd_state_t *)gdd->dev->deviceSpecific;
-        if (!st || !st->server_info_received) {
+        if (!st) {
+            have_device = 0;
+        } else if (!st->server_info_received && st->transport.connected) {
+            /* Welcome is deferred on some transports/runtimes, so retry
+               once on demand before falling back to discovery.json. */
+            jgd_read_welcome(st);
+        }
+        if (have_device && !st->server_info_received) {
             have_device = 0;
         }
     }
@@ -1030,25 +1108,7 @@ void jgd_remove_input_handler(jgd_state_t *st) {
 int jgd_try_parse_resize(const char *buf, double *w, double *h, int *plot_index) {
     cJSON *msg = cJSON_Parse(buf);
     if (!msg) return 0;
-    cJSON *type = cJSON_GetObjectItem(msg, "type");
-    if (!cJSON_IsString(type) || strcmp(type->valuestring, "resize") != 0) {
-        cJSON_Delete(msg);
-        return 0;
-    }
-    cJSON *wj = cJSON_GetObjectItem(msg, "width");
-    cJSON *hj = cJSON_GetObjectItem(msg, "height");
-    int ok = 0;
-    if (cJSON_IsNumber(wj) && cJSON_IsNumber(hj) &&
-        wj->valuedouble > 0 && hj->valuedouble > 0 &&
-        R_FINITE(wj->valuedouble) && R_FINITE(hj->valuedouble)) {
-        *w = wj->valuedouble;
-        *h = hj->valuedouble;
-        ok = 1;
-    }
-    if (plot_index) {
-        cJSON *pi = cJSON_GetObjectItem(msg, "plotIndex");
-        *plot_index = cJSON_IsNumber(pi) ? (int)pi->valuedouble : -1;
-    }
+    int ok = jgd_parse_resize_message(msg, w, h, plot_index);
     cJSON_Delete(msg);
     return ok;
 }
