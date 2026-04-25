@@ -46,13 +46,18 @@ static int jgd_parse_resize_message(cJSON *msg, double *w, double *h, int *plot_
 static long long jgd_now_ms(void) {
 #ifdef _WIN32
     typedef ULONGLONG(WINAPI *jgd_get_tick_count64_fn)(void);
-    HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
-    if (kernel32) {
-        jgd_get_tick_count64_fn get_tick_count64 =
-            (jgd_get_tick_count64_fn)GetProcAddress(kernel32, "GetTickCount64");
-        if (get_tick_count64) {
-            return (long long)get_tick_count64();
+    static int tick64_resolved = 0;
+    static jgd_get_tick_count64_fn get_tick_count64 = NULL;
+    if (!tick64_resolved) {
+        HMODULE kernel32 = GetModuleHandleA("kernel32.dll");
+        if (kernel32) {
+            get_tick_count64 =
+                (jgd_get_tick_count64_fn)GetProcAddress(kernel32, "GetTickCount64");
         }
+        tick64_resolved = 1;
+    }
+    if (get_tick_count64) {
+        return (long long)get_tick_count64();
     }
 
     {
@@ -75,35 +80,7 @@ static long long jgd_now_ms(void) {
         }
     }
 
-    {
-        static volatile LONGLONG tick64 = -1;
-        DWORD tick32 = GetTickCount();
-
-        for (;;) {
-            LONGLONG prev = InterlockedCompareExchange64(&tick64, 0, 0);
-            ULONGLONG next;
-
-            if (prev < 0) {
-                next = (ULONGLONG)tick32;
-            } else {
-                DWORD prev_low = (DWORD)(prev & 0xFFFFFFFFULL);
-                ULONGLONG base = ((ULONGLONG)prev) & 0xFFFFFFFF00000000ULL;
-                next = base | (ULONGLONG)tick32;
-                /* This path is a last-resort fallback (after GetTickCount64 and QPC).
-                   It assumes calls are frequent enough to observe at most one wrap. */
-                if (tick32 < prev_low) {
-                    next += 0x100000000ULL;
-                }
-                if (next < (ULONGLONG)prev) {
-                    next = (ULONGLONG)prev;
-                }
-            }
-
-            if (InterlockedCompareExchange64(&tick64, (LONGLONG)next, prev) == prev) {
-                return (long long)next;
-            }
-        }
-    }
+    return (long long)GetTickCount();
 #else
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
