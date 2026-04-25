@@ -143,7 +143,7 @@
 #' ```
 #'
 #' **frame** -- A complete or incremental set of drawing operations.
-#' See the \dQuote{Frame message} section for the full schema.
+#' See the Frame message section for the full schema.
 #'
 #' **metrics_request** -- Requests font metrics from the renderer.
 #'
@@ -265,7 +265,7 @@
 #'   same 0-based value previously sent as `plotNumber` when the
 #'   plot was created). It may diverge from the renderer's current
 #'   history array index after deletions or evictions. See also
-#'   \dQuote{Resize protocol} for the full resize flow.
+#'   the Resize protocol section for the full resize flow.
 #' - **`plotNumber`** (integer, optional): Absolute 0-based
 #'   sequence number for plots (e.g., 0 for the first, 1 for the
 #'   second). Present on all frames for the current plot (including
@@ -285,9 +285,9 @@
 #'   - **`width`**, **`height`**: Device dimensions in pixels.
 #'   - **`dpi`**: Dots per inch.
 #'   - **`bg`**: Background color as an RGBA string
-#'     (see \dQuote{Color format}).
+#'     (see the Color format section).
 #' - **`ops`** (array): Drawing operations
-#'   (see \dQuote{Drawing operations}).
+#'   (see the Drawing operations section).
 #'
 #' @section Color format:
 #'
@@ -350,10 +350,10 @@
 #'
 #' Each element of the `ops` array is a JSON object with an `"op"`
 #' field. Most drawing operations include a `"gc"` field (see
-#' \dQuote{Graphics context}). Exceptions are noted per operation.
+#' the Graphics context section). Exceptions are noted per operation.
 #'
 #' All coordinates are in device pixels with a top-left origin (see
-#' \dQuote{Coordinate system}).
+#' the Coordinate system section).
 #'
 #' **clip** -- Set the clipping rectangle. No `gc`.
 #'

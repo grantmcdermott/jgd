@@ -54,7 +54,7 @@ is useful for diagnosing resize/replay issues.
 }
 
 \examples{
-\dontrun{
+\dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 # Requires a running renderer (e.g., VS Code extension or Deno server).
 # See the "Displaying plots" section above.
 library(jgd)
@@ -63,5 +63,5 @@ plot(1:10)
 lines(1:10, col = "red", lwd = 3)
 hist(rnorm(1000), col = "steelblue")
 dev.off()
-}
+\dontshow{\}) # examplesIf}
 }

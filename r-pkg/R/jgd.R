@@ -17,7 +17,7 @@
 #' understands). To actually _display_ your plots with `jgd`, you'll need an
 #' appropriate frontend. We provide two official renderers, both available for
 #' install from the project repository:
-#' \url{https://github.com/grantmcdermott/jgd}.
+#' <https://github.com/grantmcdermott/jgd>.
 #'
 #' - **VS Code extension.** An integrated plot pane for VS Code.
 #' - **Deno server.** A standalone browser-based renderer.
@@ -25,7 +25,7 @@
 #' Users aren't limited to these two options. The `jgd` protocol is deliberately
 #' frontend-agnostic; you can render plots with any client that reads JSONL
 #' (JSON Lines). Again, please see the project repository for full documentation:
-#' \url{https://github.com/grantmcdermott/jgd}
+#' <https://github.com/grantmcdermott/jgd>
 #' 
 #' @section Debugging:
 #' Set `options(jgd.debug = TRUE)` before opening the device to enable
@@ -33,8 +33,7 @@
 #' details about `newPage`, `flush_frame`, and `poll_resize` events, which
 #' is useful for diagnosing resize/replay issues.
 #' @return Invisible `NULL`. The device is opened as a side effect.
-#' @examples
-#' \dontrun{
+#' @examplesIf interactive()
 #' # Requires a running renderer (e.g., VS Code extension or Deno server).
 #' # See the "Displaying plots" section above.
 #' library(jgd)
@@ -43,7 +42,6 @@
 #' lines(1:10, col = "red", lwd = 3)
 #' hist(rnorm(1000), col = "steelblue")
 #' dev.off()
-#' }
 #' @export
 jgd = function(
   width = 8,
@@ -161,16 +159,16 @@ jgd_discover = function() {
 #' @section Supported extension fields:
 #' The Deno reference server and VS Code renderer currently support:
 #'
-#' \tabular{lll}{
-#'   **Field** \tab **Canvas2D property** \tab **Example** \cr
-#'   `blendMode` \tab `globalCompositeOperation` \tab `"multiply"` \cr
-#'   `opacity` \tab `globalAlpha` \tab `0.5` \cr
-#'   `shadow.blur` \tab `shadowBlur` \tab `10` \cr
-#'   `shadow.color` \tab `shadowColor` \tab `"rgba(0,0,0,0.5)"` \cr
-#'   `shadow.offsetX` \tab `shadowOffsetX` \tab `5` \cr
-#'   `shadow.offsetY` \tab `shadowOffsetY` \tab `5` \cr
-#'   `filter` \tab `filter` \tab `"blur(3px)"` \cr
-#' }
+#'
+#' | Field | Canvas2D property | Example |
+#' |:--|:--|:--|
+#' | `blendMode` | `globalCompositeOperation` | `"multiply"` |
+#' | `opacity` | `globalAlpha` | `0.5` |
+#' | `shadow.blur` | `shadowBlur` | `10` |
+#' | `shadow.color` | `shadowColor` | `"rgba(0,0,0,0.5)"` |
+#' | `shadow.offsetX` | `shadowOffsetX` | `5` |
+#' | `shadow.offsetY` | `shadowOffsetY` | `5` |
+#' | `filter` | `filter` | `"blur(3px)"` |
 #'
 #' Custom renderers may support additional fields. Unknown fields are
 #' silently ignored, so extensions are forward-compatible.
@@ -180,7 +178,7 @@ jgd_discover = function() {
 #' Higher-level packages built on top of jgd can provide user-friendly
 #' wrappers with proper argument checking, e.g.:
 #'
-#' \preformatted{
+#' ```r
 #' jgd_shadow = function(blur = 0, color = "black",
 #'                       offsetX = 0, offsetY = 0) {
 #'   jgd_ext(jsonlite::toJSON(
@@ -189,7 +187,7 @@ jgd_discover = function() {
 #'     auto_unbox = TRUE
 #'   ))
 #' }
-#' }
+#' ```
 #'
 #' jgd itself has no dependency on jsonlite or any serialization library;
 #' upstream packages choose their own.
@@ -198,8 +196,7 @@ jgd_discover = function() {
 #' **Experimental.** This API may change in future versions.
 #' @seealso [with_jgd_ext()], [jgd_frame_ext()], [jgd_begin_group()],
 #'   [jgd_spec]
-#' @examples
-#' \dontrun{
+#' @examplesIf interactive()
 #' jgd()
 #'
 #' # Drop shadow (scoped -- automatically cleared after the block)
@@ -217,7 +214,6 @@ jgd_discover = function() {
 #' jgd_ext('{"blendMode":"multiply"}')
 #' plot(1:10)
 #' jgd_ext(NULL)
-#' }
 #' @export
 jgd_ext = function(json = NULL) {
   if (!is.null(json)) {
