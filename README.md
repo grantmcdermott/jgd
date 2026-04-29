@@ -315,7 +315,7 @@ using the browser's Canvas2D API.
 - [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
 - [x] **Protocol stabilization**: Stabilize and document the JSON protocol
   (see `?jgd-spec`)
-- [ ] **CRAN submission**: Package the R side for CRAN distribution
+- [x] **CRAN submission**: Package the R side for CRAN distribution
 - [ ] **R extension integration**: Incorporate the code from this package into
   the main VS Code R extension (if the upstream maintainers agree).
 
