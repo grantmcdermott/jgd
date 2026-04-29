@@ -1,7 +1,9 @@
 # jgd — JSON Graphics Device for R
 
 <!-- badges: start -->
+<a href="https://CRAN.R-project.org/package=jgd"><img src="https://www.r-pkg.org/badges/version/jgd" class="img-fluid" alt="CRAN version"></a>
 <a href="https://grantmcdermott.r-universe.dev"><img src="https://grantmcdermott.r-universe.dev/badges/jgd" class="img-fluid" alt="R-universe version"></a>
+<a href="https://CRAN.R-project.org/package=jgd"><img src="https://tinyverse.netlify.app/badge/jgd" class="img-fluid" alt="Dependencies"></a>
 <a href="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml"><img src="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml/badge.svg" class="img-fluid" alt="R CMD check"></a>
 <a href="https://github.com/grantmcdermott/jgd/blob/main/r-pkg/LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" class="img-fluid" alt="License"></a>
 <!-- badges: end -->
@@ -27,7 +29,13 @@ displaying plots.
 
 ### R package
 
-We plan to submit to CRAN soon. In the meantime, please install from R-universe:
+The stable version of `jgd` is available on CRAN:
+
+```r
+install.packages('jgd')
+```
+
+Alternatively, you can grab the development version from R-universe:
 
 ```r
 install.packages('jgd', repos = 'https://grantmcdermott.r-universe.dev')
@@ -42,9 +50,10 @@ R CMD INSTALL r-pkg
 
 ### Display frontend
 
-You have two frontend options:
+You have two frontend options. Click to expand for your preferred method.
 
-#### Option 1) VS Code extension
+<details>
+<summary><b>1) VS Code extension</b></summary>
 
 The simplest option is to download the `.vsix` from our
 [nightly release](https://github.com/grantmcdermott/jgd/releases/tag/nightly),
@@ -69,7 +78,10 @@ cd vscode-ext && npm install && npm run compile \
 
 [^1]: Requires [Node.js](https://nodejs.org/). For extension development, you can also use `code --extensionDevelopmentPath="$(pwd)"` from the `vscode-ext` directory to launch a separate dev host window.
 
-#### Option 2) Deno server
+</details>
+
+<details>
+<summary><b>2) Browser (via deno server)</b></summary>
 
 If you're not using VS Code, our standalone Deno server provides a browser-based
 renderer.
@@ -86,6 +98,8 @@ Or, clone the repo and run locally:
 # git clone https://github.com/grantmcdermott/jgd.git ## clone first
 cd server && deno task start && cd ..
 ```
+</details>
+
 
 ## Use
 
@@ -93,14 +107,32 @@ Test your installation by running some R plotting commands, like those provided
 by the script below. Note that you need to call `jgd::jgd()` first to activate
 the device. The steps differ slightly depending on your chosen frontend:
 
-- **VS Code:** Once you have installed the `jgd` extension, simply execute the
+<details>
+<summary><b>1) VS Code</b></summary>
+
+Once you have installed the `jgd` extension, simply execute the
 below script from an R terminal inside VS Code (either via the
 [R extension](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r)
 or by manually starting R inside the VS Code terminal).
 
-- **Standalone server:** Start the Deno server, open `http://127.0.0.1:<port>/`
+You might want to add the following to your `~/.Rprofile`, so that `jgd`
+automically activates when starting an R session in VS Code:
+
+```r
+if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode" && Sys.getenv("POSITRON") != "1") {
+  jgd::jgd()
+}
+```
+
+</details>
+
+<details>
+<summary><b>2) Browser</b></summary>
+
+Start the Deno server, open `http://127.0.0.1:<port>/`
 in your browser (the URL is printed on startup), then run the script from any
 R session.
+</details>
 
 ```r
 library(jgd)
