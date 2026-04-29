@@ -105,20 +105,7 @@ cd server && deno task start && cd ..
 
 Test your installation by running some R plotting commands, like those provided
 by the script below. Note that you need to call `jgd::jgd()` first to activate
-the device.[^2]: The steps differ slightly depending on your chosen frontend:
-
-[^2]: For the VS Code extension, at least, you can also add the following to your `~/.Rprofile` so that `jgd` automically activates on start-up:
-
-    ```r
-    if (
-      interactive() &&
-        Sys.getenv("TERM_PROGRAM") == "vscode" &&
-        Sys.getenv("POSITRON") != "1"
-    ) {
-      library(jgd)
-      jgd()
-    }
-    ```
+the device. The steps differ slightly depending on your chosen frontend:
 
 <details>
 <summary><b>1) VS Code</b></summary>
@@ -127,6 +114,16 @@ Once you have installed the `jgd` extension, simply execute the
 below script from an R terminal inside VS Code (either via the
 [R extension](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r)
 or by manually starting R inside the VS Code terminal).
+
+You might want to add the following to your `~/.Rprofile`, so that `jgd`
+automically activates when starting an R session in VS Code:
+
+```r
+if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode" && Sys.getenv("POSITRON") != "1") {
+  jgd::jgd()
+}
+```
+
 </details>
 
 <details>
