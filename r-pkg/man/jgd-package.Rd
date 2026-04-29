@@ -23,5 +23,11 @@ Authors:
   \item Tatsuya Shima \email{ts1s1andn@gmail.com}
 }
 
+Other contributors:
+\itemize{
+  \item Dave Gamble (cJSON library in src/cjson/) [copyright holder]
+  \item cJSON contributors (cJSON library in src/cjson/) [copyright holder]
+}
+
 }
 \keyword{internal}

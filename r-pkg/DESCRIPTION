@@ -4,8 +4,12 @@ Version: 0.1.0
 Authors@R: c(
         person("Grant", "McDermott", role = c("aut", "cre"),
             email = "contact@grantmcdermott.com"),
-        person("Tatsuya", "Shima", role = c("aut"),
-            email = "ts1s1andn@gmail.com")
+        person("Tatsuya", "Shima", role = "aut",
+            email = "ts1s1andn@gmail.com"),
+        person("Dave", "Gamble", role = "cph",
+            comment = "cJSON library in src/cjson/"),
+        person("cJSON contributors", role = "cph",
+            comment = "cJSON library in src/cjson/")
     )
 Description: A graphics device that translates R plotting operations into JSON
     and streams them over a local connection to an external display

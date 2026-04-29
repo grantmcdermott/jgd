@@ -1,3 +1,13 @@
+## Resubmission notes
+
+This is a resubmission addressing reviewer feedback from our previous `jgd`
+submission (jgd_0.1.0, 2026-04-25):
+
+- Authors@R: Added Dave Gamble and cJSON contributors with `cph` roles
+  to properly attribute the vendored cJSON library (`src/cjson/`).
+  Copyright and license details remain recorded in `inst/COPYRIGHTS`
+  and the upstream headers are preserved in the vendored source files.
+
 ## Test environments
 
 - macOS Tahoe 26.4 (aarch64), R 4.5.3
@@ -7,26 +17,19 @@
 
 ## R CMD check results
 
-0 errors | 0 warnings | 2 notes
+0 errors | 0 warnings | 1 note
 
 - NOTE: New submission.
-- NOTE: Pragma suppressing diagnostics in `src/cjson/cJSON.c`. This is
-  vendored third-party code (cJSON v1.7.19, MIT licensed) included for
-  JSON parsing. The pragmas are part of the upstream source, plus a
-  targeted suppression of `-Wkeyword-macro` (clang 21+) for the
-  `true`/`false` macro definitions that cJSON uses for C89 compatibility.
 
 ## Additional notes
 
-- "Possibly misspelled words in DESCRIPTION: `frontends` and `renderer`"
-  is flagged by Win-builder but both are standard technical terms used
-  correctly in context.
 - This package contains compiled C code with no external library
   dependencies. The only vendored code is cJSON (`src/cjson/`), which is
   MIT-licensed; its copyright and license details are recorded in
   `inst/COPYRIGHTS` and the upstream headers are preserved in the
   vendored source files. cJSON has been patched to replace `sprintf`
-  with `snprintf` for CRAN compliance.
+  with `snprintf` for CRAN compliance; all upstream diagnostic-suppression
+  pragmas have been removed (patches tracked in `src/cjson/patches/`).
 - All examples are wrapped in `\dontrun{}` because the device requires a
   running external renderer (e.g., a VS Code extension or browser-based
   server) to function.
