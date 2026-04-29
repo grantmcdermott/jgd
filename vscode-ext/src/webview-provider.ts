@@ -93,6 +93,14 @@ export class PlotWebviewProvider {
         this.updateToolbar();
     }
 
+    // Mirror the webview's mapFontFamily() so cache keys match warmup keys.
+    private canonicalizeFamily(family: string | undefined): string {
+        if (!family || family === '' || family === 'sans') return 'sans-serif';
+        if (family === 'serif' || family === 'Times') return 'serif';
+        if (family === 'mono' || family === 'Courier') return 'monospace';
+        return family;
+    }
+
     async measureText(request: any): Promise<any> {
         if (!this.panel) {
             return { type: 'metrics_response', id: request.id, width: 0, ascent: 0, descent: 0 };
@@ -101,7 +109,8 @@ export class PlotWebviewProvider {
         // Build cache key from the inputs that determine the measurement.
         const gc = request.gc || {};
         const font = gc.font || {};
-        const fontKey = `${font.size ?? 12}|${font.family ?? ''}|${font.face ?? 1}`;
+        const canonical = this.canonicalizeFamily(font.family);
+        const fontKey = `${font.size ?? 12}|${canonical}|${font.face ?? 1}`;
         const cacheKey = `${request.kind}|${request.str ?? ''}|${request.c ?? 0}|${fontKey}`;
         const cached = this.metricsCache.get(cacheKey);
         if (cached) {
@@ -111,7 +120,7 @@ export class PlotWebviewProvider {
         // For strWidth, try to compute from cached per-character widths,
         // scaling from the base warmup size (12px) if the exact size isn't cached.
         if (request.kind === 'strWidth' && request.str) {
-            const baseFontKey = `12|${font.family ?? ''}|${font.face ?? 1}`;
+            const baseFontKey = `12|${canonical}|${font.face ?? 1}`;
             const requestedSize = font.size ?? 12;
             const scale = requestedSize / 12;
             let total = 0;
@@ -143,7 +152,7 @@ export class PlotWebviewProvider {
 
         // For metricInfo, try scaling from base 12px warmup.
         if (request.kind === 'metricInfo' && request.c) {
-            const baseFontKey = `12|${font.family ?? ''}|${font.face ?? 1}`;
+            const baseFontKey = `12|${canonical}|${font.face ?? 1}`;
             const requestedSize = font.size ?? 12;
             const scale = requestedSize / 12;
             const baseKey = `metricInfo||${request.c}|${baseFontKey}`;
@@ -257,6 +266,7 @@ export class PlotWebviewProvider {
 
         this.panel.onDidDispose(() => {
             this.panel = null;
+            this.metricsCache.clear();
         });
     }
 
@@ -435,15 +445,15 @@ resizeObserver.observe(container);
         if (f.face === 2 || f.face === 4) style += 'bold ';
         if (f.face === 3 || f.face === 4) style += 'italic ';
         metricsCtx.font = style + f.size + 'px ' + f.family;
-        const fontKey = f.size + '|' + (f.family === 'sans-serif' ? '' : f.family) + '|' + f.face;
+        const fontKey = f.size + '|' + f.family + '|' + f.face;
         for (let c = 32; c <= 126; c++) {
             const ch = String.fromCodePoint(c);
             const m = metricsCtx.measureText(ch);
             entries.push({
                 key: 'metricInfo||' + c + '|' + fontKey,
                 width: m.width,
-                ascent: m.actualBoundingBoxAscent || f.size * 0.75,
-                descent: m.actualBoundingBoxDescent || f.size * 0.25
+                ascent: m.actualBoundingBoxAscent ?? f.size * 0.75,
+                descent: m.actualBoundingBoxDescent ?? f.size * 0.25
             });
         }
     }
