@@ -109,16 +109,16 @@ the device.[^2]: The steps differ slightly depending on your chosen frontend:
 
 [^2]: For the VS Code extension, at least, you can also add the following to your `~/.Rprofile` so that `jgd` automically activates on start-up:
 
-  ```r
-  if (
-    interactive() &&
-      Sys.getenv("TERM_PROGRAM") == "vscode" &&
-      Sys.getenv("POSITRON") != "1"
-  ) {
-    library(jgd)
-    jgd()
-  }
-  ```
+    ```r
+    if (
+      interactive() &&
+        Sys.getenv("TERM_PROGRAM") == "vscode" &&
+        Sys.getenv("POSITRON") != "1"
+    ) {
+      library(jgd)
+      jgd()
+    }
+    ```
 
 - **VS Code:** Once you have installed the `jgd` extension, simply execute the
 below script from an R terminal inside VS Code (either via the
