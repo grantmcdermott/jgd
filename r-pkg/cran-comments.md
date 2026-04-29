@@ -1,16 +1,12 @@
 ## Resubmission notes
 
-This is a resubmission addressing NOTEs from the initial submission
-(jgd_0.1.0, 2026-04-20):
+This is a resubmission addressing reviewer feedback from our previous `jgd`
+submission (jgd_0.1.0, 2026-04-25):
 
-- Pragma NOTE: all diagnostic-suppression pragmas have been removed from
-  `src/cjson/cJSON.c`. The C2x/C23 `true`/`false` keyword-macro collision
-  is now handled via a preprocessor version guard rather than a pragma.
-  The only remaining pragmas in that file are `#pragma GCC visibility`
-  directives, which control symbol visibility and do not suppress
-  diagnostics.
-- "Possibly misspelled words" NOTE: `DESCRIPTION` has been reworded and
-  no longer contains the flagged terms.
+- Authors@R: Added Dave Gamble and cJSON contributors with `cph` roles
+  to properly attribute the vendored cJSON library (`src/cjson/`).
+  Copyright and license details remain recorded in `inst/COPYRIGHTS`
+  and the upstream headers are preserved in the vendored source files.
 
 ## Test environments
 
