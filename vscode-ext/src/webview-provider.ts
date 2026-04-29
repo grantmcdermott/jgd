@@ -5,6 +5,7 @@ export class PlotWebviewProvider {
     private panel: vscode.WebviewPanel | null = null;
     private pendingMetrics: Map<number, (response: any) => void> = new Map();
     private metricsIdCounter = 0;
+    private metricsCache: Map<string, { width: number; ascent: number; descent: number }> = new Map();
     private panelWidth = 800;
     private panelHeight = 600;
     private resizeListeners: ((w: number, h: number) => void)[] = [];
@@ -92,14 +93,91 @@ export class PlotWebviewProvider {
         this.updateToolbar();
     }
 
+    // Mirror the webview's mapFontFamily() so cache keys match warmup keys.
+    private canonicalizeFamily(family: string | undefined): string {
+        if (!family || family === '' || family === 'sans') return 'sans-serif';
+        if (family === 'serif' || family === 'Times') return 'serif';
+        if (family === 'mono' || family === 'Courier') return 'monospace';
+        return family;
+    }
+
     async measureText(request: any): Promise<any> {
         if (!this.panel) {
             return { type: 'metrics_response', id: request.id, width: 0, ascent: 0, descent: 0 };
         }
 
+        // Build cache key from the inputs that determine the measurement.
+        const gc = request.gc || {};
+        const font = gc.font || {};
+        const canonical = this.canonicalizeFamily(font.family);
+        const fontKey = `${font.size ?? 12}|${canonical}|${font.face ?? 1}`;
+        const cacheKey = `${request.kind}|${request.str ?? ''}|${request.c ?? 0}|${fontKey}`;
+        const cached = this.metricsCache.get(cacheKey);
+        if (cached) {
+            return { type: 'metrics_response', id: request.id, ...cached };
+        }
+
+        // For strWidth, try to compute from cached per-character widths,
+        // scaling from the base warmup size (12px) if the exact size isn't cached.
+        if (request.kind === 'strWidth' && request.str) {
+            const baseFontKey = `12|${canonical}|${font.face ?? 1}`;
+            const requestedSize = font.size ?? 12;
+            const scale = requestedSize / 12;
+            let total = 0;
+            let allCached = true;
+            for (const ch of request.str) {
+                const cp = ch.codePointAt(0)!;
+                // Try exact size first, then base size with scaling.
+                const exactKey = `metricInfo||${cp}|${fontKey}`;
+                const exactCached = this.metricsCache.get(exactKey);
+                if (exactCached) {
+                    total += exactCached.width;
+                } else {
+                    const baseKey = `metricInfo||${cp}|${baseFontKey}`;
+                    const baseCached = this.metricsCache.get(baseKey);
+                    if (baseCached) {
+                        total += baseCached.width * scale;
+                    } else {
+                        allCached = false;
+                        break;
+                    }
+                }
+            }
+            if (allCached) {
+                const result = { width: total, ascent: 0, descent: 0 };
+                this.metricsCache.set(cacheKey, result);
+                return { type: 'metrics_response', id: request.id, ...result };
+            }
+        }
+
+        // For metricInfo, try scaling from base 12px warmup.
+        if (request.kind === 'metricInfo' && request.c) {
+            const baseFontKey = `12|${canonical}|${font.face ?? 1}`;
+            const requestedSize = font.size ?? 12;
+            const scale = requestedSize / 12;
+            const baseKey = `metricInfo||${request.c}|${baseFontKey}`;
+            const baseCached = this.metricsCache.get(baseKey);
+            if (baseCached) {
+                const result = {
+                    width: baseCached.width * scale,
+                    ascent: baseCached.ascent * scale,
+                    descent: baseCached.descent * scale
+                };
+                this.metricsCache.set(cacheKey, result);
+                return { type: 'metrics_response', id: request.id, ...result };
+            }
+        }
+
+        return this.roundTripMetrics(request, cacheKey);
+    }
+
+    private roundTripMetrics(request: any, cacheKey: string): Promise<any> {
         return new Promise((resolve) => {
             const id = ++this.metricsIdCounter;
-            this.pendingMetrics.set(id, resolve);
+            this.pendingMetrics.set(id, (response) => {
+                this.metricsCache.set(cacheKey, { width: response.width, ascent: response.ascent, descent: response.descent });
+                resolve(response);
+            });
             this.panel!.webview.postMessage({
                 type: 'metrics_request',
                 id,
@@ -151,6 +229,15 @@ export class PlotWebviewProvider {
                     }
                     break;
                 }
+                case 'metrics_warmup': {
+                    // Bulk cache population from webview pre-warm.
+                    if (msg.entries && Array.isArray(msg.entries)) {
+                        for (const e of msg.entries) {
+                            this.metricsCache.set(e.key, { width: e.width, ascent: e.ascent, descent: e.descent });
+                        }
+                    }
+                    break;
+                }
                 case 'export_data': {
                     this.handleExportData(msg);
                     break;
@@ -179,6 +266,7 @@ export class PlotWebviewProvider {
 
         this.panel.onDidDispose(() => {
             this.panel = null;
+            this.metricsCache.clear();
         });
     }
 
@@ -322,14 +410,55 @@ document.getElementById('btn-delete').addEventListener('click', () => {
 // Resize observer
 const container = document.getElementById('canvas-container');
 let resizeTimer = null;
+let lastSentW = 0;
+let lastSentH = 0;
 const resizeObserver = new ResizeObserver(() => {
     if (currentPlot) replay(currentPlot);
     clearTimeout(resizeTimer);
     resizeTimer = setTimeout(() => {
-        vscode.postMessage({ type: 'resize', width: container.clientWidth, height: container.clientHeight });
+        const w = container.clientWidth;
+        const h = container.clientHeight;
+        if (w !== lastSentW || h !== lastSentH) {
+            lastSentW = w;
+            lastSentH = h;
+            vscode.postMessage({ type: 'resize', width: w, height: h });
+        }
     }, 300);
 });
 resizeObserver.observe(container);
+
+// Pre-warm metrics cache: measure all printable ASCII chars in common R font configs.
+// This runs once on webview creation and sends all results in a single message,
+// avoiding per-character round-trips during the first plot render.
+(function warmupMetrics() {
+    const fonts = [
+        { size: 12, family: 'sans-serif', face: 1 },
+        { size: 12, family: 'serif', face: 1 },
+        { size: 12, family: 'monospace', face: 1 },
+        { size: 12, family: 'sans-serif', face: 2 },
+        { size: 10, family: 'sans-serif', face: 1 },
+        { size: 14, family: 'sans-serif', face: 1 },
+    ];
+    const entries = [];
+    for (const f of fonts) {
+        let style = '';
+        if (f.face === 2 || f.face === 4) style += 'bold ';
+        if (f.face === 3 || f.face === 4) style += 'italic ';
+        metricsCtx.font = style + f.size + 'px ' + f.family;
+        const fontKey = f.size + '|' + f.family + '|' + f.face;
+        for (let c = 32; c <= 126; c++) {
+            const ch = String.fromCodePoint(c);
+            const m = metricsCtx.measureText(ch);
+            entries.push({
+                key: 'metricInfo||' + c + '|' + fontKey,
+                width: m.width,
+                ascent: m.actualBoundingBoxAscent ?? f.size * 0.75,
+                descent: m.actualBoundingBoxDescent ?? f.size * 0.25
+            });
+        }
+    }
+    vscode.postMessage({ type: 'metrics_warmup', entries });
+})();
 
 // Message handler
 window.addEventListener('message', (event) => {
