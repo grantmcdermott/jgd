@@ -122,6 +122,7 @@ the device.[^2]: The steps differ slightly depending on your chosen frontend:
 
 <details>
 <summary><b>1) VS Code</b></summary>
+
 Once you have installed the `jgd` extension, simply execute the
 below script from an R terminal inside VS Code (either via the
 [R extension](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r)
@@ -130,6 +131,7 @@ or by manually starting R inside the VS Code terminal).
 
 <details>
 <summary><b>2) Browser</b></summary>
+
 Start the Deno server, open `http://127.0.0.1:<port>/`
 in your browser (the URL is printed on startup), then run the script from any
 R session.
