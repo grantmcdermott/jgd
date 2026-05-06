@@ -1,3 +1,9 @@
+# Development
+
+Documentation
+
+- Improved visibility of protocol specification. (#58)
+
 # jgd 0.1.0
 
 Initial CRAN release.
