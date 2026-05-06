@@ -32,6 +32,12 @@
 #' frame-level diagnostic output on stderr (via `REprintf`).  This logs
 #' details about `newPage`, `flush_frame`, and `poll_resize` events, which
 #' is useful for diagnosing resize/replay issues.
+#' @section Protocol specification:
+#' The jgd protocol is a simple, versioned JSONL wire format designed to be
+#' frontend-agnostic. You can use it to build your own renderer (e.g., for
+#' Neovim, Emacs, or a custom web app). See [`jgd_spec`] for the complete
+#' specification covering transports, message schemas, drawing operations,
+#' the resize protocol, font metrics, and multi-session routing.
 #' @return Invisible `NULL`. The device is opened as a side effect.
 #' @examplesIf interactive()
 #' # Requires a running renderer (e.g., VS Code extension or Deno server).

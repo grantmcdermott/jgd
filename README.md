@@ -283,6 +283,33 @@ using the browser's Canvas2D API.
 - **Client-side scaling.** The renderer can replay the same operations at any
   resolution without round-tripping to R, enabling instant resize feedback.
 
+## Protocol specification
+
+The jgd protocol is a simple JSONL (JSON Lines) wire format designed so that
+**anyone can build a compatible renderer** — you don't need to use our VS Code
+extension or Deno server. The full specification is documented in the R package
+at `help("jgd_spec")` (or equivalently `?jgd_spec`). Here's a quick overview:
+
+| Aspect | Summary |
+|--------|---------|
+| **Transport** | Unix domain sockets (macOS/Linux), named pipes (Windows), or TCP |
+| **Wire format** | Newline-delimited JSON (JSONL), UTF-8 |
+| **Coordinate system** | Device pixels, top-left origin |
+| **Handshake** | R sends `{"type":"ping"}`, server replies with `{"type":"server_info",...}` |
+| **Drawing** | R streams `frame` messages containing an array of drawing ops (`line`, `rect`, `circle`, `text`, `polygon`, `polyline`, `path`, `raster`, `clip`, `beginGroup`, `endGroup`) |
+| **Resize** | Server sends `{"type":"resize",...}` to R; R replays the plot at new dimensions |
+| **Font metrics** | R requests string/glyph measurements; server responds with widths and ascent/descent |
+| **Discovery** | Optional `discovery.json` file for auto-connection (platform-specific cache dir) |
+| **Extensions** | Free-form `ext` fields at frame, graphics-context, and group levels |
+
+The protocol is versioned (`"protocolVersion": 1`) and forward-compatible:
+receivers should ignore unknown fields and message types.
+
+For the complete specification — including message schemas, the resize protocol,
+multi-session routing, and implementation guidance — see `?jgd_spec` in R or
+browse the source at
+[`r-pkg/R/spec.R`](https://github.com/grantmcdermott/jgd/blob/main/r-pkg/R/spec.R).
+
 ## What's supported
 
 - **Base graphics**: `plot()`, `hist()`, `lines()`, `points()`, `text()`,

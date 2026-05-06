@@ -53,6 +53,15 @@ details about \code{newPage}, \code{flush_frame}, and \code{poll_resize} events,
 is useful for diagnosing resize/replay issues.
 }
 
+\section{Protocol specification}{
+
+The jgd protocol is a simple, versioned JSONL wire format designed to be
+frontend-agnostic. You can use it to build your own renderer (e.g., for
+Neovim, Emacs, or a custom web app). See \code{\link{jgd_spec}} for the complete
+specification covering transports, message schemas, drawing operations,
+the resize protocol, font metrics, and multi-session routing.
+}
+
 \examples{
 \dontshow{if (interactive()) withAutoprint(\{ # examplesIf}
 # Requires a running renderer (e.g., VS Code extension or Deno server).
