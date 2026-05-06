@@ -729,6 +729,8 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
         SEXP grid_ns = R_NilValue;
         SEXP grid_str = PROTECT(Rf_mkString("grid"));
         grid_ns = R_FindNamespace(grid_str);
+        if (grid_ns != R_NilValue)
+            PROTECT(grid_ns);
         UNPROTECT(1);
         if (grid_ns != R_NilValue) {
             /* Force-restore grid DL from snapshot (bypasses the
@@ -743,6 +745,7 @@ static void replay_snapshot(jgd_state_t *st, SEXP snap, pGEDevDesc gdd) {
             if (st->debug_frames)
                 REprintf("[jgd] replay_snapshot: grid.refresh() -> ops=%d err=%d\n",
                          st->page.op_count, err);
+            UNPROTECT(1);
         }
     }
 

@@ -226,27 +226,29 @@ SEXP C_jgd_discover(SEXP s_path) {
     }
 
     /* Build result: list(server_name, socket_path, pid, server_info) */
-    SEXP result = PROTECT(Rf_allocVector(VECSXP, 4));
-    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4));
+    int nprot = 0;
+    SEXP result = PROTECT(Rf_allocVector(VECSXP, 4)); nprot++;
+    SEXP names = PROTECT(Rf_allocVector(STRSXP, 4)); nprot++;
     SET_STRING_ELT(names, 0, Rf_mkChar("server_name"));
     SET_STRING_ELT(names, 1, Rf_mkChar("socket_path"));
     SET_STRING_ELT(names, 2, Rf_mkChar("pid"));
     SET_STRING_ELT(names, 3, Rf_mkChar("server_info"));
     Rf_setAttrib(result, R_NamesSymbol, names);
 
-    SET_VECTOR_ELT(result, 0, PROTECT(Rf_mkString(sn->valuestring)));
-    SET_VECTOR_ELT(result, 1, PROTECT(Rf_mkString(sp->valuestring)));
-    SET_VECTOR_ELT(result, 2, PROTECT(Rf_ScalarInteger(pidj->valueint)));
+    SET_VECTOR_ELT(result, 0, PROTECT(Rf_mkString(sn->valuestring))); nprot++;
+    SET_VECTOR_ELT(result, 1, PROTECT(Rf_mkString(sp->valuestring))); nprot++;
+    SET_VECTOR_ELT(result, 2, PROTECT(Rf_ScalarInteger(pidj->valueint))); nprot++;
 
     /* Build named character vector from serverInfo object */
+    SEXP info_elt = R_NilValue;
     cJSON *info = cJSON_GetObjectItem(json, "serverInfo");
     if (cJSON_IsObject(info)) {
         int np = 0;
         cJSON *child = info->child;
         while (child) { if (cJSON_IsString(child) && child->string && child->valuestring) np++; child = child->next; }
 
-        SEXP info_vec = PROTECT(Rf_allocVector(STRSXP, np));
-        SEXP info_names = PROTECT(Rf_allocVector(STRSXP, np));
+        SEXP info_vec = PROTECT(Rf_allocVector(STRSXP, np)); nprot++;
+        SEXP info_names = PROTECT(Rf_allocVector(STRSXP, np)); nprot++;
         int i = 0;
         child = info->child;
         while (child) {
@@ -258,14 +260,14 @@ SEXP C_jgd_discover(SEXP s_path) {
             child = child->next;
         }
         Rf_setAttrib(info_vec, R_NamesSymbol, info_names);
-        SET_VECTOR_ELT(result, 3, info_vec);
-        UNPROTECT(7);
+        info_elt = info_vec;
     } else {
-        SET_VECTOR_ELT(result, 3, PROTECT(Rf_allocVector(STRSXP, 0)));
-        UNPROTECT(6);
+        info_elt = PROTECT(Rf_allocVector(STRSXP, 0)); nprot++;
     }
+    SET_VECTOR_ELT(result, 3, info_elt);
 
     cJSON_Delete(json);
+    UNPROTECT(nprot);
     return result;
 }
 
