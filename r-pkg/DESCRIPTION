@@ -1,6 +1,6 @@
 Package: jgd
 Title: JSON Graphics Device
-Version: 0.1.0
+Version: 0.1.0.99
 Authors@R: c(
         person("Grant", "McDermott", role = c("aut", "cre"),
             email = "contact@grantmcdermott.com"),
