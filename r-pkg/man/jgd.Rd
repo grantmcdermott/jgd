@@ -74,3 +74,7 @@ hist(rnorm(1000), col = "steelblue")
 dev.off()
 \dontshow{\}) # examplesIf}
 }
+\seealso{
+\code{\link{jgd_spec}} for the protocol specification;
+\code{\link[=jgd_ext]{jgd_ext()}} and \code{\link[=with_jgd_ext]{with_jgd_ext()}} for renderer extensions.
+}

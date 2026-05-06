@@ -39,6 +39,8 @@
 #' specification covering transports, message schemas, drawing operations,
 #' the resize protocol, font metrics, and multi-session routing.
 #' @return Invisible `NULL`. The device is opened as a side effect.
+#' @seealso [`jgd_spec`] for the protocol specification;
+#'   [jgd_ext()] and [with_jgd_ext()] for renderer extensions.
 #' @examplesIf interactive()
 #' # Requires a running renderer (e.g., VS Code extension or Deno server).
 #' # See the "Displaying plots" section above.
@@ -201,7 +203,7 @@ jgd_discover = function() {
 #' @section Lifecycle:
 #' **Experimental.** This API may change in future versions.
 #' @seealso [with_jgd_ext()], [jgd_frame_ext()], [jgd_begin_group()],
-#'   [jgd_spec]
+#'   [`jgd_spec`]
 #' @examplesIf interactive()
 #' jgd()
 #'

@@ -88,5 +88,5 @@ jgd_ext(NULL)
 }
 \seealso{
 \code{\link[=with_jgd_ext]{with_jgd_ext()}}, \code{\link[=jgd_frame_ext]{jgd_frame_ext()}}, \code{\link[=jgd_begin_group]{jgd_begin_group()}},
-\link{jgd_spec}
+\code{\link{jgd_spec}}
 }
