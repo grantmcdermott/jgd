@@ -1,6 +1,11 @@
 # Development
 
-Documentation
+## Internals
+
+- Improved GC safety in C internals by tightening `PROTECT`/`UNPROTECT`
+  handling around allocations and replay paths. (#61)
+
+## Documentation
 
 - Improved visibility of protocol specification. (#58)
 
