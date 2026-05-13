@@ -4,6 +4,7 @@
  * Wraps `arf headless` + `arf ipc eval/shutdown` to enable step-by-step
  * R command injection between browser interactions.
  */
+import { checkRAvailable } from "./r_process.ts";
 
 export interface ArfEvalResult {
   stdout: string | null;
@@ -126,16 +127,18 @@ export class ArfSession {
     this.#pid = null;
     this.#process = null;
 
-    if (pid === null || process === null) return;
+    if (process === null) return;
 
-    try {
-      await new Deno.Command("arf", {
-        args: ["ipc", "shutdown", "--pid", String(pid)],
-        stdout: "null",
-        stderr: "null",
-      }).output();
-    } catch {
-      // ignore — fallback kill below
+    if (pid !== null) {
+      try {
+        await new Deno.Command("arf", {
+          args: ["ipc", "shutdown", "--pid", String(pid)],
+          stdout: "null",
+          stderr: "null",
+        }).output();
+      } catch {
+        // ignore — fallback kill below
+      }
     }
 
     const timeoutId = setTimeout(() => {
@@ -174,9 +177,13 @@ export class ArfSession {
 }
 
 /**
- * Convenience wrapper for use with `ignore: !arfAvailable` in Deno.test.
- * Call once at module level alongside checkRAvailable().
+ * Convenience wrapper for use with `ignore: !arfTestAvailable` in Deno.test.
  */
 export async function checkArfAvailable(): Promise<boolean> {
   return ArfSession.isAvailable();
+}
+
+/** True when tests can run via arf (arf binary + R + jgd package available). */
+export async function checkArfTestAvailable(): Promise<boolean> {
+  return await checkArfAvailable() && await checkRAvailable();
 }

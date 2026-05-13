@@ -10,11 +10,11 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
+import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 
-const arfAvailable = await checkArfAvailable();
-const skip = !arfAvailable;
+const arfTestAvailable = await checkArfTestAvailable();
+const skip = !arfTestAvailable;
 
 Deno.test({
   name: "E2E: jgd_ext() embeds gc.ext in frame ops",

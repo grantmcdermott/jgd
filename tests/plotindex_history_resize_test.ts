@@ -21,12 +21,12 @@ import {
 } from "../server/tests/helpers/e2e_browser.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
+import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 
-const arfAvailable = await checkArfAvailable();
-const skip = !arfAvailable;
+const arfTestAvailable = await checkArfTestAvailable();
+const skip = !arfTestAvailable;
 
 // ---------------------------------------------------------------------------
 // Layer 1: protocol-level assertions

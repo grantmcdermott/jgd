@@ -24,10 +24,10 @@ import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
-import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
+import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 
-const arfAvailable = await checkArfAvailable();
-const skip = !arfAvailable;
+const arfTestAvailable = await checkArfTestAvailable();
+const skip = !arfTestAvailable;
 const FRAME_WAIT_MS = 1000;
 const NEWPAGE_DEADLINE_MS = 6000;
 

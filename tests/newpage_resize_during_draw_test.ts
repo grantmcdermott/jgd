@@ -23,10 +23,10 @@ import {
   waitForPlotCount,
 } from "../server/tests/helpers/e2e_browser.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
-import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
+import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 
-const arfAvailable = await checkArfAvailable();
-const skip = !arfAvailable;
+const arfTestAvailable = await checkArfTestAvailable();
+const skip = !arfTestAvailable;
 
 Deno.test({
   name: "Full-stack: resize arrives during R drawing — must not duplicate",

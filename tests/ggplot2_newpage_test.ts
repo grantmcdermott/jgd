@@ -24,10 +24,10 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
+import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 
-const arfAvailable = await checkArfAvailable();
+const arfTestAvailable = await checkArfTestAvailable();
 
 /** Check if ggplot2 is installed in R. */
 async function checkGgplot2Available(): Promise<boolean> {
@@ -45,7 +45,7 @@ async function checkGgplot2Available(): Promise<boolean> {
   }
 }
 
-const ggplot2Available = arfAvailable && await checkGgplot2Available();
+const ggplot2Available = arfTestAvailable && await checkGgplot2Available();
 const FRAME_WAIT_MS = 1000;
 const NEWPAGE_DEADLINE_MS = 2000;
 
