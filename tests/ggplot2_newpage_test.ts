@@ -279,7 +279,8 @@ Deno.test({
         (msg) =>
           msg.type === "frame" &&
           (msg as FrameMessage).resize === true &&
-          (msg as FrameMessage).plotIndex === 0,
+          (msg as FrameMessage).plotIndex === 0 &&
+          (msg as FrameMessage).incremental !== true,
         6000,
       );
 
