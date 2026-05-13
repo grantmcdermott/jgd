@@ -25,6 +25,7 @@ import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const ggplot2Available = arfTestAvailable && await checkGgplot2Available();
@@ -68,6 +69,7 @@ Deno.test({
   name: "E2E: abline survives plotIndex resize when ggplot2 is the next plot",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();

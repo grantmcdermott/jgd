@@ -23,6 +23,7 @@ import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
+import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const skip = !arfTestAvailable;
@@ -31,6 +32,7 @@ Deno.test({
   name: "E2E: plotIndex resize produces exactly one frame with correct content",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();

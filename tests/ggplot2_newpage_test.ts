@@ -26,6 +26,7 @@ import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
+import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 
@@ -110,6 +111,7 @@ Deno.test({
   name: "ggplot2: two plots must not create spurious history entry",
   ignore: !ggplot2Available,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();
@@ -209,6 +211,7 @@ Deno.test({
     "ggplot2: plotIndex resize must replay full plot (not just initial ops)",
   ignore: !ggplot2Available,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();

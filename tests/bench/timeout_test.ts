@@ -1,7 +1,9 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { raceWithTimeout } from "./timeout.ts";
+import { testLog } from "../helpers/test_log.ts";
 
 Deno.test("raceWithTimeout rejects immediately when timeout fires", async () => {
+  testLog("test start");
   let resolveOperation: ((value: string) => void) | undefined;
   const operation = new Promise<string>((resolve) => {
     resolveOperation = resolve;
@@ -47,6 +49,7 @@ Deno.test("raceWithTimeout rejects immediately when timeout fires", async () => 
 });
 
 Deno.test("raceWithTimeout returns operation result before timeout", async () => {
+  testLog("test start");
   let onTimeoutCalled = false;
 
   const result = await raceWithTimeout(
@@ -63,6 +66,7 @@ Deno.test("raceWithTimeout returns operation result before timeout", async () =>
 });
 
 Deno.test("raceWithTimeout sets timeout side effects before rejection is observed", async () => {
+  testLog("test start");
   const operation = new Promise<string>(() => {});
   let timeoutSideEffect = false;
 

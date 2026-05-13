@@ -17,6 +17,7 @@
 import { assertEquals } from "@std/assert";
 import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
+import { testLog } from "./helpers/test_log.ts";
 import {
   E2EBrowser,
   plotInfoText,
@@ -33,6 +34,7 @@ Deno.test({
   name: "Full-stack: resize arrives during R drawing — must not duplicate",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const e2e = new E2EBrowser();
     const arf = new ArfSession();

@@ -14,6 +14,7 @@
 import { assertEquals } from "@std/assert";
 import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
+import { testLog } from "./helpers/test_log.ts";
 import {
   E2EBrowser,
   plotInfoText,
@@ -30,6 +31,7 @@ Deno.test({
   name: "Full-stack: R + Browser — 3 plots must show 3/3 (no duplication)",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const e2e = new E2EBrowser();
     const arf = new ArfSession();

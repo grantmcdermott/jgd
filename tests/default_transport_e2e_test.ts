@@ -8,6 +8,7 @@
 import { assert } from "@std/assert";
 import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
+import { testLog } from "./helpers/test_log.ts";
 import type {
   CloseMessage,
   FrameMessage,
@@ -24,6 +25,7 @@ Deno.test({
   name: "E2E default transport: basic frame relay",
   ignore: skip,
   async fn(t) {
+    testLog("test start");
     // No { tcp: true } — uses Unix socket on POSIX, named pipe on Windows.
     const server = new TestServer();
     const browser = new AutoMetricsBrowserClient();
@@ -83,6 +85,7 @@ Deno.test({
   name: "E2E default transport: device close",
   ignore: skip,
   async fn(t) {
+    testLog("test start");
     const server = new TestServer();
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();

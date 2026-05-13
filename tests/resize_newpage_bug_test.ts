@@ -22,6 +22,7 @@ import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
+import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const skip = !arfTestAvailable;
@@ -30,6 +31,7 @@ Deno.test({
   name: "E2E: resize replay frame must have resize:true, not newPage:true",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();
@@ -97,6 +99,7 @@ Deno.test({
   name: "E2E: two resizes do not create extra plot entries",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();

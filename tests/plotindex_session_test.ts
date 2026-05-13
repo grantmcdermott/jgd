@@ -20,6 +20,7 @@ import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const skip = !arfTestAvailable;
@@ -28,6 +29,7 @@ Deno.test({
   name: "E2E: plotIndex resize after R restart does not corrupt history",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf2 = new ArfSession();

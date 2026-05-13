@@ -13,6 +13,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
+import { testLog } from "./helpers/test_log.ts";
 import {
   canvasHasContent,
   E2EBrowser,
@@ -80,6 +81,7 @@ Deno.test({
   name: "E2E: base graphics + lines() ops preserved after plotIndex resize",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();
@@ -178,6 +180,7 @@ Deno.test({
     "E2E: full-stack — browser navigation + plotIndex resize keeps canvas non-blank",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const e2e = new E2EBrowser();
     const arf = new ArfSession();

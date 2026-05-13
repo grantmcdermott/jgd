@@ -5,6 +5,7 @@
 import { assert, assertEquals } from "@std/assert";
 import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
+import { testLog } from "./helpers/test_log.ts";
 import type {
   CloseMessage,
   FrameMessage,
@@ -21,6 +22,7 @@ Deno.test({
   name: "E2E: basic frame relay",
   ignore: skip,
   async fn(t) {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();
@@ -65,6 +67,7 @@ Deno.test({
   name: "E2E: text metrics round-trip",
   ignore: skip,
   async fn(t) {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();
@@ -116,6 +119,7 @@ Deno.test({
   name: "E2E: realistic plot",
   ignore: skip,
   async fn(t) {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();
@@ -181,6 +185,7 @@ for (
     name: `E2E: jgd_server_info() over ${label} transport`,
     ignore: skip,
     async fn() {
+      testLog("test start");
       const server = new TestServer(opts);
       const arf = new ArfSession();
 
@@ -217,6 +222,7 @@ Deno.test({
   name: "E2E: device dimensions",
   ignore: skip,
   async fn(t) {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();

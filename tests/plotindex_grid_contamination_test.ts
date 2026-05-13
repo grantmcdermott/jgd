@@ -21,6 +21,7 @@ import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
+import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const ggplot2Available = arfTestAvailable && await checkGgplot2Available();
@@ -46,6 +47,7 @@ Deno.test({
     "E2E: plotIndex resize of base plot after ggplot2 shows correct content",
   ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
     const arf = new ArfSession();
