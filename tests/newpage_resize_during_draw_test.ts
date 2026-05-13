@@ -24,6 +24,7 @@ import {
 } from "../server/tests/helpers/e2e_browser.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const skip = !arfTestAvailable;
@@ -65,16 +66,10 @@ Deno.test({
       let info = await waitForPlotCount(page, 1, 8_000);
       console.error(`After plot 1: "${info}"`);
 
-      // Settle: verify no ghost entries from resize processing
-      await delay(400);
+      // Observe quiet window to catch delayed ghost entries.
+      await assertPlotInfoStable(page, "1 / 1");
       info = await plotInfoText(page);
-      console.error(`After plot 1 + settle: "${info}"`);
-      assertEquals(
-        info,
-        "1 / 1",
-        `After plot 1 + settle, should be 1 / 1, got "${info}" — ` +
-          "resize replay created ghost entry",
-      );
+      console.error(`After plot 1 + quiet window: "${info}"`);
 
       // Process any pending resize
       await delay(100);

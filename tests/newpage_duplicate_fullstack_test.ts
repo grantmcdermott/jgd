@@ -21,6 +21,7 @@ import {
 } from "../server/tests/helpers/e2e_browser.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const skip = !arfTestAvailable;
@@ -55,16 +56,10 @@ Deno.test({
       console.error(`After plot 1: "${info}"`);
       assertEquals(info, "1 / 1", "After plot 1, should show 1 / 1");
 
-      // Wait a moment, then verify no extra plots appeared
-      await delay(300);
+      // Observe a quiet window to ensure no delayed duplicate frame appears.
+      await assertPlotInfoStable(page, "1 / 1");
       info = await plotInfoText(page);
-      console.error(`After plot 1 + 1s settle: "${info}"`);
-      assertEquals(
-        info,
-        "1 / 1",
-        `After plot 1 + settle, still 1 / 1, got "${info}" — ` +
-          "possible duplication from resize replay",
-      );
+      console.error(`After plot 1 + quiet window: "${info}"`);
 
       // Process any browser resize before next plot
       await delay(100);
