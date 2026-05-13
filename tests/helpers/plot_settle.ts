@@ -11,13 +11,15 @@ export async function assertPlotInfoStable(
   pollMs = 100,
 ): Promise<void> {
   const deadline = Date.now() + quietMs;
-  while (Date.now() < deadline) {
+  while (true) {
     const info = await plotInfoText(page);
     if (info !== expected) {
       throw new Error(
         `plotInfo changed during quiet window: expected "${expected}", got "${info}"`,
       );
     }
-    await delay(pollMs);
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) break;
+    await delay(Math.min(pollMs, remainingMs));
   }
 }

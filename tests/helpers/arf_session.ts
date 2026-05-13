@@ -136,7 +136,16 @@ export class ArfSession {
     this.#process = null;
     this.#tempLogFile = null;
 
-    if (process === null) return;
+    if (process === null) {
+      if (tempLogFile !== null) {
+        try {
+          await Deno.remove(tempLogFile);
+        } catch {
+          // already removed or inaccessible
+        }
+      }
+      return;
+    }
 
     const timeoutId = setTimeout(() => {
       try {
