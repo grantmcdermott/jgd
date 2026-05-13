@@ -10,31 +10,35 @@ import type {
   FrameMessage,
 } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { checkRAvailable, runR } from "./helpers/r_process.ts";
+import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
+import { toRSocketAddress } from "./helpers/r_process.ts";
 
-// Pre-check: skip all tests if R + jgd are not available
-const rAvailable = await checkRAvailable();
+// Pre-check: skip all tests if R + jgd + arf are not available
+const arfAvailable = await checkArfAvailable();
+const skip = !arfAvailable;
 
 Deno.test({
   name: "E2E: basic frame relay",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn(t) {
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
       await delay(200);
 
       await t.step("plot.new + rect produces frame with rect op", async () => {
-        const result = await runR(
-          'jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()',
-          server.socketPath,
+        const result = await arf.eval(
+          `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()`,
         );
-        if (!result.success) {
-          throw new Error(`R failed (exit ${result.exitCode}): ${result.stderr}`);
+        if (result.error) {
+          throw new Error(`R eval failed: ${result.error}`);
         }
 
         const frame = await browser.waitForType<FrameMessage>("frame");
@@ -49,6 +53,7 @@ Deno.test({
       });
     } finally {
       browser.close();
+      await arf.shutdown();
       await delay(100);
       await server.shutdown();
       server.cleanup();
@@ -58,42 +63,48 @@ Deno.test({
 
 Deno.test({
   name: "E2E: text metrics round-trip",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn(t) {
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
       await delay(200);
 
-      await t.step("text() triggers metrics requests and produces text op", async () => {
-        const result = await runR(
-          'jgd(width=8, height=6, dpi=96); plot.new(); text(0.5, 0.5, "Hello"); dev.off()',
-          server.socketPath,
-        );
-        if (!result.success) {
-          throw new Error(`R failed (exit ${result.exitCode}): ${result.stderr}`);
-        }
+      await t.step(
+        "text() triggers metrics requests and produces text op",
+        async () => {
+          const result = await arf.eval(
+            `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96); plot.new(); text(0.5, 0.5, "Hello"); dev.off()`,
+          );
+          if (result.error) {
+            throw new Error(`R eval failed: ${result.error}`);
+          }
 
-        const frame = await browser.waitForType<FrameMessage>("frame");
-        assert(frame.plot.ops.length > 0, "Frame should have ops");
+          const frame = await browser.waitForType<FrameMessage>("frame");
+          assert(frame.plot.ops.length > 0, "Frame should have ops");
 
-        const ops = frame.plot.ops as Array<Record<string, unknown>>;
-        const textOps = ops.filter((op) => op.op === "text");
-        assert(textOps.length > 0, "Frame should contain a text op");
+          const ops = frame.plot.ops as Array<Record<string, unknown>>;
+          const textOps = ops.filter((op) => op.op === "text");
+          assert(textOps.length > 0, "Frame should contain a text op");
 
-        assert(
-          browser.metricsRequests.length > 0,
-          "Should have received metrics requests for text rendering",
-        );
+          assert(
+            browser.metricsRequests.length > 0,
+            "Should have received metrics requests for text rendering",
+          );
 
-        await browser.waitForType<CloseMessage>("close");
-      });
+          await browser.waitForType<CloseMessage>("close");
+        },
+      );
     } finally {
       browser.close();
+      await arf.shutdown();
       await delay(100);
       await server.shutdown();
       server.cleanup();
@@ -103,39 +114,45 @@ Deno.test({
 
 Deno.test({
   name: "E2E: realistic plot",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn(t) {
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
       await delay(200);
 
-      await t.step("plot(1:5) produces frame with multiple op types", async () => {
-        const result = await runR(
-          'jgd(width=8, height=6, dpi=96); plot(1:5, 1:5, main="E2E"); dev.off()',
-          server.socketPath,
-        );
-        if (!result.success) {
-          throw new Error(`R failed (exit ${result.exitCode}): ${result.stderr}`);
-        }
+      await t.step(
+        "plot(1:5) produces frame with multiple op types",
+        async () => {
+          const result = await arf.eval(
+            `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96); plot(1:5, 1:5, main="E2E"); dev.off()`,
+          );
+          if (result.error) {
+            throw new Error(`R eval failed: ${result.error}`);
+          }
 
-        const frame = await browser.waitForType<FrameMessage>("frame");
-        const ops = frame.plot.ops as Array<Record<string, unknown>>;
-        const opTypes = new Set(ops.map((op) => op.op));
+          const frame = await browser.waitForType<FrameMessage>("frame");
+          const ops = frame.plot.ops as Array<Record<string, unknown>>;
+          const opTypes = new Set(ops.map((op) => op.op));
 
-        // A realistic plot should contain at least clip, line, and text ops
-        assert(opTypes.has("clip"), "Plot should have clip ops");
-        assert(opTypes.has("line"), "Plot should have line ops");
-        assert(opTypes.has("text"), "Plot should have text ops");
+          // A realistic plot should contain at least clip, line, and text ops
+          assert(opTypes.has("clip"), "Plot should have clip ops");
+          assert(opTypes.has("line"), "Plot should have line ops");
+          assert(opTypes.has("text"), "Plot should have text ops");
 
-        await browser.waitForType<CloseMessage>("close");
-      });
+          await browser.waitForType<CloseMessage>("close");
+        },
+      );
     } finally {
       browser.close();
+      await arf.shutdown();
       await delay(100);
       await server.shutdown();
       server.cleanup();
@@ -148,27 +165,38 @@ Deno.test({
 // character vectors (atomic vectors always map to JSON arrays, not objects).
 // Converting to a list preserves the key-value structure in JSON output.
 const SERVER_INFO_R_CODE =
-  'jgd(width=4, height=3, dpi=72); info = jgd_server_info(); invisible(dev.off()); info$server_info = as.list(info$server_info); cat(jsonlite::toJSON(info, auto_unbox=TRUE))';
+  "jgd(width=4, height=3, dpi=72); info = jgd_server_info(); invisible(dev.off()); info$server_info = as.list(info$server_info); cat(jsonlite::toJSON(info, auto_unbox=TRUE))";
 
-for (const { label, opts, expectedTransport } of [
-  { label: "TCP", opts: { tcp: true }, expectedTransport: "tcp" },
-  { label: "native", opts: {}, expectedTransport: Deno.build.os === "windows" ? "npipe" : "unix" },
-] as const) {
+for (
+  const { label, opts, expectedTransport } of [
+    { label: "TCP", opts: { tcp: true }, expectedTransport: "tcp" },
+    {
+      label: "native",
+      opts: {},
+      expectedTransport: Deno.build.os === "windows" ? "npipe" : "unix",
+    },
+  ] as const
+) {
   Deno.test({
     name: `E2E: jgd_server_info() over ${label} transport`,
-    ignore: !rAvailable,
+    ignore: skip,
     async fn() {
       const server = new TestServer(opts);
+      const arf = new ArfSession();
 
       try {
         await server.start();
+        await arf.start();
+        const socketAddr = toRSocketAddress(server.socketPath);
 
-        const result = await runR(SERVER_INFO_R_CODE, server.socketPath);
-        if (!result.success) {
-          throw new Error(`R failed (exit ${result.exitCode}): ${result.stderr}`);
+        const result = await arf.eval(
+          `options(jgd.socket = "${socketAddr}"); library(jgd); ${SERVER_INFO_R_CODE}`,
+        );
+        if (result.error) {
+          throw new Error(`R eval failed: ${result.error}`);
         }
 
-        const info = JSON.parse(result.stdout);
+        const info = JSON.parse(result.stdout!);
         assertEquals(info.server_name, "jgd-http-server");
         assertEquals(info.protocol_version, 1);
         assertEquals(
@@ -177,6 +205,7 @@ for (const { label, opts, expectedTransport } of [
         );
         assertEquals(info.transport, expectedTransport);
       } finally {
+        await arf.shutdown();
         await server.shutdown();
         server.cleanup();
       }
@@ -186,37 +215,51 @@ for (const { label, opts, expectedTransport } of [
 
 Deno.test({
   name: "E2E: device dimensions",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn(t) {
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
       await delay(200);
 
-      await t.step("custom device dimensions are reported in frame", async () => {
-        const result = await runR(
-          'jgd(width=5, height=4, dpi=72); plot.new(); rect(0, 0, 1, 1); dev.off()',
-          server.socketPath,
-        );
-        if (!result.success) {
-          throw new Error(`R failed (exit ${result.exitCode}): ${result.stderr}`);
-        }
+      await t.step(
+        "custom device dimensions are reported in frame",
+        async () => {
+          const result = await arf.eval(
+            `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=5, height=4, dpi=72); plot.new(); rect(0, 0, 1, 1); dev.off()`,
+          );
+          if (result.error) {
+            throw new Error(`R eval failed: ${result.error}`);
+          }
 
-        const frame = await browser.waitForType<FrameMessage>("frame");
-        const device = frame.plot.device as Record<string, number>;
-        // Device dimensions are in pixels (width_inches * dpi)
-        assertEquals(device.width, 5 * 72, "Device width should be 5in * 72dpi = 360px");
-        assertEquals(device.height, 4 * 72, "Device height should be 4in * 72dpi = 288px");
-        assertEquals(device.dpi, 72, "Device DPI should be 72");
+          const frame = await browser.waitForType<FrameMessage>("frame");
+          const device = frame.plot.device as Record<string, number>;
+          // Device dimensions are in pixels (width_inches * dpi)
+          assertEquals(
+            device.width,
+            5 * 72,
+            "Device width should be 5in * 72dpi = 360px",
+          );
+          assertEquals(
+            device.height,
+            4 * 72,
+            "Device height should be 4in * 72dpi = 288px",
+          );
+          assertEquals(device.dpi, 72, "Device DPI should be 72");
 
-        await browser.waitForType<CloseMessage>("close");
-      });
+          await browser.waitForType<CloseMessage>("close");
+        },
+      );
     } finally {
       browser.close();
+      await arf.shutdown();
       await delay(100);
       await server.shutdown();
       server.cleanup();

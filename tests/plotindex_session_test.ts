@@ -18,16 +18,19 @@ import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
-import { checkRAvailable, startR } from "./helpers/r_process.ts";
+import { toRSocketAddress } from "./helpers/r_process.ts";
+import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
 
-const rAvailable = await checkRAvailable();
+const arfAvailable = await checkArfAvailable();
+const skip = !arfAvailable;
 
 Deno.test({
   name: "E2E: plotIndex resize after R restart does not corrupt history",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
+    const arf2 = new ArfSession();
 
     try {
       await server.start();
@@ -35,85 +38,88 @@ Deno.test({
       browser.sendResize(800, 600);
       await delay(200);
 
+      const socketAddr = toRSocketAddress(server.socketPath);
+
       // --- Session 1: generate plot 1 (plot(1:3)) ---
-      const r1 = startR(
-        'jgd(width=8, height=6, dpi=96); plot(1:3); for (i in 1:100) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      const arf1 = new ArfSession();
+      await arf1.start();
+      await arf1.eval(
+        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
       );
+      await arf1.eval("plot(1:3)");
 
       const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
       assert(frame1.plot.ops.length > 0, "Session 1 frame should have ops");
       const texts1 = extractTextOps(frame1);
       const session1Id = frame1.plot.sessionId;
 
-      // Kill session 1 and wait for disconnect
-      r1.kill();
-      try { await r1.process.output(); } catch { /* ignore */ }
+      // Shut down session 1 and wait for disconnect
+      await arf1.shutdown();
       await delay(500);
 
       // --- Session 2: generate plot 2 (plot(4:6)) ---
-      const r2 = startR(
-        'jgd(width=8, height=6, dpi=96); plot(4:6); for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      await arf2.start();
+      await arf2.eval(
+        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+      );
+      await arf2.eval("plot(4:6)");
+
+      const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
+      assert(frame2.plot.ops.length > 0, "Session 2 frame should have ops");
+      const texts2 = extractTextOps(frame2);
+      const session2Id = frame2.plot.sessionId;
+
+      // Verify the sessions are different
+      assertNotEquals(
+        session1Id,
+        session2Id,
+        "R sessions should have different IDs",
+      );
+      assertNotEquals(
+        JSON.stringify(texts1),
+        JSON.stringify(texts2),
+        "Plot 1 and plot 2 should have different content",
       );
 
-      try {
-        const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
-        assert(frame2.plot.ops.length > 0, "Session 2 frame should have ops");
-        const texts2 = extractTextOps(frame2);
-        const session2Id = frame2.plot.sessionId;
+      // --- Send plotIndex=0 resize (targeting plot 1 from dead session 1) ---
+      // Include session1Id so the server routes to the correct (dead) session.
+      browser.sendResizeWithPlotIndex(640, 480, 0, session1Id);
 
-        // Verify the sessions are different
-        assertNotEquals(
-          session1Id,
-          session2Id,
-          "R sessions should have different IDs",
-        );
-        assertNotEquals(
-          JSON.stringify(texts1),
-          JSON.stringify(texts2),
-          "Plot 1 and plot 2 should have different content",
-        );
+      // The server routes the plotIndex resize to session 1 only (via
+      // sessionId).  Since session 1 is dead, the resize is silently
+      // dropped — no frame should arrive.  This prevents session confusion
+      // where session 2 would render its own plot at new dimensions and
+      // the server would tag it as plotIndex=0, corrupting history.
 
-        // --- Send plotIndex=0 resize (targeting plot 1 from dead session 1) ---
-        // Include session1Id so the server routes to the correct (dead) session.
-        browser.sendResizeWithPlotIndex(640, 480, 0, session1Id);
+      // Send a ping sentinel: any server-side message queued before the
+      // pong will arrive first.  Race the pong against a frame waiter —
+      // if the pong wins, the server correctly dropped the plotIndex resize.
+      // AbortController cancels the losing waiter so it doesn't consume
+      // later messages.
+      const ac = new AbortController();
+      const sentinel = Symbol("pong");
+      const resizeFrame = await Promise.race([
+        browser.waitForMessage<FrameMessage>(
+          (msg) =>
+            msg.type === "frame" && (msg as FrameMessage).resize === true,
+          10000,
+          ac.signal,
+        ).catch(() => null),
+        browser.sendPing(5000).then(() => {
+          ac.abort();
+          return sentinel;
+        }),
+      ]);
 
-        // The server routes the plotIndex resize to session 1 only (via
-        // sessionId).  Since session 1 is dead, the resize is silently
-        // dropped — no frame should arrive.  This prevents session confusion
-        // where session 2 would render its own plot at new dimensions and
-        // the server would tag it as plotIndex=0, corrupting history.
-
-        // Send a ping sentinel: any server-side message queued before the
-        // pong will arrive first.  Race the pong against a frame waiter —
-        // if the pong wins, the server correctly dropped the plotIndex resize.
-        // AbortController cancels the losing waiter so it doesn't consume
-        // later messages.
-        const ac = new AbortController();
-        const sentinel = Symbol("pong");
-        const resizeFrame = await Promise.race([
-          browser.waitForMessage<FrameMessage>(
-            (msg) =>
-              msg.type === "frame" && (msg as FrameMessage).resize === true,
-            10000,
-            ac.signal,
-          ).catch(() => null),
-          browser.sendPing(5000).then(() => { ac.abort(); return sentinel; }),
-        ]);
-
-        // No frame should arrive — session 1 is dead and cannot re-render.
-        // The server should drop the plotIndex resize entirely.
-        assertEquals(
-          resizeFrame,
-          sentinel,
-          "No resize frame should arrive — session 1 is dead and cannot re-render plot 1",
-        );
-      } finally {
-        r2.kill();
-        try { await r2.process.output(); } catch { /* ignore */ }
-      }
+      // No frame should arrive — session 1 is dead and cannot re-render.
+      // The server should drop the plotIndex resize entirely.
+      assertEquals(
+        resizeFrame,
+        sentinel,
+        "No resize frame should arrive — session 1 is dead and cannot re-render plot 1",
+      );
     } finally {
+      await arf2.shutdown();
       browser.close();
       await delay(100);
       await server.shutdown();

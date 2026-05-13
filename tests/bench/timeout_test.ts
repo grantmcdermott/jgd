@@ -75,12 +75,16 @@ Deno.test("raceWithTimeout sets timeout side effects before rejection is observe
     "timeout",
   );
 
-  await assertRejects(async () => {
-    try {
-      await raced;
-    } catch (error) {
-      assertEquals(timeoutSideEffect, true);
-      throw error;
-    }
-  }, Error, "timeout");
+  await assertRejects(
+    async () => {
+      try {
+        await raced;
+      } catch (error) {
+        assertEquals(timeoutSideEffect, true);
+        throw error;
+      }
+    },
+    Error,
+    "timeout",
+  );
 });

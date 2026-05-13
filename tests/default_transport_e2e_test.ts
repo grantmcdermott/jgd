@@ -13,18 +13,21 @@ import type {
   FrameMessage,
 } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { checkRAvailable, runR } from "./helpers/r_process.ts";
+import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
+import { toRSocketAddress } from "./helpers/r_process.ts";
 
-const rAvailable = await checkRAvailable();
+const arfAvailable = await checkArfAvailable();
+const skip = !arfAvailable;
 const isWindows = Deno.build.os === "windows";
 
 Deno.test({
   name: "E2E default transport: basic frame relay",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn(t) {
     // No { tcp: true } — uses Unix socket on POSIX, named pipe on Windows.
     const server = new TestServer();
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
@@ -43,17 +46,18 @@ Deno.test({
         }
       });
 
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
       await delay(200);
 
       await t.step("plot.new + rect produces frame with rect op", async () => {
-        const result = await runR(
-          'jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()',
-          server.socketPath,
+        const result = await arf.eval(
+          `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()`,
         );
-        if (!result.success) {
-          throw new Error(`R failed (exit ${result.exitCode}): ${result.stderr}`);
+        if (result.error) {
+          throw new Error(`R eval failed: ${result.error}`);
         }
 
         const frame = await browser.waitForType<FrameMessage>("frame");
@@ -67,6 +71,7 @@ Deno.test({
       });
     } finally {
       browser.close();
+      await arf.shutdown();
       await delay(100);
       await server.shutdown();
       server.cleanup();
@@ -76,32 +81,38 @@ Deno.test({
 
 Deno.test({
   name: "E2E default transport: device close",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn(t) {
     const server = new TestServer();
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
       await delay(200);
 
-      await t.step("dev.off flushes frame and sends close message", async () => {
-        const result = await runR(
-          'jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()',
-          server.socketPath,
-        );
-        if (!result.success) {
-          throw new Error(`R failed (exit ${result.exitCode}): ${result.stderr}`);
-        }
+      await t.step(
+        "dev.off flushes frame and sends close message",
+        async () => {
+          const result = await arf.eval(
+            `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()`,
+          );
+          if (result.error) {
+            throw new Error(`R eval failed: ${result.error}`);
+          }
 
-        await browser.waitForType<FrameMessage>("frame");
-        const closeMsg = await browser.waitForType<CloseMessage>("close");
-        assert(closeMsg.type === "close", "Expected close message");
-      });
+          await browser.waitForType<FrameMessage>("frame");
+          const closeMsg = await browser.waitForType<CloseMessage>("close");
+          assert(closeMsg.type === "close", "Expected close message");
+        },
+      );
     } finally {
       browser.close();
+      await arf.shutdown();
       await delay(100);
       await server.shutdown();
       server.cleanup();

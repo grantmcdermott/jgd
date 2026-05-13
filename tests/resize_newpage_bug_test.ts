@@ -20,16 +20,19 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { checkRAvailable, startR } from "./helpers/r_process.ts";
+import { ArfSession, checkArfAvailable } from "./helpers/arf_session.ts";
+import { toRSocketAddress } from "./helpers/r_process.ts";
 
-const rAvailable = await checkRAvailable();
+const arfAvailable = await checkArfAvailable();
+const skip = !arfAvailable;
 
 Deno.test({
   name: "E2E: resize replay frame must have resize:true, not newPage:true",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
@@ -37,68 +40,66 @@ Deno.test({
       browser.sendResize(800, 600);
       await delay(200);
 
-      // Single plot + polling loop for resize processing
-      const r = startR(
-        'jgd(width=8, height=6, dpi=96); plot(1:5); for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
+      await arf.eval(
+        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+      );
+      await arf.eval("plot(1:5)");
+
+      // Wait for the initial plot frame
+      const plotFrame = await browser.waitForType<FrameMessage>(
+        "frame",
+        15000,
+      );
+      assert(plotFrame.plot.ops.length > 0, "Initial plot should have ops");
+
+      // Send a resize with different dimensions
+      browser.sendResize(640, 480);
+      await delay(100); // allow WS message to propagate to server
+      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+
+      // Wait for ANY frame (not filtering by resize:true) to see what R
+      // actually sends after the resize.
+      const resizeFrame = await browser.waitForType<FrameMessage>(
+        "frame",
+        10000,
       );
 
-      try {
-        // Wait for the initial plot frame
-        const plotFrame = await browser.waitForType<FrameMessage>(
-          "frame",
-          15000,
-        );
-        assert(plotFrame.plot.ops.length > 0, "Initial plot should have ops");
+      // The resize replay frame MUST be tagged with resize:true so the
+      // browser calls replaceLatest instead of addPlot.
+      assertEquals(
+        resizeFrame.resize,
+        true,
+        "Resize replay frame must have resize:true — " +
+          `got resize=${resizeFrame.resize}, newPage=${resizeFrame.newPage}`,
+      );
 
-        // Send a resize with different dimensions
-        browser.sendResize(640, 480);
-
-        // Wait for ANY frame (not filtering by resize:true) to see what R
-        // actually sends after the resize.
-        const resizeFrame = await browser.waitForType<FrameMessage>(
-          "frame",
-          10000,
-        );
-
-        // The resize replay frame MUST be tagged with resize:true so the
-        // browser calls replaceLatest instead of addPlot.
-        assertEquals(
-          resizeFrame.resize,
-          true,
-          "Resize replay frame must have resize:true — " +
-            `got resize=${resizeFrame.resize}, newPage=${resizeFrame.newPage}`,
-        );
-
-        // The frame must NOT have newPage:true.  If it does, the C code
-        // is incorrectly setting new_page during GEplayDisplayList replay.
-        assertEquals(
-          resizeFrame.newPage,
-          undefined,
-          "Resize replay frame must not have newPage — cb_newPage should " +
-            "not set new_page flag during replaying",
-        );
-      } finally {
-        r.kill();
-        try {
-          await r.process.output();
-        } catch { /* ignore */ }
-      }
+      // The frame must NOT have newPage:true.  If it does, the C code
+      // is incorrectly setting new_page during GEplayDisplayList replay.
+      assertEquals(
+        resizeFrame.newPage,
+        undefined,
+        "Resize replay frame must not have newPage — cb_newPage should " +
+          "not set new_page flag during replaying",
+      );
     } finally {
       browser.close();
       await delay(100);
       await server.shutdown();
       server.cleanup();
+      await arf.shutdown();
     }
   },
 });
 
 Deno.test({
   name: "E2E: two resizes do not create extra plot entries",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
@@ -106,66 +107,65 @@ Deno.test({
       browser.sendResize(800, 600);
       await delay(200);
 
-      // Two plots + polling loop
-      const r = startR(
-        'jgd(width=8, height=6, dpi=96); plot(1:3); plot(4:6); for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
+      await arf.eval(
+        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+      );
+      await arf.eval("plot(1:3); plot(4:6)");
+
+      // Wait for both plot frames
+      await browser.waitForType<FrameMessage>("frame", 15000);
+      await browser.waitForType<FrameMessage>("frame", 15000);
+
+      // Count total frames received: should be exactly 2 so far.
+      // Now send resize — should produce exactly 1 more frame with resize:true.
+      browser.sendResize(640, 480);
+      await delay(100); // allow WS message to propagate to server
+      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+
+      const frame3 = await browser.waitForType<FrameMessage>(
+        "frame",
+        10000,
       );
 
-      try {
-        // Wait for both plot frames
-        await browser.waitForType<FrameMessage>("frame", 15000);
-        await browser.waitForType<FrameMessage>("frame", 15000);
+      assertEquals(
+        frame3.resize,
+        true,
+        "First resize frame must be tagged resize:true",
+      );
+      assertEquals(
+        frame3.newPage,
+        undefined,
+        "First resize frame must not have newPage",
+      );
 
-        // Count total frames received: should be exactly 2 so far.
-        // Now send resize — should produce exactly 1 more frame with resize:true.
-        browser.sendResize(640, 480);
+      // Send another resize
+      browser.sendResize(700, 500);
+      await delay(100); // allow WS message to propagate to server
+      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
 
-        const frame3 = await browser.waitForType<FrameMessage>(
-          "frame",
-          10000,
-        );
+      const frame4 = await browser.waitForType<FrameMessage>(
+        "frame",
+        10000,
+      );
 
-        assertEquals(
-          frame3.resize,
-          true,
-          "First resize frame must be tagged resize:true",
-        );
-        assertEquals(
-          frame3.newPage,
-          undefined,
-          "First resize frame must not have newPage",
-        );
-
-        // Send another resize
-        browser.sendResize(700, 500);
-
-        const frame4 = await browser.waitForType<FrameMessage>(
-          "frame",
-          10000,
-        );
-
-        assertEquals(
-          frame4.resize,
-          true,
-          "Second resize frame must also be tagged resize:true",
-        );
-        assertEquals(
-          frame4.newPage,
-          undefined,
-          "Second resize frame must not have newPage",
-        );
-      } finally {
-        r.kill();
-        try {
-          await r.process.output();
-        } catch { /* ignore */ }
-      }
+      assertEquals(
+        frame4.resize,
+        true,
+        "Second resize frame must also be tagged resize:true",
+      );
+      assertEquals(
+        frame4.newPage,
+        undefined,
+        "Second resize frame must not have newPage",
+      );
     } finally {
       browser.close();
       await delay(100);
       await server.shutdown();
       server.cleanup();
+      await arf.shutdown();
     }
   },
 });

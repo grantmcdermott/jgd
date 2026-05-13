@@ -9,7 +9,11 @@
 import { assertEquals } from "@std/assert";
 import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
-import { E2EBrowser, plotInfoText, waitForPlotCount } from "../server/tests/helpers/e2e_browser.ts";
+import {
+  E2EBrowser,
+  plotInfoText,
+  waitForPlotCount,
+} from "../server/tests/helpers/e2e_browser.ts";
 import { checkRAvailable, toRSocketAddress } from "./helpers/r_process.ts";
 
 const rAvailable = await checkRAvailable();
@@ -38,13 +42,15 @@ Deno.test({
 
       // Drain stdout/stderr in background
       proc.stdout.pipeTo(new WritableStream({ write() {} })).catch(() => {});
-      proc.stderr.pipeTo(new WritableStream({
-        write(chunk) {
-          if (Deno.env.get("JGD_TEST_VERBOSE")) {
-            Deno.stderr.writeSync(chunk);
-          }
-        },
-      })).catch(() => {});
+      proc.stderr.pipeTo(
+        new WritableStream({
+          write(chunk) {
+            if (Deno.env.get("JGD_TEST_VERBOSE")) {
+              Deno.stderr.writeSync(chunk);
+            }
+          },
+        }),
+      ).catch(() => {});
 
       const send = async (code: string) => {
         await writer.write(encoder.encode(code + "\n"));
@@ -102,12 +108,19 @@ Deno.test({
           `After 3 plots, should show 3 / 3, got "${info}" — ` +
             "plot duplication bug detected",
         );
-
       } finally {
-        try { writer.releaseLock(); } catch { /* ignore */ }
-        try { await proc.stdin.close(); } catch { /* ignore */ }
-        try { proc.kill("SIGKILL"); } catch { /* ignore */ }
-        try { await proc.output(); } catch { /* ignore */ }
+        try {
+          writer.releaseLock();
+        } catch { /* ignore */ }
+        try {
+          await proc.stdin.close();
+        } catch { /* ignore */ }
+        try {
+          proc.kill("SIGKILL");
+        } catch { /* ignore */ }
+        try {
+          await proc.output();
+        } catch { /* ignore */ }
       }
     } finally {
       await e2e.close();
