@@ -51,6 +51,11 @@ export class ArfSession {
 
     try {
       await Promise.race([this.#readReadyJson(), timeout]);
+    } catch (error) {
+      // If startup fails after spawn (timeout/invalid ready JSON), ensure
+      // the child is torn down so it cannot leak into later tests.
+      await this.shutdown();
+      throw error;
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
     }
