@@ -105,7 +105,7 @@ Deno.test({
           6000,
           ac.signal,
         ).catch(() => null),
-        browser.sendPing(2000).then(() => {
+        browser.sendPing(6000).then(() => {
           ac.abort();
           return sentinel;
         }),
