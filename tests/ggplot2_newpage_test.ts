@@ -266,6 +266,9 @@ Deno.test({
         `\nFirst plot total ops: ${firstPlotOpsTotal}, sessionId: ${sessionId}`,
       );
 
+      // Drain any stale complete frames from initial drawing before replay.
+      await collectFramesUntilQuiet(browser, FRAME_WAIT_MS);
+
       // Now send a plotIndex resize for plot 0 (the first ggplot)
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
       await delay(100);
@@ -275,7 +278,8 @@ Deno.test({
       const replayFrame = await browser.waitForMessage<FrameMessage>(
         (msg) =>
           msg.type === "frame" &&
-          !("incremental" in msg && (msg as FrameMessage).incremental),
+          (msg as FrameMessage).resize === true &&
+          (msg as FrameMessage).plotIndex === 0,
         6000,
       );
 

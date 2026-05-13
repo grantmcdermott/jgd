@@ -90,6 +90,11 @@ Deno.test({
       // --- Send plotIndex=0 resize (targeting plot 1 from dead session 1) ---
       // Include session1Id so the server routes to the correct (dead) session.
       browser.sendResizeWithPlotIndex(640, 480, 0, session1Id);
+      await delay(100);
+      await arf2.eval(
+        "for (i in 1:40) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.005) }",
+        60_000,
+      );
 
       // The server routes the plotIndex resize to session 1 only (via
       // sessionId).  Since session 1 is dead, the resize is silently

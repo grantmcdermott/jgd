@@ -93,13 +93,18 @@ export class ArfSession {
   /**
    * Evaluate R code in the session.
    *
-   * R evaluation errors are returned in `result.error` (exit code 0).
-   * Throws only on IPC/transport failures (non-zero exit code).
+   * By default, throws on both IPC failures and R evaluation errors.
+   * Set opts.throwOnRError=false to inspect result.error manually.
    *
    * @param code      R code to evaluate
    * @param timeoutMs IPC response timeout in ms (default: 30000)
    */
-  async eval(code: string, timeoutMs = 30_000): Promise<ArfEvalResult> {
+  async eval(
+    code: string,
+    timeoutMs = 30_000,
+    opts: { throwOnRError?: boolean } = {},
+  ): Promise<ArfEvalResult> {
+    const { throwOnRError = true } = opts;
     if (this.#pid === null) throw new Error("ArfSession not started");
 
     const cmd = new Deno.Command("arf", {
@@ -122,7 +127,13 @@ export class ArfSession {
       throw new Error(`arf ipc eval failed (exit ${output.code}): ${stderr}`);
     }
 
-    return JSON.parse(new TextDecoder().decode(output.stdout)) as ArfEvalResult;
+    const result = JSON.parse(
+      new TextDecoder().decode(output.stdout),
+    ) as ArfEvalResult;
+    if (throwOnRError && result.error !== null) {
+      throw new Error(`R eval failed: ${result.error}`);
+    }
+    return result;
   }
 
   /**

@@ -68,7 +68,7 @@ Deno.test({
 
       // Plot 1: ggplot2 (grid-based, populates grid state)
       await arf.eval(
-        "library(ggplot2); ggplot(mpg, aes(displ, hwy)) + geom_point()",
+        "library(ggplot2); print(ggplot(mpg, aes(displ, hwy)) + geom_point())",
       );
 
       // Plot 2: base-graphics plot(1:3) with ext; Plot 3: another base plot
