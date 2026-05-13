@@ -50,6 +50,18 @@ jobs:
         with:
           deno-version: v2.x
 
+      - name: Install arf (Linux)
+        if: runner.os != 'Windows'
+        run: |
+          curl -fsSL https://github.com/eitsupi/arf/releases/download/v0.3.3/arf-console-installer.sh | sh
+        shell: bash
+
+      - name: Install arf (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          irm https://github.com/eitsupi/arf/releases/download/v0.3.3/arf-console-installer.ps1 | iex
+        shell: powershell
+
       - name: Install jgd R package
         run: R CMD INSTALL r-pkg
         shell: bash
