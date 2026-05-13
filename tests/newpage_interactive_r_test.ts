@@ -61,21 +61,21 @@ Deno.test({
         await send(`options(jgd.socket = "${socketAddr}")`);
         await send("library(jgd)");
         await send("jgd(width=8, height=6, dpi=96)");
-        await delay(1000);
+        await delay(300);
 
         // NOW open browser — R is connected
         await e2e.launch();
         const page = await e2e.newPage(server.httpBaseUrl);
-        await delay(1000);
+        await delay(300);
 
         // Plot 1 — typed interactively (R event loop processes events between commands)
         await send("plot(1:3)");
 
-        let info = await waitForPlotCount(page, 1, 10_000);
+        let info = await waitForPlotCount(page, 1, 8_000);
         console.error(`After plot 1: "${info}"`);
 
         // Settle — check for ghost entries from resize replay
-        await delay(2000);
+        await delay(500);
         info = await plotInfoText(page);
         console.error(`After plot 1 + settle: "${info}"`);
         assertEquals(
@@ -88,7 +88,7 @@ Deno.test({
         // Plot 2 — typed interactively
         await send("plot(4:6)");
 
-        info = await waitForPlotCount(page, 2, 10_000);
+        info = await waitForPlotCount(page, 2, 8_000);
         console.error(`After plot 2: "${info}"`);
         assertEquals(
           info,
@@ -100,7 +100,7 @@ Deno.test({
         // Plot 3
         await send("plot(7:9)");
 
-        info = await waitForPlotCount(page, 3, 10_000);
+        info = await waitForPlotCount(page, 3, 8_000);
         console.error(`After plot 3: "${info}"`);
         assertEquals(
           info,

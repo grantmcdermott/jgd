@@ -38,7 +38,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -65,7 +65,7 @@ Deno.test({
       const deadline = Date.now() + 20000;
 
       while (newPageCount < 3 && Date.now() < deadline) {
-        const msg = await browser.waitForType<FrameMessage>("frame", 10000);
+        const msg = await browser.waitForType<FrameMessage>("frame", 6000);
         frames.push(msg);
         if (msg.newPage) newPageCount++;
       }
@@ -97,7 +97,7 @@ Deno.test({
 
       const resized = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
 
       assertEquals(

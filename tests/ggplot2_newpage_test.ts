@@ -118,7 +118,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -213,7 +213,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -269,7 +269,7 @@ Deno.test({
         (msg) =>
           msg.type === "frame" &&
           !("incremental" in msg && (msg as FrameMessage).incremental),
-        10000,
+        6000,
       );
 
       console.error(

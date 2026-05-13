@@ -60,7 +60,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);

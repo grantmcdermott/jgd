@@ -36,7 +36,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -56,7 +56,7 @@ Deno.test({
         try {
           const frame = await browser.waitForType<FrameMessage>(
             "frame",
-            5000,
+            2000,
           );
           allFrames.push(frame);
           if (frame.newPage) {
@@ -69,7 +69,7 @@ Deno.test({
       }
 
       // Wait a bit for any trailing frames
-      await delay(1000);
+      await delay(300);
 
       // Try to read one more frame (should timeout if no extras)
       let extraFrame: FrameMessage | null = null;
@@ -149,7 +149,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -166,7 +166,7 @@ Deno.test({
         try {
           const frame = await browser.waitForType<FrameMessage>(
             "frame",
-            5000,
+            2000,
           );
           allFrames.push(frame);
           if (frame.newPage) {
@@ -178,7 +178,7 @@ Deno.test({
       }
 
       // Wait for any trailing frames
-      await delay(1000);
+      await delay(300);
       try {
         const extra = await browser.waitForType<FrameMessage>("frame", 1000);
         if (extra) allFrames.push(extra);

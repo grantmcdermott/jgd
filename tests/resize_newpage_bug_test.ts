@@ -38,7 +38,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -50,7 +50,7 @@ Deno.test({
       // Wait for the initial plot frame
       const plotFrame = await browser.waitForType<FrameMessage>(
         "frame",
-        15000,
+        8000,
       );
       assert(plotFrame.plot.ops.length > 0, "Initial plot should have ops");
 
@@ -63,7 +63,7 @@ Deno.test({
       // actually sends after the resize.
       const resizeFrame = await browser.waitForType<FrameMessage>(
         "frame",
-        10000,
+        6000,
       );
 
       // The resize replay frame MUST be tagged with resize:true so the
@@ -105,7 +105,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -115,8 +115,8 @@ Deno.test({
       await arf.eval("plot(1:3); plot(4:6)");
 
       // Wait for both plot frames
-      await browser.waitForType<FrameMessage>("frame", 15000);
-      await browser.waitForType<FrameMessage>("frame", 15000);
+      await browser.waitForType<FrameMessage>("frame", 8000);
+      await browser.waitForType<FrameMessage>("frame", 8000);
 
       // Count total frames received: should be exactly 2 so far.
       // Now send resize — should produce exactly 1 more frame with resize:true.
@@ -126,7 +126,7 @@ Deno.test({
 
       const frame3 = await browser.waitForType<FrameMessage>(
         "frame",
-        10000,
+        6000,
       );
 
       assertEquals(
@@ -147,7 +147,7 @@ Deno.test({
 
       const frame4 = await browser.waitForType<FrameMessage>(
         "frame",
-        10000,
+        6000,
       );
 
       assertEquals(

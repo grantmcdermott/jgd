@@ -36,7 +36,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       const socketAddr = toRSocketAddress(server.socketPath);
 
@@ -48,7 +48,7 @@ Deno.test({
       );
       await arf1.eval("plot(1:3)");
 
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame1.plot.ops.length > 0, "Session 1 frame should have ops");
       const texts1 = extractTextOps(frame1);
       const session1Id = frame1.plot.sessionId;
@@ -64,7 +64,7 @@ Deno.test({
       );
       await arf2.eval("plot(4:6)");
 
-      const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame2 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame2.plot.ops.length > 0, "Session 2 frame should have ops");
       const texts2 = extractTextOps(frame2);
       const session2Id = frame2.plot.sessionId;
@@ -102,10 +102,10 @@ Deno.test({
         browser.waitForMessage<FrameMessage>(
           (msg) =>
             msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
+          6000,
           ac.signal,
         ).catch(() => null),
-        browser.sendPing(5000).then(() => {
+        browser.sendPing(2000).then(() => {
           ac.abort();
           return sentinel;
         }),

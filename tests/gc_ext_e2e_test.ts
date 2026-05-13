@@ -28,7 +28,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -42,7 +42,7 @@ Deno.test({
           "plot(1:3)",
       );
 
-      const frame = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame.plot.ops.length > 0, "Frame should have ops");
 
       // All drawing ops should have gc.ext since ext was set before plot()
@@ -85,7 +85,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -98,7 +98,7 @@ Deno.test({
           'with_jgd_ext(\'{"shadow":{"blur":10,"color":"black"}}\', plot(1:3))',
       );
 
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame1.plot.ops.length > 0, "First frame should have ops");
 
       // First frame (plot(1:3) inside with_jgd_ext) should have ext
@@ -117,7 +117,7 @@ Deno.test({
       await arf.eval("plot(4:6)");
 
       // Second frame (plot(4:6) after with_jgd_ext scope) should NOT have ext
-      const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame2 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame2.plot.ops.length > 0, "Second frame should have ops");
       const ops2 = frame2.plot.ops as Array<Record<string, unknown>>;
       const opsWithExt2 = ops2.filter(
@@ -150,7 +150,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -166,7 +166,7 @@ Deno.test({
       );
 
       // Wait for initial frame
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame1.plot.ops.length > 0, "Initial frame should have ops");
 
       const ops1 = frame1.plot.ops as Array<Record<string, unknown>>;
@@ -186,7 +186,7 @@ Deno.test({
       // Wait for the resize replay frame
       const resizeFrame = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame",
-        10000,
+        6000,
       );
       assert(resizeFrame.plot.ops.length > 0, "Resize frame should have ops");
 
@@ -234,7 +234,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -250,7 +250,7 @@ Deno.test({
       );
 
       // Receive frame for plot 1 (shadow)
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame1.plot.ops.length > 0, "Plot 1 should have ops");
       const ops1 = frame1.plot.ops as Array<Record<string, unknown>>;
       const opsWithShadow = ops1.filter(
@@ -264,7 +264,7 @@ Deno.test({
       );
 
       // Receive frame for plot 2 (opacity)
-      const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame2 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame2.plot.ops.length > 0, "Plot 2 should have ops");
       const ops2 = frame2.plot.ops as Array<Record<string, unknown>>;
       const opsWithOpacity = ops2.filter(
@@ -280,7 +280,7 @@ Deno.test({
 
       const replay1 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
       assert(replay1.plot.ops.length > 0, "Plot 1 replay should have ops");
       assertEquals(replay1.plotIndex, 0, "Should be plotIndex 0");
@@ -314,7 +314,7 @@ Deno.test({
 
       const replay2 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
       assert(replay2.plot.ops.length > 0, "Plot 2 replay should have ops");
       const replay2Ops = replay2.plot.ops as Array<Record<string, unknown>>;

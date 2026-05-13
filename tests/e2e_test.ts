@@ -31,7 +31,7 @@ Deno.test({
       const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await t.step("plot.new + rect produces frame with rect op", async () => {
         const result = await arf.eval(
@@ -75,7 +75,7 @@ Deno.test({
       const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await t.step(
         "text() triggers metrics requests and produces text op",
@@ -126,7 +126,7 @@ Deno.test({
       const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await t.step(
         "plot(1:5) produces frame with multiple op types",
@@ -227,7 +227,7 @@ Deno.test({
       const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await t.step(
         "custom device dimensions are reported in frame",

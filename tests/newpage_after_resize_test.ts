@@ -34,7 +34,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -44,7 +44,7 @@ Deno.test({
       await arf.eval("plot(1:3)");
 
       // Wait for plot 1
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame1.plot.ops.length > 0, "Plot 1 should have ops");
       console.error(
         `frame1: newPage=${frame1.newPage}, resize=${frame1.resize}, ` +
@@ -64,7 +64,7 @@ Deno.test({
       // Collect resize frame first
       while (Date.now() < deadline) {
         try {
-          const frame = await browser.waitForType<FrameMessage>("frame", 5000);
+          const frame = await browser.waitForType<FrameMessage>("frame", 2000);
           allFrames.push(frame);
           if (frame.newPage) plotCount++;
           console.error(
@@ -82,7 +82,7 @@ Deno.test({
 
       while (Date.now() < deadline && plotCount < 2) {
         try {
-          const frame = await browser.waitForType<FrameMessage>("frame", 5000);
+          const frame = await browser.waitForType<FrameMessage>("frame", 2000);
           allFrames.push(frame);
           if (frame.newPage) plotCount++;
           console.error(
@@ -99,7 +99,7 @@ Deno.test({
 
       while (Date.now() < deadline && plotCount < 3) {
         try {
-          const frame = await browser.waitForType<FrameMessage>("frame", 5000);
+          const frame = await browser.waitForType<FrameMessage>("frame", 2000);
           allFrames.push(frame);
           if (frame.newPage) plotCount++;
           console.error(
@@ -113,7 +113,7 @@ Deno.test({
       }
 
       // Wait for trailing frames
-      await delay(1000);
+      await delay(300);
       try {
         const extra = await browser.waitForType<FrameMessage>("frame", 1000);
         allFrames.push(extra);
@@ -183,7 +183,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -193,7 +193,7 @@ Deno.test({
       await arf.eval("plot(1:3)");
 
       // Wait for plot 1
-      const f1 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const f1 = await browser.waitForType<FrameMessage>("frame", 8000);
       assertEquals(f1.newPage, true, "First frame must be newPage");
 
       // Send resize after plot 1
@@ -206,7 +206,7 @@ Deno.test({
       const postPlot1Frames: FrameMessage[] = [];
       for (let i = 0; i < 5; i++) {
         try {
-          const f = await browser.waitForType<FrameMessage>("frame", 3000);
+          const f = await browser.waitForType<FrameMessage>("frame", 1500);
           postPlot1Frames.push(f);
           if (f.resize) {
             gotResize1 = true;
@@ -233,7 +233,7 @@ Deno.test({
       await arf.eval("plot(4:6)");
 
       // Wait for plot 2
-      const f2 = await browser.waitForType<FrameMessage>("frame", 10000);
+      const f2 = await browser.waitForType<FrameMessage>("frame", 6000);
       assertEquals(f2.newPage, true, "Plot 2 frame must have newPage");
 
       // Send resize after plot 2
@@ -246,7 +246,7 @@ Deno.test({
       const postPlot2Frames: FrameMessage[] = [];
       for (let i = 0; i < 5; i++) {
         try {
-          const f = await browser.waitForType<FrameMessage>("frame", 3000);
+          const f = await browser.waitForType<FrameMessage>("frame", 1500);
           postPlot2Frames.push(f);
           if (f.resize) {
             gotResize2 = true;
@@ -273,7 +273,7 @@ Deno.test({
       await arf.eval("plot(7:9)");
 
       // Wait for plot 3
-      const f3 = await browser.waitForType<FrameMessage>("frame", 10000);
+      const f3 = await browser.waitForType<FrameMessage>("frame", 6000);
       assertEquals(f3.newPage, true, "Plot 3 frame must have newPage");
     } finally {
       browser.close();

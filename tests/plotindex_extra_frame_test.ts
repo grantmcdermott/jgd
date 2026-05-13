@@ -39,7 +39,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -49,11 +49,11 @@ Deno.test({
       await arf.eval("plot(1:3); plot(4:6)");
 
       // Wait for both plot frames
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame1.plot.ops.length > 0, "First frame should have ops");
       const texts1 = extractTextOps(frame1);
 
-      const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame2 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame2.plot.ops.length > 0, "Second frame should have ops");
       const texts2 = extractTextOps(frame2);
 
@@ -74,7 +74,7 @@ Deno.test({
       // Wait for the resize response frame
       const resized = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
 
       assertEquals(resized.resize, true, "Should have resize:true");
@@ -102,10 +102,10 @@ Deno.test({
       const ac = new AbortController();
       const sentinel = Symbol("pong");
       const extraFrame = await Promise.race([
-        browser.waitForType<FrameMessage>("frame", 10000, ac.signal).catch(() =>
+        browser.waitForType<FrameMessage>("frame", 6000, ac.signal).catch(() =>
           null
         ),
-        browser.sendPing(5000).then(() => {
+        browser.sendPing(2000).then(() => {
           ac.abort();
           return sentinel;
         }),

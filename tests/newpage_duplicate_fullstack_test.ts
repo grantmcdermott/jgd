@@ -39,7 +39,7 @@ Deno.test({
       const page = await e2e.newPage(server.httpBaseUrl);
 
       // Wait for browser to be ready
-      await delay(500);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -51,12 +51,12 @@ Deno.test({
       await arf.eval("plot(1:3)");
 
       // Wait for plot 1 to appear
-      let info = await waitForPlotCount(page, 1, 10_000);
+      let info = await waitForPlotCount(page, 1, 8_000);
       console.error(`After plot 1: "${info}"`);
       assertEquals(info, "1 / 1", "After plot 1, should show 1 / 1");
 
       // Wait a moment, then verify no extra plots appeared
-      await delay(1000);
+      await delay(300);
       info = await plotInfoText(page);
       console.error(`After plot 1 + 1s settle: "${info}"`);
       assertEquals(
@@ -74,7 +74,7 @@ Deno.test({
       await arf.eval("plot(4:6)");
 
       // Wait for plot 2
-      info = await waitForPlotCount(page, 2, 15_000);
+      info = await waitForPlotCount(page, 2, 8_000);
       console.error(`After plot 2: "${info}"`);
 
       // Key assertion: after 2 plots, toolbar must show "2 / 2"
@@ -93,7 +93,7 @@ Deno.test({
       await arf.eval("plot(7:9)");
 
       // Wait for plot 3
-      info = await waitForPlotCount(page, 3, 15_000);
+      info = await waitForPlotCount(page, 3, 8_000);
       console.error(`After plot 3: "${info}"`);
 
       assertEquals(

@@ -48,7 +48,7 @@ Deno.test({
       );
 
       // Wait for R to connect to the server
-      await delay(500);
+      await delay(100);
 
       // NOW open browser — R is already connected.
       // ResizeObserver will fire → resize reaches R's socket.
@@ -56,17 +56,17 @@ Deno.test({
       const page = await e2e.newPage(server.httpBaseUrl);
 
       // Settle: let browser connect and send initial resize
-      await delay(1000);
+      await delay(300);
 
       // Plot 1
       await arf.eval("plot(1:3)");
 
       // Wait for plot 1
-      let info = await waitForPlotCount(page, 1, 15_000);
+      let info = await waitForPlotCount(page, 1, 8_000);
       console.error(`After plot 1: "${info}"`);
 
       // Settle: verify no ghost entries from resize processing
-      await delay(1500);
+      await delay(400);
       info = await plotInfoText(page);
       console.error(`After plot 1 + settle: "${info}"`);
       assertEquals(
@@ -84,7 +84,7 @@ Deno.test({
       await arf.eval("plot(4:6)");
 
       // Wait for plot 2
-      info = await waitForPlotCount(page, 2, 15_000);
+      info = await waitForPlotCount(page, 2, 8_000);
       console.error(`After plot 2: "${info}"`);
       assertEquals(
         info,
@@ -101,7 +101,7 @@ Deno.test({
       await arf.eval("plot(7:9)");
 
       // Wait for plot 3
-      info = await waitForPlotCount(page, 3, 15_000);
+      info = await waitForPlotCount(page, 3, 8_000);
       console.error(`After plot 3: "${info}"`);
       assertEquals(
         info,

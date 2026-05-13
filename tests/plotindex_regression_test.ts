@@ -38,7 +38,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -48,10 +48,10 @@ Deno.test({
       await arf.eval("plot(1:3); plot(4:6)");
 
       // Step 1-2: Wait for both plots
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame1.plot.ops.length > 0, "First frame should have ops");
 
-      const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
+      const frame2 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame2.plot.ops.length > 0, "Second frame should have ops");
 
       // Step 3: Normal resize — verify latest plot (plot 2) re-renders
@@ -61,7 +61,7 @@ Deno.test({
 
       const normalResize1 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
 
       assertEquals(
@@ -87,7 +87,7 @@ Deno.test({
 
       const plotIndexResize = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
 
       assertEquals(
@@ -121,7 +121,7 @@ Deno.test({
 
       const normalResize2 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
 
       assertEquals(
@@ -173,7 +173,7 @@ Deno.test({
       await server.start();
       await browser.connect(server.wsUrl);
       browser.sendResize(800, 600);
-      await delay(200);
+      await delay(100);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -183,8 +183,8 @@ Deno.test({
       await arf.eval("plot(1:3); plot(4:6)");
 
       // Wait for both plots
-      const initFrame = await browser.waitForType<FrameMessage>("frame", 15000);
-      await browser.waitForType<FrameMessage>("frame", 15000);
+      const initFrame = await browser.waitForType<FrameMessage>("frame", 8000);
+      await browser.waitForType<FrameMessage>("frame", 8000);
       const sessionId = initFrame.plot.sessionId!;
 
       // Normal resize AFTER R session is established to properly set
@@ -195,7 +195,7 @@ Deno.test({
 
       const firstNormal = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
       assertEquals(firstNormal.resize, true);
       // lastResizeW/H is now 640x480 on the server
@@ -209,7 +209,7 @@ Deno.test({
 
       const plotIndexFrame = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
       assertEquals(plotIndexFrame.plotIndex, 0);
 
@@ -222,7 +222,7 @@ Deno.test({
 
       const normalFrame = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        10000,
+        6000,
       );
 
       assertEquals(
