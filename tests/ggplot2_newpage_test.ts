@@ -136,8 +136,12 @@ Deno.test({
       );
       await pollR(arf);
 
-      // Collect frames until drawing settles, then classify.
+      // Collect until 2 newPage frames, then drain trailing frames so
+      // assertions also cover late-arriving complete frames.
       const allFrames = await collectFramesUntilNewPagesOrDeadline(browser, 2);
+      allFrames.push(
+        ...(await collectFramesUntilQuiet(browser, FRAME_WAIT_MS)),
+      );
 
       // Categorize frames.
       // Browser dispatch: resize → replaceLatest, incremental → appendOps,

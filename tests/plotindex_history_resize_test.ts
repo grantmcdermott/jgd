@@ -62,6 +62,20 @@ function hasRedLineOp(frames: FrameMessage[]): boolean {
   return false;
 }
 
+async function canvasAlphaChecksum(
+  page: Awaited<ReturnType<E2EBrowser["newPage"]>>,
+): Promise<number> {
+  return await page.evaluate(`(function() {
+    var c = document.getElementById('plot-canvas');
+    if (!c || c.width === 0 || c.height === 0) return 0;
+    var ctx = c.getContext('2d');
+    var data = ctx.getImageData(0, 0, c.width, c.height).data;
+    var sum = 0;
+    for (var i = 3; i < data.length; i += 4) sum += data[i];
+    return sum;
+  })()`) as number;
+}
+
 Deno.test({
   name: "E2E: base graphics + lines() ops preserved after plotIndex resize",
   ignore: skip,
@@ -202,6 +216,7 @@ Deno.test({
         await canvasHasContent(page),
         "canvas should have content when viewing plot 1",
       );
+      const beforeResizeChecksum = await canvasAlphaChecksum(page);
 
       // Trigger resize — ResizeObserver fires with plotIndex=0 because we're
       // viewing a historical plot
@@ -217,14 +232,19 @@ Deno.test({
       // Explicitly process the resize in R (no embedded polling loop needed)
       await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
 
-      // Wait for the browser to render the re-drawn frame
+      // Wait for a post-resize render signal before asserting non-blank.
+      // Content can already be non-blank due to local browser replay.
       const deadline = Date.now() + 5_000;
+      let changed = false;
       let hasContent = false;
       while (Date.now() < deadline) {
+        const checksum = await canvasAlphaChecksum(page);
         hasContent = await canvasHasContent(page);
-        if (hasContent) break;
+        if (checksum !== beforeResizeChecksum) changed = true;
+        if (changed && hasContent) break;
         await delay(100);
       }
+      assert(changed, "canvas should update after plotIndex resize replay");
       assert(hasContent, "canvas must not be blank after plotIndex resize");
 
       // Navigation state should be unchanged (still viewing plot 1 of 2)

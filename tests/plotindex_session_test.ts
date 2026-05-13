@@ -42,19 +42,22 @@ Deno.test({
 
       // --- Session 1: generate plot 1 (plot(1:3)) ---
       const arf1 = new ArfSession();
-      await arf1.start();
-      await arf1.eval(
-        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-      );
-      await arf1.eval("plot(1:3)");
+      let texts1: string[] = [];
+      let session1Id = "";
+      try {
+        await arf1.start();
+        await arf1.eval(
+          `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+        );
+        await arf1.eval("plot(1:3)");
 
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
-      assert(frame1.plot.ops.length > 0, "Session 1 frame should have ops");
-      const texts1 = extractTextOps(frame1);
-      const session1Id = frame1.plot.sessionId;
-
-      // Shut down session 1 and wait for disconnect
-      await arf1.shutdown();
+        const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
+        assert(frame1.plot.ops.length > 0, "Session 1 frame should have ops");
+        texts1 = extractTextOps(frame1);
+        session1Id = frame1.plot.sessionId || "";
+      } finally {
+        await arf1.shutdown();
+      }
       await delay(500);
 
       // --- Session 2: generate plot 2 (plot(4:6)) ---
@@ -68,6 +71,7 @@ Deno.test({
       assert(frame2.plot.ops.length > 0, "Session 2 frame should have ops");
       const texts2 = extractTextOps(frame2);
       const session2Id = frame2.plot.sessionId;
+      assert(session1Id, "Session 1 must provide a sessionId");
 
       // Verify the sessions are different
       assertNotEquals(

@@ -16,6 +16,7 @@ export interface ArfEvalResult {
 export class ArfSession {
   #process: Deno.ChildProcess | null = null;
   #pid: number | null = null;
+  #tempLogFile: string | null = null;
 
   /**
    * Start an arf headless session and wait until R is ready for IPC.
@@ -29,6 +30,7 @@ export class ArfSession {
     const { timeoutMs = 30_000 } = opts;
     const logFile = opts.logFile ??
       await Deno.makeTempFile({ prefix: "arf-", suffix: ".log" });
+    this.#tempLogFile = opts.logFile ? null : logFile;
 
     const cmd = new Deno.Command("arf", {
       args: ["headless", "--json", "--log-file", logFile],
@@ -129,22 +131,12 @@ export class ArfSession {
   async shutdown(): Promise<void> {
     const pid = this.#pid;
     const process = this.#process;
+    const tempLogFile = this.#tempLogFile;
     this.#pid = null;
     this.#process = null;
+    this.#tempLogFile = null;
 
     if (process === null) return;
-
-    if (pid !== null) {
-      try {
-        await new Deno.Command("arf", {
-          args: ["ipc", "shutdown", "--pid", String(pid)],
-          stdout: "null",
-          stderr: "null",
-        }).output();
-      } catch {
-        // ignore — fallback kill below
-      }
-    }
 
     const timeoutId = setTimeout(() => {
       try {
@@ -153,6 +145,17 @@ export class ArfSession {
     }, 5_000);
 
     try {
+      if (pid !== null) {
+        try {
+          await new Deno.Command("arf", {
+            args: ["ipc", "shutdown", "--pid", String(pid)],
+            stdout: "null",
+            stderr: "null",
+          }).output();
+        } catch {
+          // ignore — fallback kill above
+        }
+      }
       await process.status;
     } catch {
       // ignore
@@ -162,6 +165,13 @@ export class ArfSession {
         await process.stdout.cancel();
       } catch {
         // already closed
+      }
+      if (tempLogFile !== null) {
+        try {
+          await Deno.remove(tempLogFile);
+        } catch {
+          // already removed or inaccessible
+        }
       }
     }
   }
@@ -185,7 +195,24 @@ export class ArfSession {
  * Convenience wrapper for use with `ignore: !arfTestAvailable` in Deno.test.
  */
 export async function checkArfAvailable(): Promise<boolean> {
-  return ArfSession.isAvailable();
+  if (!await ArfSession.isAvailable()) return false;
+  try {
+    const output = await new Deno.Command("arf", {
+      args: ["--version"],
+      stdout: "piped",
+      stderr: "null",
+    }).output();
+    if (!output.success) return false;
+    const versionText = new TextDecoder().decode(output.stdout);
+    const match = versionText.match(/(\d+)\.(\d+)\.(\d+)/);
+    if (!match) return false;
+    const [major, minor, patch] = match.slice(1).map((x) => Number(x));
+    if (major > 0) return true;
+    if (minor > 3) return true;
+    return minor === 3 && patch >= 0;
+  } catch {
+    return false;
+  }
 }
 
 /** True when tests can run via arf (arf binary + R + jgd package available). */

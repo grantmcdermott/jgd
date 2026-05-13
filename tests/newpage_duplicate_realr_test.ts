@@ -43,7 +43,9 @@ Deno.test({
       await arf.eval(
         `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
       );
-      await arf.eval("plot(1:3); plot(4:6); plot(7:9)");
+      await arf.eval(
+        "plot(1:3); plot(4:6); plot(7:9); for (i in 1:120) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.005) }",
+      );
 
       // Collect all frames that arrive within a reasonable window.
       // We expect 3 newPage frames (one per plot) plus possibly
