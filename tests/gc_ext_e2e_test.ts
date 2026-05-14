@@ -6,13 +6,13 @@
  */
 
 import { assert, assertEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
-import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { pollResize } from "./helpers/arf_poll.ts";
-import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
-import { toRSocketAddress } from "./helpers/r_process.ts";
+import {
+  sendPlotIndexResizeAndPoll,
+  sendResizeAndPoll,
+  startArfBrowserTest,
+} from "./helpers/arf_e2e.ts";
+import { checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
@@ -23,25 +23,13 @@ Deno.test({
   ignore: skip,
   async fn() {
     testLog("test start");
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
-    const arf = new ArfSession();
+    const ctx = await startArfBrowserTest();
+    const { arf, browser } = ctx;
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
-      await arf.start();
-      const socketAddr = toRSocketAddress(server.socketPath);
-
-      // Setup: load jgd with socket
-      await arf.eval(`options(jgd.socket = "${socketAddr}"); library(jgd)`);
       // R code: set ext, draw a plot, verify ext is embedded in ops
       await arf.eval(
-        "jgd(width=8, height=6, dpi=96); " +
-          'jgd_ext(\'{"blendMode":"multiply","opacity":0.5}\'); ' +
+        'jgd_ext(\'{"blendMode":"multiply","opacity":0.5}\'); ' +
           "plot(1:3)",
       );
 
@@ -67,11 +55,7 @@ Deno.test({
       assertEquals(ext.blendMode, "multiply", "blendMode should be 'multiply'");
       assertEquals(ext.opacity, 0.5, "opacity should be 0.5");
     } finally {
-      browser.close();
-      await delay(100);
-      await arf.shutdown();
-      await server.shutdown();
-      server.cleanup();
+      await ctx.close();
     }
   },
 });
@@ -81,25 +65,14 @@ Deno.test({
   ignore: skip,
   async fn() {
     testLog("test start");
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
-    const arf = new ArfSession();
+    const ctx = await startArfBrowserTest();
+    const { arf, browser } = ctx;
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
-      await arf.start();
-      const socketAddr = toRSocketAddress(server.socketPath);
-
-      await arf.eval(`options(jgd.socket = "${socketAddr}"); library(jgd)`);
       // R code: use with_jgd_ext to scope ext around first plot,
       // then draw second plot without ext
       await arf.eval(
-        "jgd(width=8, height=6, dpi=96); " +
-          'with_jgd_ext(\'{"shadow":{"blur":10,"color":"black"}}\', plot(1:3))',
+        'with_jgd_ext(\'{"shadow":{"blur":10,"color":"black"}}\', plot(1:3))',
       );
 
       const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
@@ -133,11 +106,7 @@ Deno.test({
         "Second plot should NOT have gc.ext after with_jgd_ext scope",
       );
     } finally {
-      browser.close();
-      await delay(100);
-      await arf.shutdown();
-      await server.shutdown();
-      server.cleanup();
+      await ctx.close();
     }
   },
 });
@@ -147,27 +116,16 @@ Deno.test({
   ignore: skip,
   async fn() {
     testLog("test start");
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
-    const arf = new ArfSession();
+    const ctx = await startArfBrowserTest();
+    const { arf, browser } = ctx;
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
-      await arf.start();
-      const socketAddr = toRSocketAddress(server.socketPath);
-
-      await arf.eval(`options(jgd.socket = "${socketAddr}"); library(jgd)`);
       // R code: use with_jgd_ext (sets then clears ext), then poll for resizes.
       // The bug: after with_jgd_ext returns, ext_json is NULL.  When R replays
       // the display list on resize, jgd_ext() is not re-called (it's not in the
       // display list), so all ops in the replayed frame lose gc.ext.
       await arf.eval(
-        "jgd(width=8, height=6, dpi=96); " +
-          'with_jgd_ext(\'{"blendMode":"multiply","opacity":0.5}\', plot(1:3))',
+        'with_jgd_ext(\'{"blendMode":"multiply","opacity":0.5}\', plot(1:3))',
       );
 
       // Wait for initial frame
@@ -184,9 +142,7 @@ Deno.test({
       );
 
       // Send a resize — this triggers display list replay in R
-      browser.sendResize(640, 480);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendResizeAndPoll(ctx, 640, 480);
 
       // Wait for the resize replay frame
       const resizeFrame = await browser.waitForMessage<FrameMessage>(
@@ -218,11 +174,7 @@ Deno.test({
       );
       assertEquals(ext.opacity, 0.5, "opacity should survive resize");
     } finally {
-      browser.close();
-      await delay(100);
-      await arf.shutdown();
-      await server.shutdown();
-      server.cleanup();
+      await ctx.close();
     }
   },
 });
@@ -232,26 +184,15 @@ Deno.test({
   ignore: skip,
   async fn() {
     testLog("test start");
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
-    const arf = new ArfSession();
+    const ctx = await startArfBrowserTest();
+    const { arf, browser } = ctx;
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
-      await arf.start();
-      const socketAddr = toRSocketAddress(server.socketPath);
-
-      await arf.eval(`options(jgd.socket = "${socketAddr}"); library(jgd)`);
       // R code: draw two plots with different ext, then poll for resizes.
       // Plot 1 gets shadow, plot 2 gets opacity.  After drawing, we resize
       // plot 1 via plotIndex, then resize plot 2 — both must keep their ext.
       await arf.eval(
-        "jgd(width=8, height=6, dpi=96); " +
-          'jgd_ext(\'{"shadow":{"blur":10,"color":"gray"}}\'); ' +
+        'jgd_ext(\'{"shadow":{"blur":10,"color":"gray"}}\'); ' +
           "plot(1:3)",
       );
 
@@ -280,9 +221,7 @@ Deno.test({
 
       // Resize plot 1 via plotIndex (historical replay)
       const sessionId = frame1.plot.sessionId!;
-      browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendPlotIndexResizeAndPoll(ctx, 640, 480, 0, sessionId);
 
       const replay1 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -314,9 +253,7 @@ Deno.test({
       // for it, so it falls through to a normal display list replay.
       // Its opacity ext must NOT be lost because of the earlier
       // plotIndex=0 replay.
-      browser.sendResizeWithPlotIndex(700, 500, 1, sessionId);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendPlotIndexResizeAndPoll(ctx, 700, 500, 1, sessionId);
 
       const replay2 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -341,11 +278,7 @@ Deno.test({
         "opacity should survive after plotIndex replay",
       );
     } finally {
-      browser.close();
-      await delay(100);
-      await arf.shutdown();
-      await server.shutdown();
-      server.cleanup();
+      await ctx.close();
     }
   },
 });

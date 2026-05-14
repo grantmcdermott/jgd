@@ -15,14 +15,15 @@
  */
 
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
-import type { FrameMessage } from "../server/tests/helpers/types.ts";
-import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { pollResize } from "./helpers/arf_poll.ts";
+import {
+  createTwoBasePlots,
+  sendPlotIndexResizeAndPoll,
+  sendResizeAndPoll,
+  startArfBrowserTest,
+  waitForResizeFrame,
+} from "./helpers/arf_e2e.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
-import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
-import { toRSocketAddress } from "./helpers/r_process.ts";
+import { checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
@@ -33,39 +34,15 @@ Deno.test({
   ignore: skip,
   async fn() {
     testLog("test start");
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
-    const arf = new ArfSession();
+    const ctx = await startArfBrowserTest();
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
-      await arf.start();
-      const socketAddr = toRSocketAddress(server.socketPath);
-      await arf.eval(
-        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-      );
-      await arf.eval("plot(1:3); plot(4:6)");
-
-      // Step 1-2: Wait for both plots
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
-      assert(frame1.plot.ops.length > 0, "First frame should have ops");
-
-      const frame2 = await browser.waitForType<FrameMessage>("frame", 8000);
-      assert(frame2.plot.ops.length > 0, "Second frame should have ops");
+      const [frame1] = await createTwoBasePlots(ctx);
 
       // Step 3: Normal resize — verify latest plot (plot 2) re-renders
-      browser.sendResize(640, 480);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendResizeAndPoll(ctx, 640, 480);
 
-      const normalResize1 = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const normalResize1 = await waitForResizeFrame(ctx.browser);
 
       assertEquals(
         normalResize1.resize,
@@ -84,14 +61,9 @@ Deno.test({
 
       // Step 5: plotIndex=0 resize — verify historical plot (plot 1) re-renders
       const sessionId = frame1.plot.sessionId!;
-      browser.sendResizeWithPlotIndex(700, 500, 0, sessionId);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendPlotIndexResizeAndPoll(ctx, 700, 500, 0, sessionId);
 
-      const plotIndexResize = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const plotIndexResize = await waitForResizeFrame(ctx.browser);
 
       assertEquals(
         plotIndexResize.resize,
@@ -118,14 +90,9 @@ Deno.test({
       // Step 7: Normal resize — THIS is the regression test.
       // After plotIndex resize, a subsequent normal resize should
       // re-render the current (latest) plot.
-      browser.sendResize(750, 550);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendResizeAndPoll(ctx, 750, 550);
 
-      const normalResize2 = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const normalResize2 = await waitForResizeFrame(ctx.browser);
 
       assertEquals(
         normalResize2.resize,
@@ -155,11 +122,7 @@ Deno.test({
         "Step 7 (latest plot) should differ from step 5 (historical plot)",
       );
     } finally {
-      browser.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
-      await arf.shutdown();
+      await ctx.close();
     }
   },
 });
@@ -169,65 +132,34 @@ Deno.test({
   ignore: skip,
   async fn() {
     testLog("test start");
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
-    const arf = new ArfSession();
+    const ctx = await startArfBrowserTest();
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
-      await arf.start();
-      const socketAddr = toRSocketAddress(server.socketPath);
-      await arf.eval(
-        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-      );
-      await arf.eval("plot(1:3); plot(4:6)");
-
-      // Wait for both plots
-      const initFrame = await browser.waitForType<FrameMessage>("frame", 8000);
-      await browser.waitForType<FrameMessage>("frame", 8000);
+      const [initFrame] = await createTwoBasePlots(ctx);
       const sessionId = initFrame.plot.sessionId!;
 
       // Normal resize AFTER R session is established to properly set
       // the server's lastResizeW/H dedup state.
-      browser.sendResize(640, 480);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendResizeAndPoll(ctx, 640, 480);
 
-      const firstNormal = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const firstNormal = await waitForResizeFrame(ctx.browser);
       assertEquals(firstNormal.resize, true);
       // lastResizeW/H is now 640x480 on the server
 
       // plotIndex resize with DIFFERENT dimensions (700x500).
       // This bypasses dedup and updates lastResizeW/H to 700x500.
       // R's device dimensions are also changed to 700x500.
-      browser.sendResizeWithPlotIndex(700, 500, 0, sessionId);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendPlotIndexResizeAndPoll(ctx, 700, 500, 0, sessionId);
 
-      const plotIndexFrame = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const plotIndexFrame = await waitForResizeFrame(ctx.browser);
       assertEquals(plotIndexFrame.plotIndex, 0);
 
       // Now send a normal resize with 640x480.  The server's lastResizeW/H
       // is 700x500 (plotIndex resize updated dedup state), so 640x480
       // should be forwarded (different dims).
-      browser.sendResize(640, 480);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendResizeAndPoll(ctx, 640, 480);
 
-      const normalFrame = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const normalFrame = await waitForResizeFrame(ctx.browser);
 
       assertEquals(
         normalFrame.resize,
@@ -241,11 +173,7 @@ Deno.test({
       );
       assert(normalFrame.plot.ops.length > 0, "Should have ops");
     } finally {
-      browser.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
-      await arf.shutdown();
+      await ctx.close();
     }
   },
 });

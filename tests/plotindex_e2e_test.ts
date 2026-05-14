@@ -11,14 +11,15 @@
  */
 
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
-import type { FrameMessage } from "../server/tests/helpers/types.ts";
-import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { pollResize } from "./helpers/arf_poll.ts";
+import {
+  createTwoBasePlots,
+  sendPlotIndexResizeAndPoll,
+  sendResizeAndPoll,
+  startArfBrowserTest,
+  waitForResizeFrame,
+} from "./helpers/arf_e2e.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
-import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
-import { toRSocketAddress } from "./helpers/r_process.ts";
+import { checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
@@ -30,51 +31,24 @@ Deno.test({
   async fn() {
     testLog("test start");
     testLog("plotindex_e2e_test start");
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
-    const arf = new ArfSession();
+    const ctx = await startArfBrowserTest();
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
       testLog("server/browser connected and initial resize sent");
-
-      testLog("arf.start begin");
-      await arf.start({ timeoutMs: 15_000 });
-      testLog("arf.start done");
-      const socketAddr = toRSocketAddress(server.socketPath);
-      testLog("jgd device setup begin");
-      await arf.eval(
-        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-        15_000,
-      );
       testLog("plot generation begin");
-      await arf.eval("plot(1:3); plot(4:6)");
+      const [frame1, frame2] = await createTwoBasePlots(ctx);
       testLog("R device initialized and two plots generated");
-
-      // Wait for both frames
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
-      assert(frame1.plot.ops.length > 0, "First frame should have ops");
       testLog("received frame1");
-
-      const frame2 = await browser.waitForType<FrameMessage>("frame", 8000);
       assert(frame2.plot.ops.length > 0, "Second frame should have ops");
       testLog("received frame2");
 
       // --- Test 1: plotIndex=0 resize re-renders the first plot ---
       const sessionId = frame1.plot.sessionId!;
-      browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
-      await browser.sendPing(3000);
+      await sendPlotIndexResizeAndPoll(ctx, 640, 480, 0, sessionId);
       testLog("sent resize with plotIndex=0; calling poll_resize");
-      await pollResize(arf, 40);
       testLog("poll_resize returned for plotIndex=0");
 
-      const resized0 = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const resized0 = await waitForResizeFrame(ctx.browser);
       testLog("received resized frame for plotIndex=0");
 
       assertEquals(
@@ -101,16 +75,11 @@ Deno.test({
       // (plot 2).  plotIndex=1 exceeds the snapshot count, so R falls
       // through to a normal resize of the current display list.  The frame
       // should have resize:true but no plotIndex.
-      browser.sendResizeWithPlotIndex(700, 500, 1, sessionId);
-      await browser.sendPing(3000);
+      await sendPlotIndexResizeAndPoll(ctx, 700, 500, 1, sessionId);
       testLog("sent resize with plotIndex=1; calling poll_resize");
-      await pollResize(arf, 40);
       testLog("poll_resize returned for plotIndex=1");
 
-      const resized1 = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const resized1 = await waitForResizeFrame(ctx.browser);
       testLog("received resized frame for plotIndex=1/latest");
 
       assertEquals(
@@ -140,16 +109,11 @@ Deno.test({
       );
 
       // --- Test 3: normal resize (no plotIndex) still works ---
-      browser.sendResize(750, 550);
-      await browser.sendPing(3000);
+      await sendResizeAndPoll(ctx, 750, 550);
       testLog("sent normal resize; calling poll_resize");
-      await pollResize(arf, 40);
       testLog("poll_resize returned for normal resize");
 
-      const normalResize = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const normalResize = await waitForResizeFrame(ctx.browser);
       testLog("received normal resize frame");
 
       assertEquals(
@@ -178,12 +142,8 @@ Deno.test({
       testLog("plotindex_e2e_test assertions complete");
     } finally {
       testLog("plotindex_e2e_test cleanup start");
-      browser.close();
-      await delay(100);
-      await server.shutdown();
+      await ctx.close();
       testLog("plotindex_e2e_test server shutdown done");
-      server.cleanup();
-      await arf.shutdown();
       testLog("plotindex_e2e_test cleanup done");
     }
   },

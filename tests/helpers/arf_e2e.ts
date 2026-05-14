@@ -1,0 +1,175 @@
+import { assert, assertEquals } from "@std/assert";
+import { delay } from "@std/async";
+import { TestServer } from "../../server/tests/helpers/server.ts";
+import { E2EBrowser } from "../../server/tests/helpers/e2e_browser.ts";
+import type { FrameMessage } from "../../server/tests/helpers/types.ts";
+import { AutoMetricsBrowserClient } from "./auto_metrics_client.ts";
+import { pollResize } from "./arf_poll.ts";
+import { ArfSession } from "./arf_session.ts";
+import { toRSocketAddress } from "./r_process.ts";
+
+export interface ArfBrowserTestContext {
+  server: TestServer;
+  browser: AutoMetricsBrowserClient;
+  arf: ArfSession;
+  socketAddr: string;
+  close(): Promise<void>;
+}
+
+export interface ArfPageTestContext {
+  server: TestServer;
+  e2e: E2EBrowser;
+  arf: ArfSession;
+  page: Awaited<ReturnType<E2EBrowser["newPage"]>>;
+  socketAddr: string;
+  close(): Promise<void>;
+}
+
+export async function startArfBrowserTest(): Promise<ArfBrowserTestContext> {
+  const server = new TestServer({ tcp: true });
+  const browser = new AutoMetricsBrowserClient();
+  const arf = new ArfSession();
+
+  await server.start();
+  await browser.connect(server.wsUrl);
+  browser.sendResize(800, 600);
+  await delay(100);
+
+  await arf.start();
+  const socketAddr = toRSocketAddress(server.socketPath);
+  await arf.eval(
+    `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+  );
+
+  return {
+    server,
+    browser,
+    arf,
+    socketAddr,
+    async close() {
+      browser.close();
+      await delay(100);
+      await server.shutdown();
+      server.cleanup();
+      await arf.shutdown();
+    },
+  };
+}
+
+export async function startArfPageTest(
+  opts: { browserFirst: boolean },
+): Promise<ArfPageTestContext> {
+  const server = new TestServer({ tcp: true });
+  const e2e = new E2EBrowser();
+  const arf = new ArfSession();
+
+  await server.start();
+  const socketAddr = toRSocketAddress(server.socketPath);
+  let page: Awaited<ReturnType<E2EBrowser["newPage"]>>;
+
+  if (opts.browserFirst) {
+    await e2e.launch();
+    page = await e2e.newPage(server.httpBaseUrl);
+    await delay(100);
+
+    await arf.start();
+    await arf.eval(
+      `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+    );
+  } else {
+    await arf.start();
+    await arf.eval(
+      `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+    );
+    await delay(100);
+
+    await e2e.launch();
+    page = await e2e.newPage(server.httpBaseUrl);
+    await delay(300);
+  }
+
+  return {
+    server,
+    e2e,
+    arf,
+    page,
+    socketAddr,
+    async close() {
+      await arf.shutdown();
+      await e2e.close();
+      await delay(100);
+      await server.shutdown();
+      server.cleanup();
+    },
+  };
+}
+
+export async function waitForFrameWithOps(
+  browser: AutoMetricsBrowserClient,
+  label: string,
+  timeoutMs = 8000,
+): Promise<FrameMessage> {
+  const frame = await browser.waitForType<FrameMessage>("frame", timeoutMs);
+  assert(frame.plot.ops.length > 0, `${label} should have ops`);
+  return frame;
+}
+
+export async function createTwoBasePlots(
+  ctx: ArfBrowserTestContext,
+): Promise<[FrameMessage, FrameMessage]> {
+  await ctx.arf.eval("plot(1:3); plot(4:6)");
+  const frame1 = await waitForFrameWithOps(ctx.browser, "First frame");
+  const frame2 = await waitForFrameWithOps(ctx.browser, "Second frame");
+  return [frame1, frame2];
+}
+
+export async function waitForResizeFrame(
+  browser: AutoMetricsBrowserClient,
+  timeoutMs = 6000,
+): Promise<FrameMessage> {
+  return await browser.waitForMessage<FrameMessage>(
+    (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
+    timeoutMs,
+  );
+}
+
+export async function sendResizeAndPoll(
+  ctx: ArfBrowserTestContext,
+  width: number,
+  height: number,
+): Promise<void> {
+  ctx.browser.sendResize(width, height);
+  await ctx.browser.sendPing(3000);
+  await pollResize(ctx.arf, 40);
+}
+
+export async function sendPlotIndexResizeAndPoll(
+  ctx: ArfBrowserTestContext,
+  width: number,
+  height: number,
+  plotIndex: number,
+  sessionId?: string,
+): Promise<void> {
+  ctx.browser.sendResizeWithPlotIndex(width, height, plotIndex, sessionId);
+  await ctx.browser.sendPing(3000);
+  await pollResize(ctx.arf, 40);
+}
+
+export async function assertNoExtraFrameBeforePong(
+  browser: AutoMetricsBrowserClient,
+  message: string,
+): Promise<void> {
+  const ac = new AbortController();
+  const sentinel = Symbol("pong");
+  const extraFrame = await Promise.race([
+    browser.waitForType<FrameMessage>("frame", 6000, ac.signal).catch(() =>
+      null
+    ),
+    browser.sendPing(3000).then(() => {
+      ac.abort();
+      return sentinel;
+    }),
+  ]);
+
+  assertEquals(extraFrame, sentinel, message);
+}

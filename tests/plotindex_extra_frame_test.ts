@@ -15,15 +15,16 @@
  *  - No extra frame leaks after the resize
  */
 
-import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
-import type { FrameMessage } from "../server/tests/helpers/types.ts";
-import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { pollResize } from "./helpers/arf_poll.ts";
+import { assertEquals, assertNotEquals } from "@std/assert";
+import {
+  assertNoExtraFrameBeforePong,
+  createTwoBasePlots,
+  sendPlotIndexResizeAndPoll,
+  startArfBrowserTest,
+  waitForResizeFrame,
+} from "./helpers/arf_e2e.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
-import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
-import { toRSocketAddress } from "./helpers/r_process.ts";
+import { checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
@@ -34,30 +35,12 @@ Deno.test({
   ignore: skip,
   async fn() {
     testLog("test start");
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
-    const arf = new ArfSession();
+    const ctx = await startArfBrowserTest();
+    const { browser } = ctx;
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
-      await arf.start();
-      const socketAddr = toRSocketAddress(server.socketPath);
-      await arf.eval(
-        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-      );
-      await arf.eval("plot(1:3); plot(4:6)");
-
-      // Wait for both plot frames
-      const frame1 = await browser.waitForType<FrameMessage>("frame", 8000);
-      assert(frame1.plot.ops.length > 0, "First frame should have ops");
+      const [frame1, frame2] = await createTwoBasePlots(ctx);
       const texts1 = extractTextOps(frame1);
-
-      const frame2 = await browser.waitForType<FrameMessage>("frame", 8000);
-      assert(frame2.plot.ops.length > 0, "Second frame should have ops");
       const texts2 = extractTextOps(frame2);
 
       // Verify the two plots are different
@@ -70,15 +53,10 @@ Deno.test({
       // Simulate: navigate to plot 1, then resize.
       // At the protocol level, this is a resize with plotIndex=0.
       const sessionId = frame1.plot.sessionId!;
-      browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
-      await browser.sendPing(3000);
-      await pollResize(arf, 40);
+      await sendPlotIndexResizeAndPoll(ctx, 640, 480, 0, sessionId);
 
       // Wait for the resize response frame
-      const resized = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-        6000,
-      );
+      const resized = await waitForResizeFrame(browser);
 
       assertEquals(resized.resize, true, "Should have resize:true");
       assertEquals(resized.plotIndex, 0, "Should have plotIndex:0");
@@ -102,29 +80,12 @@ Deno.test({
       // against a frame waiter — if the pong wins, no extra frame arrived.
       // AbortController cancels the losing waiter so it doesn't consume
       // later messages.
-      const ac = new AbortController();
-      const sentinel = Symbol("pong");
-      const extraFrame = await Promise.race([
-        browser.waitForType<FrameMessage>("frame", 6000, ac.signal).catch(() =>
-          null
-        ),
-        browser.sendPing(3000).then(() => {
-          ac.abort();
-          return sentinel;
-        }),
-      ]);
-
-      assertEquals(
-        extraFrame,
-        sentinel,
+      await assertNoExtraFrameBeforePong(
+        browser,
         "No extra frame should arrive after plotIndex resize (would create spurious plot 3)",
       );
     } finally {
-      browser.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
-      await arf.shutdown();
+      await ctx.close();
     }
   },
 });

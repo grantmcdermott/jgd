@@ -15,16 +15,13 @@
  */
 
 import { assertEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
 import { testLog } from "./helpers/test_log.ts";
 import {
-  E2EBrowser,
   plotInfoText,
   waitForPlotCount,
 } from "../server/tests/helpers/e2e_browser.ts";
-import { toRSocketAddress } from "./helpers/r_process.ts";
-import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { startArfPageTest } from "./helpers/arf_e2e.ts";
 import { pollResize } from "./helpers/arf_poll.ts";
 import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
 
@@ -36,32 +33,10 @@ Deno.test({
   ignore: skip,
   async fn() {
     testLog("test start");
-    const server = new TestServer({ tcp: true });
-    const e2e = new E2EBrowser();
-    const arf = new ArfSession();
+    const ctx = await startArfPageTest({ browserFirst: false });
+    const { arf, page } = ctx;
 
     try {
-      await server.start();
-
-      // Start R FIRST — before browser — so R is connected when
-      // the browser's ResizeObserver fires.
-      await arf.start();
-      const socketAddr = toRSocketAddress(server.socketPath);
-      await arf.eval(
-        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-      );
-
-      // Wait for R to connect to the server
-      await delay(100);
-
-      // NOW open browser — R is already connected.
-      // ResizeObserver will fire → resize reaches R's socket.
-      await e2e.launch();
-      const page = await e2e.newPage(server.httpBaseUrl);
-
-      // Settle: let browser connect and send initial resize
-      await delay(300);
-
       // Plot 1
       await arf.eval("plot(1:3)");
 
@@ -112,11 +87,7 @@ Deno.test({
           "plot duplication bug detected",
       );
     } finally {
-      await arf.shutdown();
-      await e2e.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
+      await ctx.close();
     }
   },
 });
