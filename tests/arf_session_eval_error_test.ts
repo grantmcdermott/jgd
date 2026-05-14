@@ -45,3 +45,22 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "ArfSession.start: rejects accidental double start",
+  ignore: skip,
+  async fn() {
+    testLog("test start");
+    const arf = new ArfSession();
+    try {
+      await arf.start();
+      await assertRejects(
+        () => arf.start(),
+        Error,
+        "ArfSession already started",
+      );
+    } finally {
+      await arf.shutdown();
+    }
+  },
+});

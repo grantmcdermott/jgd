@@ -17,6 +17,7 @@ export class ArfSession {
   #process: Deno.ChildProcess | null = null;
   #pid: number | null = null;
   #tempLogFile: string | null = null;
+  #startupId = 0;
 
   /**
    * Start an arf headless session and wait until R is ready for IPC.
@@ -27,6 +28,10 @@ export class ArfSession {
   async start(
     opts: { timeoutMs?: number; logFile?: string } = {},
   ): Promise<void> {
+    if (this.#process !== null || this.#pid !== null) {
+      throw new Error("ArfSession already started");
+    }
+
     const { timeoutMs = 30_000 } = opts;
     const logFile = opts.logFile ??
       await Deno.makeTempFile({ prefix: "arf-", suffix: ".log" });
@@ -38,7 +43,16 @@ export class ArfSession {
       stderr: "null",
     });
 
-    this.#process = cmd.spawn();
+    let process: Deno.ChildProcess;
+    try {
+      process = cmd.spawn();
+    } catch (error) {
+      await this.#removeTempLogFile();
+      throw error;
+    }
+
+    this.#process = process;
+    const startupId = ++this.#startupId;
 
     let timeoutId: number | undefined;
     const timeout = new Promise<never>((_, reject) => {
@@ -52,7 +66,7 @@ export class ArfSession {
     });
 
     try {
-      await Promise.race([this.#readReadyJson(), timeout]);
+      await Promise.race([this.#readReadyJson(process, startupId), timeout]);
     } catch (error) {
       // If startup fails after spawn (timeout/invalid ready JSON), ensure
       // the child is torn down so it cannot leak into later tests.
@@ -63,8 +77,11 @@ export class ArfSession {
     }
   }
 
-  async #readReadyJson(): Promise<void> {
-    const reader = this.#process!.stdout.getReader();
+  async #readReadyJson(
+    process: Deno.ChildProcess,
+    startupId: number,
+  ): Promise<void> {
+    const reader = process.stdout.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
     try {
@@ -80,6 +97,9 @@ export class ArfSession {
           buffer = buffer.slice(nl + 1);
           if (line) {
             const info = JSON.parse(line) as { pid: number };
+            if (this.#process !== process || this.#startupId !== startupId) {
+              throw new Error("arf headless startup was aborted");
+            }
             this.#pid = info.pid;
             return;
           }
@@ -146,14 +166,11 @@ export class ArfSession {
     this.#pid = null;
     this.#process = null;
     this.#tempLogFile = null;
+    this.#startupId++;
 
     if (process === null) {
       if (tempLogFile !== null) {
-        try {
-          await Deno.remove(tempLogFile);
-        } catch {
-          // already removed or inaccessible
-        }
+        await this.#removeLogFile(tempLogFile);
       }
       return;
     }
@@ -166,15 +183,7 @@ export class ArfSession {
 
     try {
       if (pid !== null) {
-        try {
-          await new Deno.Command("arf", {
-            args: ["ipc", "shutdown", "--pid", String(pid)],
-            stdout: "null",
-            stderr: "null",
-          }).output();
-        } catch {
-          // ignore — fallback kill above
-        }
+        await this.#shutdownByIpc(pid, 5_000);
       }
       await process.status;
     } catch {
@@ -187,12 +196,55 @@ export class ArfSession {
         // already closed
       }
       if (tempLogFile !== null) {
-        try {
-          await Deno.remove(tempLogFile);
-        } catch {
-          // already removed or inaccessible
-        }
+        await this.#removeLogFile(tempLogFile);
       }
+    }
+  }
+
+  async #shutdownByIpc(pid: number, timeoutMs: number): Promise<void> {
+    const shutdown = new Deno.Command("arf", {
+      args: ["ipc", "shutdown", "--pid", String(pid)],
+      stdout: "null",
+      stderr: "null",
+    }).spawn();
+
+    let timeoutId: number | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        try {
+          shutdown.kill("SIGKILL");
+        } catch { /* already exited */ }
+        reject(
+          new Error(`arf ipc shutdown timed out after ${timeoutMs}ms`),
+        );
+      }, timeoutMs);
+    });
+
+    try {
+      await Promise.race([shutdown.status, timeout]);
+    } catch {
+      // ignore — headless process fallback kill is handled by shutdown()
+    } finally {
+      if (timeoutId !== undefined) clearTimeout(timeoutId);
+      try {
+        await shutdown.status;
+      } catch {
+        // already reaped or unavailable
+      }
+    }
+  }
+
+  async #removeTempLogFile(): Promise<void> {
+    const tempLogFile = this.#tempLogFile;
+    this.#tempLogFile = null;
+    if (tempLogFile !== null) await this.#removeLogFile(tempLogFile);
+  }
+
+  async #removeLogFile(path: string): Promise<void> {
+    try {
+      await Deno.remove(path);
+    } catch {
+      // already removed or inaccessible
     }
   }
 
