@@ -76,6 +76,9 @@ Deno.test({
       // Process any pending resize
       await delay(100);
       await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await assertPlotInfoStable(page, "1 / 1");
+      info = await plotInfoText(page);
+      console.error(`After resize poll before plot 2: "${info}"`);
 
       // Plot 2
       await arf.eval("plot(4:6)");
@@ -93,6 +96,9 @@ Deno.test({
       // Poll resize
       await delay(100);
       await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await assertPlotInfoStable(page, "2 / 2");
+      info = await plotInfoText(page);
+      console.error(`After resize poll before plot 3: "${info}"`);
 
       // Plot 3
       await arf.eval("plot(7:9)");
