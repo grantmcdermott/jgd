@@ -51,9 +51,6 @@ Deno.test({
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
       await t.step("plot.new + rect produces frame with rect op", async () => {
         const result = await arf.eval(
           `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96); plot.new(); rect(0, 0, 1, 1); dev.off()`,
@@ -95,9 +92,6 @@ Deno.test({
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
       await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
       await t.step(
         "dev.off flushes frame and sends close message",
         async () => {

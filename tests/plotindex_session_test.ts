@@ -37,9 +37,6 @@ Deno.test({
     try {
       await server.start();
       await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(100);
-
       const socketAddr = toRSocketAddress(server.socketPath);
 
       // --- Session 1: generate plot 1 (plot(1:3)) ---
