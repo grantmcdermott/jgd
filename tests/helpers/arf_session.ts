@@ -14,6 +14,7 @@ export interface ArfEvalResult {
 }
 
 export class ArfSession {
+  #starting = false;
   #process: Deno.ChildProcess | null = null;
   #pid: number | null = null;
   #tempLogFile: string | null = null;
@@ -28,9 +29,10 @@ export class ArfSession {
   async start(
     opts: { timeoutMs?: number; logFile?: string } = {},
   ): Promise<void> {
-    if (this.#process !== null || this.#pid !== null) {
+    if (this.#starting || this.#process !== null || this.#pid !== null) {
       throw new Error("ArfSession already started");
     }
+    this.#starting = true;
 
     const { timeoutMs = 30_000 } = opts;
     const logFile = opts.logFile ??
@@ -48,6 +50,7 @@ export class ArfSession {
       process = cmd.spawn();
     } catch (error) {
       await this.#removeTempLogFile();
+      this.#starting = false;
       throw error;
     }
 
@@ -70,10 +73,11 @@ export class ArfSession {
     } catch (error) {
       // If startup fails after spawn (timeout/invalid ready JSON), ensure
       // the child is torn down so it cannot leak into later tests.
-      await this.shutdown();
+      await this.#cleanupStartupProcess(process, logFile);
       throw error;
     } finally {
       if (timeoutId !== undefined) clearTimeout(timeoutId);
+      this.#starting = false;
     }
   }
 
@@ -166,6 +170,7 @@ export class ArfSession {
     this.#pid = null;
     this.#process = null;
     this.#tempLogFile = null;
+    this.#starting = false;
     this.#startupId++;
 
     if (process === null) {
@@ -232,6 +237,35 @@ export class ArfSession {
         // already reaped or unavailable
       }
     }
+  }
+
+  async #cleanupStartupProcess(
+    process: Deno.ChildProcess,
+    logFile: string,
+  ): Promise<void> {
+    if (this.#process === process) {
+      this.#pid = null;
+      this.#process = null;
+      this.#tempLogFile = null;
+      this.#startupId++;
+    }
+
+    try {
+      process.kill("SIGKILL");
+    } catch {
+      // already exited
+    }
+    try {
+      await process.status;
+    } catch {
+      // ignore
+    }
+    try {
+      await process.stdout.cancel();
+    } catch {
+      // already closed
+    }
+    await this.#removeLogFile(logFile);
   }
 
   async #removeTempLogFile(): Promise<void> {

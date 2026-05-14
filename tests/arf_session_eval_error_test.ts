@@ -64,3 +64,23 @@ Deno.test({
     }
   },
 });
+
+Deno.test({
+  name: "ArfSession.start: rejects concurrent start calls",
+  ignore: skip,
+  async fn() {
+    testLog("test start");
+    const arf = new ArfSession();
+    try {
+      const start = arf.start();
+      await assertRejects(
+        () => arf.start(),
+        Error,
+        "ArfSession already started",
+      );
+      await start;
+    } finally {
+      await arf.shutdown();
+    }
+  },
+});
