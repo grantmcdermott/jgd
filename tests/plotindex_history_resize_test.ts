@@ -25,6 +25,7 @@ import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { pollResize } from "./helpers/arf_poll.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { waitForWsConnected } from "./helpers/page_ready.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 
@@ -190,7 +191,9 @@ Deno.test({
       await e2e.launch();
       const page = await e2e.newPage(server.httpBaseUrl);
       await observer.connect(server.wsUrl);
-      await delay(500);
+      // Deterministic barrier: wait until the page's WebSocket onopen
+      // has actually fired so initial frames are not lost on slow CI.
+      await waitForWsConnected(page);
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
@@ -228,9 +231,10 @@ Deno.test({
         c.style.height = '350px';
       })()`);
 
-      // Wait for the page's ResizeObserver debounce and then process the
-      // server-side resize message in R.
-      await delay(500);
+      // The page's ResizeObserver debounces resize sends by ~300ms, so the
+      // resize message may arrive in R's queue well after a single poll
+      // window closes. Keep polling R until the replay frame is observed
+      // (or the deadline expires), instead of relying on a fixed delay.
       const replayFramePromise = observer.waitForMessage<FrameMessage>(
         (msg) =>
           msg.type === "frame" &&
@@ -238,7 +242,14 @@ Deno.test({
           (msg as FrameMessage).plotIndex === 0,
         15_000,
       );
-      await pollResize(arf, 40);
+      let replayDone = false;
+      replayFramePromise.then(() => (replayDone = true)).catch(() =>
+        (replayDone = true)
+      );
+      const pollDeadline = Date.now() + 14_000;
+      while (!replayDone && Date.now() < pollDeadline) {
+        await pollResize(arf, 40);
+      }
       await replayFramePromise;
 
       // Wait for a post-resize render signal before asserting non-blank.

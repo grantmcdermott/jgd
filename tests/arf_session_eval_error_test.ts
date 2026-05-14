@@ -302,6 +302,10 @@ Deno.test({
       // Tight timeout: the old code would hang here until timeout because
       // the JSON was buffered but never re-examined.
       await arf.start({ timeoutMs: 500 });
+      // Shut down while the Command mock is still active so the fake pid
+      // (54321) does not reach a real `arf ipc shutdown --pid 54321` spawn,
+      // which could target an unrelated process on the CI host.
+      await arf.shutdown();
     } finally {
       Object.defineProperty(Deno, "Command", {
         value: originalCommand,
@@ -315,7 +319,6 @@ Deno.test({
         value: originalRemove,
         configurable: true,
       });
-      await arf.shutdown();
     }
   },
 });

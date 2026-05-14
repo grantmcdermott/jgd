@@ -15,6 +15,7 @@ import {
   plotInfoText,
   waitForPlotCount,
 } from "../server/tests/helpers/e2e_browser.ts";
+import { waitForWsConnected } from "./helpers/page_ready.ts";
 import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
 import { checkRAvailable, toRSocketAddress } from "./helpers/r_process.ts";
 
@@ -91,7 +92,9 @@ Deno.test({
         // NOW open browser — R is connected
         await e2e.launch();
         const page = await e2e.newPage(server.httpBaseUrl);
-        await delay(300);
+        // Deterministic barrier: wait until the page's WebSocket onopen
+        // has actually fired so the first plot frame is not lost on slow CI.
+        await waitForWsConnected(page);
 
         // Plot 1 — typed interactively (R event loop processes events between commands)
         await send("plot(1:3)");

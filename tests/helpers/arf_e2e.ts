@@ -6,6 +6,7 @@ import type { FrameMessage } from "../../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./auto_metrics_client.ts";
 import { pollResize } from "./arf_poll.ts";
 import { ArfSession } from "./arf_session.ts";
+import { waitForWsConnected } from "./page_ready.ts";
 import { toRSocketAddress } from "./r_process.ts";
 
 export interface ArfBrowserTestContext {
@@ -138,7 +139,10 @@ export async function startArfPageTest(
     if (opts.browserFirst) {
       await e2e.launch();
       page = await e2e.newPage(server.httpBaseUrl);
-      await delay(100);
+      // Block until the page's WebSocket is open so the hub has a client
+      // when R starts drawing (the web client only sets `#ws-status.connected`
+      // inside its `onopen` handler — fixed sleeps can resolve before that).
+      await waitForWsConnected(page);
 
       await arf.start();
       await arf.eval(
@@ -149,11 +153,10 @@ export async function startArfPageTest(
       await arf.eval(
         `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
       );
-      await delay(100);
 
       await e2e.launch();
       page = await e2e.newPage(server.httpBaseUrl);
-      await delay(300);
+      await waitForWsConnected(page);
     }
 
     return {
