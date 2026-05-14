@@ -75,11 +75,22 @@ jobs:
           echo "${expected_sha256}  ${archive}" | sha256sum --check -
 
           mkdir -p "$install_dir"
-          strip_args=()
-          if [ "$strip_components" != "0" ]; then
-            strip_args=(--strip-components="$strip_components")
-          fi
-          tar -xf "$archive" "${strip_args[@]}" -C "$install_dir"
+          case "$archive" in
+            *.zip)
+              unzip -q "$archive" -d "$install_dir"
+              ;;
+            *.tar.*)
+              strip_args=()
+              if [ "$strip_components" != "0" ]; then
+                strip_args=(--strip-components="$strip_components")
+              fi
+              tar -xf "$archive" "${strip_args[@]}" -C "$install_dir"
+              ;;
+            *)
+              echo "Unsupported arf archive type: $archive" >&2
+              exit 1
+              ;;
+          esac
           echo "$install_dir" >> "$GITHUB_PATH"
         shell: bash
 

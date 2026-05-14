@@ -40,11 +40,16 @@ Deno.test({
       await delay(100);
       testLog("server/browser connected and initial resize sent");
 
-      await arf.start();
+      testLog("arf.start begin");
+      await arf.start({ timeoutMs: 15_000 });
+      testLog("arf.start done");
       const socketAddr = toRSocketAddress(server.socketPath);
+      testLog("jgd device setup begin");
       await arf.eval(
         `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+        15_000,
       );
+      testLog("plot generation begin");
       await arf.eval("plot(1:3); plot(4:6)");
       testLog("R device initialized and two plots generated");
 
@@ -62,7 +67,7 @@ Deno.test({
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
       await delay(100); // allow WS message to propagate to server
       testLog("sent resize with plotIndex=0; calling poll_resize");
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await arf.eval(".Call(jgd:::C_jgd_poll_resize)", 10_000);
       testLog("poll_resize returned for plotIndex=0");
 
       const resized0 = await browser.waitForMessage<FrameMessage>(
@@ -98,7 +103,7 @@ Deno.test({
       browser.sendResizeWithPlotIndex(700, 500, 1, sessionId);
       await delay(100); // allow WS message to propagate to server
       testLog("sent resize with plotIndex=1; calling poll_resize");
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await arf.eval(".Call(jgd:::C_jgd_poll_resize)", 10_000);
       testLog("poll_resize returned for plotIndex=1");
 
       const resized1 = await browser.waitForMessage<FrameMessage>(
@@ -137,7 +142,7 @@ Deno.test({
       browser.sendResize(750, 550);
       await delay(100); // allow WS message to propagate to server
       testLog("sent normal resize; calling poll_resize");
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await arf.eval(".Call(jgd:::C_jgd_poll_resize)", 10_000);
       testLog("poll_resize returned for normal resize");
 
       const normalResize = await browser.waitForMessage<FrameMessage>(
@@ -175,6 +180,7 @@ Deno.test({
       browser.close();
       await delay(100);
       await server.shutdown();
+      testLog("plotindex_e2e_test server shutdown done");
       server.cleanup();
       await arf.shutdown();
       testLog("plotindex_e2e_test cleanup done");

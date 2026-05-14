@@ -190,17 +190,25 @@ for (
       const arf = new ArfSession();
 
       try {
+        testLog(`${label}: server.start begin`);
         await server.start();
-        await arf.start();
+        testLog(`${label}: server.start done`);
+        testLog(`${label}: arf.start begin`);
+        await arf.start({ timeoutMs: 15_000 });
+        testLog(`${label}: arf.start done`);
         const socketAddr = toRSocketAddress(server.socketPath);
 
+        testLog(`${label}: jgd_server_info eval begin`);
         const result = await arf.eval(
           `options(jgd.socket = "${socketAddr}"); library(jgd); ${SERVER_INFO_R_CODE}`,
+          15_000,
         );
+        testLog(`${label}: jgd_server_info eval done`);
         if (result.error) {
           throw new Error(`R eval failed: ${result.error}`);
         }
 
+        testLog(`${label}: parse/assert begin`);
         const info = JSON.parse(result.stdout!);
         assertEquals(info.server_name, "jgd-http-server");
         assertEquals(info.protocol_version, 1);
@@ -209,10 +217,14 @@ for (
           `http://127.0.0.1:${server.httpPort}/`,
         );
         assertEquals(info.transport, expectedTransport);
+        testLog(`${label}: parse/assert done`);
       } finally {
+        testLog(`${label}: cleanup arf shutdown begin`);
         await arf.shutdown();
+        testLog(`${label}: cleanup server shutdown begin`);
         await server.shutdown();
         server.cleanup();
+        testLog(`${label}: cleanup done`);
       }
     },
   });
