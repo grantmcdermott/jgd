@@ -25,19 +25,49 @@ export interface ArfPageTestContext {
   close(): Promise<void>;
 }
 
+async function runCleanupSteps(
+  steps: Array<() => Promise<void> | void>,
+): Promise<void> {
+  const errors: unknown[] = [];
+
+  for (const step of steps) {
+    try {
+      await step();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "Multiple cleanup steps failed");
+  }
+}
+
+async function cleanupAfterSetupFailure(
+  cleanup: () => Promise<void>,
+): Promise<void> {
+  try {
+    await cleanup();
+  } catch {
+    // Preserve the original setup error while still attempting cleanup.
+  }
+}
+
 async function closeArfBrowserResources(
   server: TestServer,
   browser: AutoMetricsBrowserClient,
   arf: ArfSession,
 ): Promise<void> {
-  browser.close();
-  await delay(100);
-  try {
-    await server.shutdown();
-  } finally {
-    server.cleanup();
-    await arf.shutdown();
-  }
+  await runCleanupSteps([
+    () => browser.close(),
+    () => delay(100),
+    () => server.shutdown(),
+    () => server.cleanup(),
+    () => arf.shutdown(),
+  ]);
 }
 
 async function closeArfPageResources(
@@ -45,14 +75,13 @@ async function closeArfPageResources(
   e2e: E2EBrowser,
   arf: ArfSession,
 ): Promise<void> {
-  await arf.shutdown();
-  await e2e.close();
-  await delay(100);
-  try {
-    await server.shutdown();
-  } finally {
-    server.cleanup();
-  }
+  await runCleanupSteps([
+    () => arf.shutdown(),
+    () => e2e.close(),
+    () => delay(100),
+    () => server.shutdown(),
+    () => server.cleanup(),
+  ]);
 }
 
 export async function startArfBrowserTest(): Promise<ArfBrowserTestContext> {
@@ -82,7 +111,9 @@ export async function startArfBrowserTest(): Promise<ArfBrowserTestContext> {
       },
     };
   } catch (error) {
-    await closeArfBrowserResources(server, browser, arf);
+    await cleanupAfterSetupFailure(() =>
+      closeArfBrowserResources(server, browser, arf)
+    );
     throw error;
   }
 }
@@ -131,7 +162,9 @@ export async function startArfPageTest(
       },
     };
   } catch (error) {
-    await closeArfPageResources(server, e2e, arf);
+    await cleanupAfterSetupFailure(() =>
+      closeArfPageResources(server, e2e, arf)
+    );
     throw error;
   }
 }
