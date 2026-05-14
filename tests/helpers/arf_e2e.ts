@@ -91,9 +91,14 @@ export async function startArfBrowserTest(): Promise<ArfBrowserTestContext> {
 
   try {
     await server.start();
+    // Connect the browser before the R session registers, so the hub has a
+    // client to forward initial frames to. We deliberately do NOT send an
+    // initial resize here: the hub only forwards resize messages to currently
+    // registered R sessions, and `arf.start()` does not register one — that
+    // happens later when `jgd(...)` opens the socket — so any resize sent
+    // before then is silently dropped. `jgd(width=8, height=6, dpi=96)` below
+    // sets the device size authoritatively from R's side.
     await browser.connect(server.wsUrl);
-    browser.sendResize(800, 600);
-    await delay(100);
 
     await arf.start();
     const socketAddr = toRSocketAddress(server.socketPath);

@@ -143,6 +143,109 @@ Deno.test({
 });
 
 Deno.test({
+  name:
+    "ArfSession.shutdown: kills headless process and cleans temp log when IPC shutdown spawn fails",
+  async fn() {
+    const arf = new ArfSession();
+    const originalCommand = Deno.Command;
+    const originalMakeTempFile = Deno.makeTempFile;
+    const originalRemove = Deno.remove;
+    const killCalls: string[] = [];
+    const removedPaths: string[] = [];
+    const stubLogPath = "/tmp/arf-session-shutdown-fallback.log";
+
+    try {
+      Object.defineProperty(Deno, "makeTempFile", {
+        value: async () => stubLogPath,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "remove", {
+        value: async (path: string | URL) => {
+          removedPaths.push(String(path));
+        },
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "Command", {
+        value: class {
+          #args: string[];
+          constructor(_cmd: string, opts: { args?: string[] }) {
+            this.#args = opts.args ?? [];
+          }
+          spawn(): Deno.ChildProcess {
+            if (this.#args.includes("shutdown")) {
+              // Simulate `arf ipc shutdown` failing to spawn (e.g. arf
+              // binary disappeared mid-test). #shutdownByIpc must surface
+              // this without leaving the headless child running.
+              throw new Error("arf ipc shutdown spawn failed");
+            }
+            // `arf headless` mock: emit a valid ready JSON line, accept a
+            // kill() call, and resolve its status so shutdown() can await it.
+            const encoder = new TextEncoder();
+            let emitted = false;
+            return {
+              stdout: {
+                getReader: () => ({
+                  read: () =>
+                    emitted
+                      ? Promise.resolve({ value: undefined, done: true })
+                      : (emitted = true,
+                        Promise.resolve({
+                          value: encoder.encode(`{"pid":12345}\n`),
+                          done: false,
+                        })),
+                  releaseLock: () => {},
+                }),
+                cancel: async () => {},
+              },
+              kill: (signal: string) => {
+                killCalls.push(signal);
+              },
+              status: Promise.resolve({
+                success: false,
+                code: null,
+                signal: "SIGKILL",
+              }),
+            } as unknown as Deno.ChildProcess;
+          }
+        },
+        configurable: true,
+      });
+
+      await arf.start();
+      // Should not throw: shutdown swallows the IPC spawn failure, but the
+      // headless process MUST still be killed and the temp log MUST be
+      // cleaned up so neither leaks past this call.
+      await arf.shutdown();
+
+      assert(
+        killCalls.includes("SIGKILL"),
+        `Expected headless process to receive SIGKILL when IPC shutdown ` +
+          `spawn fails, got kill signals: ${killCalls.join(", ") || "(none)"}`,
+      );
+      assert(
+        removedPaths.includes(stubLogPath),
+        `Expected temp log cleanup, removed: ${
+          removedPaths.join(", ") || "(none)"
+        }`,
+      );
+    } finally {
+      Object.defineProperty(Deno, "Command", {
+        value: originalCommand,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "makeTempFile", {
+        value: originalMakeTempFile,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "remove", {
+        value: originalRemove,
+        configurable: true,
+      });
+    }
+  },
+});
+
+Deno.test({
   name: "ArfSession.eval: throws on R evaluation error by default",
   ignore: skip,
   async fn() {

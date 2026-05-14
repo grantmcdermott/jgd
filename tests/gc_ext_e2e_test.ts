@@ -144,10 +144,19 @@ Deno.test({
       // Send a resize — this triggers display list replay in R
       await sendResizeAndPoll(ctx, 640, 480);
 
-      // Wait for the resize replay frame
+      // Wait for the resize replay frame.  Filter on resize:true so a
+      // stale/untagged frame from initial drawing cannot satisfy this
+      // assertion against the wrong message — the ext-preservation check
+      // below must run on the actual display-list-replay frame.
       const resizeFrame = await browser.waitForMessage<FrameMessage>(
-        (msg) => msg.type === "frame",
+        (msg) =>
+          msg.type === "frame" && (msg as FrameMessage).resize === true,
         6000,
+      );
+      assertEquals(
+        resizeFrame.resize,
+        true,
+        "Resize replay frame must be tagged resize:true",
       );
       assert(resizeFrame.plot.ops.length > 0, "Resize frame should have ops");
 

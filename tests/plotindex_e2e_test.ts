@@ -34,7 +34,7 @@ Deno.test({
     const ctx = await startArfBrowserTest();
 
     try {
-      testLog("server/browser connected and initial resize sent");
+      testLog("server/browser connected and arf session started");
       testLog("plot generation begin");
       const [frame1, frame2] = await createTwoBasePlots(ctx);
       testLog("R device initialized and two plots generated");
