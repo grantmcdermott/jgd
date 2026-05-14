@@ -20,6 +20,21 @@ import { checkRAvailable, toRSocketAddress } from "./helpers/r_process.ts";
 
 const rAvailable = await checkRAvailable();
 
+async function waitForFile(path: string, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (true) {
+    try {
+      await Deno.stat(path);
+      return;
+    } catch {
+      if (Date.now() >= deadline) {
+        throw new Error(`Timed out waiting for ${path}`);
+      }
+      await delay(50);
+    }
+  }
+}
+
 Deno.test({
   name: "Interactive R: plots via stdin must not duplicate",
   ignore: !rAvailable,
@@ -27,6 +42,10 @@ Deno.test({
     testLog("test start");
     const server = new TestServer({ tcp: true });
     const e2e = new E2EBrowser();
+    const readyFile = await Deno.makeTempFile({
+      prefix: "jgd-interactive-ready-",
+    });
+    await Deno.remove(readyFile);
 
     try {
       await server.start();
@@ -64,7 +83,8 @@ Deno.test({
         await send(`options(jgd.socket = "${socketAddr}")`);
         await send("library(jgd)");
         await send("jgd(width=8, height=6, dpi=96)");
-        await delay(300);
+        await send(`cat("ready", file = ${JSON.stringify(readyFile)})`);
+        await waitForFile(readyFile);
 
         // NOW open browser — R is connected
         await e2e.launch();
@@ -124,6 +144,9 @@ Deno.test({
       await delay(100);
       await server.shutdown();
       server.cleanup();
+      try {
+        await Deno.remove(readyFile);
+      } catch { /* already removed */ }
     }
   },
 });
