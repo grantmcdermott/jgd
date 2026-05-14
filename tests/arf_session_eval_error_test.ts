@@ -246,6 +246,81 @@ Deno.test({
 });
 
 Deno.test({
+  name: "ArfSession.start: drains blank line and ready JSON in same chunk",
+  async fn() {
+    const arf = new ArfSession();
+    const originalCommand = Deno.Command;
+    const originalMakeTempFile = Deno.makeTempFile;
+    const originalRemove = Deno.remove;
+    const stubLogPath = "/tmp/arf-session-drain.log";
+
+    try {
+      Object.defineProperty(Deno, "makeTempFile", {
+        value: async () => stubLogPath,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "remove", {
+        value: async () => {},
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "Command", {
+        value: class {
+          spawn(): Deno.ChildProcess {
+            // A single read() returns a leading blank line plus the ready
+            // JSON.  The old loop processed only the first newline per
+            // read(), so the blank line was consumed and the JSON sat in
+            // the buffer until another (never-arriving) chunk.
+            const encoder = new TextEncoder();
+            let emitted = false;
+            return {
+              stdout: {
+                getReader: () => ({
+                  read: () =>
+                    emitted
+                      ? new Promise(() => {})
+                      : (emitted = true,
+                        Promise.resolve({
+                          value: encoder.encode(`\n{"pid":54321}\n`),
+                          done: false,
+                        })),
+                  releaseLock: () => {},
+                }),
+                cancel: async () => {},
+              },
+              kill: () => {},
+              status: Promise.resolve({
+                success: false,
+                code: null,
+                signal: "SIGKILL",
+              }),
+            } as unknown as Deno.ChildProcess;
+          }
+        },
+        configurable: true,
+      });
+
+      // Tight timeout: the old code would hang here until timeout because
+      // the JSON was buffered but never re-examined.
+      await arf.start({ timeoutMs: 500 });
+    } finally {
+      Object.defineProperty(Deno, "Command", {
+        value: originalCommand,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "makeTempFile", {
+        value: originalMakeTempFile,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "remove", {
+        value: originalRemove,
+        configurable: true,
+      });
+      await arf.shutdown();
+    }
+  },
+});
+
+Deno.test({
   name: "ArfSession.eval: throws on R evaluation error by default",
   ignore: skip,
   async fn() {

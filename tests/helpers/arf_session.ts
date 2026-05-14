@@ -98,23 +98,25 @@ export class ArfSession {
           throw new Error("arf headless exited before printing ready JSON");
         }
         buffer += decoder.decode(value, { stream: true });
-        const nl = buffer.indexOf("\n");
-        if (nl !== -1) {
+        // Drain every complete line in this chunk before reading again — a
+        // single read() can return a blank line and the ready JSON together,
+        // and pausing for another read after only the blank would hang.
+        let nl: number;
+        while ((nl = buffer.indexOf("\n")) !== -1) {
           const line = buffer.slice(0, nl).trim();
           buffer = buffer.slice(nl + 1);
-          if (line) {
-            const info = JSON.parse(line) as { pid: number };
-            if (this.#process !== process || this.#startupId !== startupId) {
-              throw new Error("arf headless startup was aborted");
-            }
-            if (!Number.isFinite(info.pid)) {
-              throw new Error(
-                `arf headless ready JSON did not contain a numeric pid: ${line}`,
-              );
-            }
-            this.#pid = info.pid;
-            return;
+          if (!line) continue;
+          const info = JSON.parse(line) as { pid: number };
+          if (this.#process !== process || this.#startupId !== startupId) {
+            throw new Error("arf headless startup was aborted");
           }
+          if (!Number.isFinite(info.pid)) {
+            throw new Error(
+              `arf headless ready JSON did not contain a numeric pid: ${line}`,
+            );
+          }
+          this.#pid = info.pid;
+          return;
         }
       }
     } finally {
