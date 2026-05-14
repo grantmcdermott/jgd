@@ -6,6 +6,121 @@ const arfTestAvailable = await checkArfTestAvailable();
 const skip = !arfTestAvailable;
 
 Deno.test({
+  name: "ArfSession.start: resets starting state after temp log creation fails",
+  async fn() {
+    const arf = new ArfSession();
+    const originalMakeTempFile = Deno.makeTempFile;
+    const originalCommand = Deno.Command;
+    try {
+      Object.defineProperty(Deno, "makeTempFile", {
+        value: async () => {
+          throw new Error("temp log unavailable");
+        },
+        configurable: true,
+      });
+      await assertRejects(
+        () => arf.start(),
+        Error,
+        "temp log unavailable",
+      );
+
+      Object.defineProperty(Deno, "makeTempFile", {
+        value: async () => "/tmp/arf-session-test.log",
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "Command", {
+        value: class {
+          spawn(): Deno.ChildProcess {
+            throw new Error("spawn reached after temp log failure");
+          }
+        },
+        configurable: true,
+      });
+      await assertRejects(
+        () => arf.start(),
+        Error,
+        "spawn reached after temp log failure",
+      );
+    } finally {
+      Object.defineProperty(Deno, "makeTempFile", {
+        value: originalMakeTempFile,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "Command", {
+        value: originalCommand,
+        configurable: true,
+      });
+      await arf.shutdown();
+    }
+  },
+});
+
+Deno.test({
+  name:
+    "ArfSession.start: preserves caller-provided log file after startup failure",
+  async fn() {
+    const arf = new ArfSession();
+    const originalCommand = Deno.Command;
+    const originalRemove = Deno.remove;
+    const callerLogFile = "/tmp/arf-session-caller.log";
+    const removedPaths: string[] = [];
+
+    try {
+      Object.defineProperty(Deno, "Command", {
+        value: class {
+          spawn(): Deno.ChildProcess {
+            return {
+              stdout: {
+                getReader: () => ({
+                  read: () => new Promise(() => {}),
+                  releaseLock: () => {},
+                }),
+                cancel: async () => {},
+              },
+              kill: () => {},
+              status: Promise.resolve({
+                success: false,
+                code: null,
+                signal: "SIGKILL",
+              }),
+            } as unknown as Deno.ChildProcess;
+          }
+        },
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "remove", {
+        value: async (path: string | URL) => {
+          removedPaths.push(String(path));
+        },
+        configurable: true,
+      });
+
+      await assertRejects(
+        () => arf.start({ logFile: callerLogFile, timeoutMs: 1 }),
+        Error,
+        "startup timed out",
+      );
+      assert(
+        !removedPaths.includes(callerLogFile),
+        `Expected caller log to be preserved, removed: ${
+          removedPaths.join(", ")
+        }`,
+      );
+    } finally {
+      Object.defineProperty(Deno, "Command", {
+        value: originalCommand,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "remove", {
+        value: originalRemove,
+        configurable: true,
+      });
+      await arf.shutdown();
+    }
+  },
+});
+
+Deno.test({
   name: "ArfSession.eval: throws on R evaluation error by default",
   ignore: skip,
   async fn() {

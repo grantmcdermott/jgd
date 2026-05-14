@@ -34,49 +34,52 @@ export class ArfSession {
     }
     this.#starting = true;
 
-    const { timeoutMs = 30_000 } = opts;
-    const logFile = opts.logFile ??
-      await Deno.makeTempFile({ prefix: "arf-", suffix: ".log" });
-    this.#tempLogFile = opts.logFile ? null : logFile;
-
-    const cmd = new Deno.Command("arf", {
-      args: ["headless", "--json", "--log-file", logFile],
-      stdout: "piped",
-      stderr: "null",
-    });
-
-    let process: Deno.ChildProcess;
     try {
-      process = cmd.spawn();
-    } catch (error) {
-      await this.#removeTempLogFile();
-      this.#starting = false;
-      throw error;
-    }
+      const { timeoutMs = 30_000 } = opts;
+      const logFile = opts.logFile ??
+        await Deno.makeTempFile({ prefix: "arf-", suffix: ".log" });
+      const tempLogFile = opts.logFile ? null : logFile;
+      this.#tempLogFile = tempLogFile;
 
-    this.#process = process;
-    const startupId = ++this.#startupId;
+      const cmd = new Deno.Command("arf", {
+        args: ["headless", "--json", "--log-file", logFile],
+        stdout: "piped",
+        stderr: "null",
+      });
 
-    let timeoutId: number | undefined;
-    const timeout = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(
-        () =>
-          reject(
-            new Error(`arf headless startup timed out after ${timeoutMs}ms`),
-          ),
-        timeoutMs,
-      );
-    });
+      let process: Deno.ChildProcess;
+      try {
+        process = cmd.spawn();
+      } catch (error) {
+        await this.#removeTempLogFile();
+        throw error;
+      }
 
-    try {
-      await Promise.race([this.#readReadyJson(process, startupId), timeout]);
-    } catch (error) {
-      // If startup fails after spawn (timeout/invalid ready JSON), ensure
-      // the child is torn down so it cannot leak into later tests.
-      await this.#cleanupStartupProcess(process, logFile);
-      throw error;
+      this.#process = process;
+      const startupId = ++this.#startupId;
+
+      let timeoutId: number | undefined;
+      const timeout = new Promise<never>((_, reject) => {
+        timeoutId = setTimeout(
+          () =>
+            reject(
+              new Error(`arf headless startup timed out after ${timeoutMs}ms`),
+            ),
+          timeoutMs,
+        );
+      });
+
+      try {
+        await Promise.race([this.#readReadyJson(process, startupId), timeout]);
+      } catch (error) {
+        // If startup fails after spawn (timeout/invalid ready JSON), ensure
+        // the child is torn down so it cannot leak into later tests.
+        await this.#cleanupStartupProcess(process, tempLogFile);
+        throw error;
+      } finally {
+        if (timeoutId !== undefined) clearTimeout(timeoutId);
+      }
     } finally {
-      if (timeoutId !== undefined) clearTimeout(timeoutId);
       this.#starting = false;
     }
   }
@@ -241,7 +244,7 @@ export class ArfSession {
 
   async #cleanupStartupProcess(
     process: Deno.ChildProcess,
-    logFile: string,
+    tempLogFile: string | null,
   ): Promise<void> {
     if (this.#process === process) {
       this.#pid = null;
@@ -265,7 +268,7 @@ export class ArfSession {
     } catch {
       // already closed
     }
-    await this.#removeLogFile(logFile);
+    if (tempLogFile !== null) await this.#removeLogFile(tempLogFile);
   }
 
   async #removeTempLogFile(): Promise<void> {
