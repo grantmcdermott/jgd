@@ -111,12 +111,11 @@ Deno.test({
       const sentinel = Symbol("pong");
       const resizeFrame = await Promise.race([
         browser.waitForMessage<FrameMessage>(
-          (msg) =>
-            msg.type === "frame" && (msg as FrameMessage).resize === true,
+          (msg) => msg.type === "frame",
           6000,
           ac.signal,
         ).catch(() => null),
-        browser.sendPing(6000).then(() => {
+        browser.sendPing(3000).then(() => {
           ac.abort();
           return sentinel;
         }),

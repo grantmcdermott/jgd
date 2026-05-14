@@ -107,7 +107,7 @@ Deno.test({
         browser.waitForType<FrameMessage>("frame", 6000, ac.signal).catch(() =>
           null
         ),
-        browser.sendPing(6000).then(() => {
+        browser.sendPing(3000).then(() => {
           ac.abort();
           return sentinel;
         }),

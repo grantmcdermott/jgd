@@ -137,6 +137,7 @@ Deno.test({
     } finally {
       await browser.close();
       await server.shutdown();
+      server.cleanup();
       await arf.shutdown();
     }
   },

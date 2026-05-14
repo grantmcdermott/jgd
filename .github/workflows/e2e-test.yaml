@@ -29,9 +29,15 @@ jobs:
   e2e:
     strategy:
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
+        include:
+          - os: ubuntu-latest
+            arf-archive: arf-console-x86_64-unknown-linux-gnu.tar.xz
+            arf-sha256: 7d1bdc82ac181b9a422a1274fffd390d9bda3e1d093ed617801786f8fe0821f7
+            arf-strip-components: 1
+          - os: windows-latest
+            arf-archive: arf-console-x86_64-pc-windows-msvc.zip
+            arf-sha256: 43c3556ea68cebd58fa44ca3bb50e203a899c3a36e4c34054e54eb3a4a5b1938
+            arf-strip-components: 0
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -50,17 +56,32 @@ jobs:
         with:
           deno-version: v2.x
 
-      - name: Install arf (Linux)
-        if: runner.os != 'Windows'
+      - name: Install arf
         run: |
-          curl -fsSL https://github.com/eitsupi/arf/releases/download/v0.3.3/arf-console-installer.sh | sh
-        shell: bash
+          set -euo pipefail
 
-      - name: Install arf (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          irm https://github.com/eitsupi/arf/releases/download/v0.3.3/arf-console-installer.ps1 | iex
-        shell: powershell
+          if [ "${{ runner.arch }}" != "X64" ]; then
+            echo "Unsupported arf CI architecture: ${{ runner.arch }}" >&2
+            exit 1
+          fi
+
+          version="v0.3.3"
+          archive="${{ matrix.arf-archive }}"
+          expected_sha256="${{ matrix.arf-sha256 }}"
+          strip_components="${{ matrix.arf-strip-components }}"
+          install_dir="$RUNNER_TEMP/arf"
+
+          curl -fsSLO "https://github.com/eitsupi/arf/releases/download/${version}/${archive}"
+          echo "${expected_sha256}  ${archive}" | sha256sum --check -
+
+          mkdir -p "$install_dir"
+          strip_args=()
+          if [ "$strip_components" != "0" ]; then
+            strip_args=(--strip-components="$strip_components")
+          fi
+          tar -xf "$archive" "${strip_args[@]}" -C "$install_dir"
+          echo "$install_dir" >> "$GITHUB_PATH"
+        shell: bash
 
       - name: Install jgd R package
         run: R CMD INSTALL r-pkg
