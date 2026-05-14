@@ -237,7 +237,9 @@ Deno.test({
 
       // Now send a plotIndex resize for plot 0 (the first ggplot)
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
-      await delay(100);
+      // Ping ordering probe replaces a fixed delay: the FIFO WebSocket
+      // guarantees the server has enqueued the resize before R polls.
+      await browser.sendPing(3000);
       await pollResize(arf, 40);
 
       // Wait for the plotIndex replay frame

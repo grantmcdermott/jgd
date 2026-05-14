@@ -107,7 +107,9 @@ Deno.test({
       // Use plotIndex 0 to resize the base plot with abline.
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
 
-      await delay(100);
+      // Ping ordering probe: the WebSocket is FIFO, so awaiting the pong
+      // guarantees the server has already enqueued the resize before R polls.
+      await browser.sendPing(3000);
       await pollResize(arf, 40);
 
       const resized = await browser.waitForMessage<FrameMessage>(

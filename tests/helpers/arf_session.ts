@@ -194,10 +194,20 @@ export class ArfSession {
       } catch { /* already exited */ }
     }, 5_000);
 
-    try {
-      if (pid !== null) {
+    if (pid !== null) {
+      try {
         await this.#shutdownByIpc(pid, 5_000);
+      } catch {
+        // IPC shutdown could not even be initiated (e.g. `arf` binary
+        // missing). Kill the headless process directly so it does not
+        // outlive this call when the SIGKILL fallback is cleared below.
+        try {
+          process.kill("SIGKILL");
+        } catch { /* already exited */ }
       }
+    }
+
+    try {
       await process.status;
     } catch {
       // ignore

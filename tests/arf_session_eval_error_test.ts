@@ -11,6 +11,11 @@ Deno.test({
     const arf = new ArfSession();
     const originalMakeTempFile = Deno.makeTempFile;
     const originalCommand = Deno.Command;
+    const originalRemove = Deno.remove;
+    // Stub Deno.remove so the temp-log cleanup path does not touch the
+    // real filesystem if a developer happens to have a file at the
+    // hard-coded mock path on their machine.
+    const removedPaths: string[] = [];
     try {
       Object.defineProperty(Deno, "makeTempFile", {
         value: async () => {
@@ -24,8 +29,9 @@ Deno.test({
         "temp log unavailable",
       );
 
+      const stubLogPath = "/tmp/arf-session-test.log";
       Object.defineProperty(Deno, "makeTempFile", {
-        value: async () => "/tmp/arf-session-test.log",
+        value: async () => stubLogPath,
         configurable: true,
       });
       Object.defineProperty(Deno, "Command", {
@@ -36,10 +42,22 @@ Deno.test({
         },
         configurable: true,
       });
+      Object.defineProperty(Deno, "remove", {
+        value: async (path: string | URL) => {
+          removedPaths.push(String(path));
+        },
+        configurable: true,
+      });
       await assertRejects(
         () => arf.start(),
         Error,
         "spawn reached after temp log failure",
+      );
+      assert(
+        removedPaths.includes(stubLogPath),
+        `Expected stub log cleanup to be attempted, removed: ${
+          removedPaths.join(", ")
+        }`,
       );
     } finally {
       Object.defineProperty(Deno, "makeTempFile", {
@@ -48,6 +66,10 @@ Deno.test({
       });
       Object.defineProperty(Deno, "Command", {
         value: originalCommand,
+        configurable: true,
+      });
+      Object.defineProperty(Deno, "remove", {
+        value: originalRemove,
         configurable: true,
       });
       await arf.shutdown();
