@@ -33,8 +33,13 @@ const arfTestAvailable = await checkArfTestAvailable();
 const ggplot2Available = arfTestAvailable && await checkGgplot2Available();
 const skip = !ggplot2Available;
 
+// Per-iteration step for the frame-collection polling loop below: a short
+// wait so the loop can advance quickly when frames have stopped arriving.
 const FRAME_WAIT_MS = 1000;
 const NEWPAGE_DEADLINE_MS = 6000;
+// Separate timeout for the plotIndex resize replay frame: server→browser
+// delivery can lag noticeably on slow CI even after R has finished polling.
+const RESIZE_REPLAY_MS = 15_000;
 
 Deno.test({
   name: "E2E: abline survives plotIndex resize when ggplot2 is the next plot",
@@ -113,7 +118,7 @@ Deno.test({
         (msg) =>
           msg.type === "frame" && (msg as FrameMessage).resize === true &&
           (msg as FrameMessage).plotIndex === 0,
-        FRAME_WAIT_MS,
+        RESIZE_REPLAY_MS,
       );
 
       assertEquals(
