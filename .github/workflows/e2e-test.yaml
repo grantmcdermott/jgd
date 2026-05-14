@@ -77,7 +77,22 @@ jobs:
           mkdir -p "$install_dir"
           case "$archive" in
             *.zip)
-              unzip -q "$archive" -d "$install_dir"
+              extract_dir="$RUNNER_TEMP/arf-extract"
+              rm -rf "$extract_dir"
+              mkdir -p "$extract_dir"
+              unzip -q "$archive" -d "$extract_dir"
+
+              source_dir="$extract_dir"
+              for _ in $(seq 1 "$strip_components"); do
+                child_count="$(find "$source_dir" -mindepth 1 -maxdepth 1 | wc -l)"
+                child_dir="$(find "$source_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+                if [ "$child_count" != "1" ] || [ -z "$child_dir" ]; then
+                  echo "Cannot strip $strip_components component(s) from $archive" >&2
+                  exit 1
+                fi
+                source_dir="$child_dir"
+              done
+              cp -a "$source_dir"/. "$install_dir"/
               ;;
             *.tar.*)
               strip_args=()
