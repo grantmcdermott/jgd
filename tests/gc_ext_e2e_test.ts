@@ -10,6 +10,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { testLog } from "./helpers/test_log.ts";
@@ -184,8 +185,8 @@ Deno.test({
 
       // Send a resize — this triggers display list replay in R
       browser.sendResize(640, 480);
-      await delay(100);
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       // Wait for the resize replay frame
       const resizeFrame = await browser.waitForMessage<FrameMessage>(
@@ -280,8 +281,8 @@ Deno.test({
       // Resize plot 1 via plotIndex (historical replay)
       const sessionId = frame1.plot.sessionId!;
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
-      await delay(100);
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const replay1 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -314,8 +315,8 @@ Deno.test({
       // Its opacity ext must NOT be lost because of the earlier
       // plotIndex=0 replay.
       browser.sendResizeWithPlotIndex(700, 500, 1, sessionId);
-      await delay(100);
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const replay2 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,

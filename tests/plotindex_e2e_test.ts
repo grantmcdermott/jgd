@@ -15,6 +15,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
@@ -65,9 +66,9 @@ Deno.test({
       // --- Test 1: plotIndex=0 resize re-renders the first plot ---
       const sessionId = frame1.plot.sessionId!;
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
-      await delay(100); // allow WS message to propagate to server
+      await browser.sendPing(3000);
       testLog("sent resize with plotIndex=0; calling poll_resize");
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)", 10_000);
+      await pollResize(arf, 40);
       testLog("poll_resize returned for plotIndex=0");
 
       const resized0 = await browser.waitForMessage<FrameMessage>(
@@ -101,9 +102,9 @@ Deno.test({
       // through to a normal resize of the current display list.  The frame
       // should have resize:true but no plotIndex.
       browser.sendResizeWithPlotIndex(700, 500, 1, sessionId);
-      await delay(100); // allow WS message to propagate to server
+      await browser.sendPing(3000);
       testLog("sent resize with plotIndex=1; calling poll_resize");
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)", 10_000);
+      await pollResize(arf, 40);
       testLog("poll_resize returned for plotIndex=1");
 
       const resized1 = await browser.waitForMessage<FrameMessage>(
@@ -140,9 +141,9 @@ Deno.test({
 
       // --- Test 3: normal resize (no plotIndex) still works ---
       browser.sendResize(750, 550);
-      await delay(100); // allow WS message to propagate to server
+      await browser.sendPing(3000);
       testLog("sent normal resize; calling poll_resize");
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)", 10_000);
+      await pollResize(arf, 40);
       testLog("poll_resize returned for normal resize");
 
       const normalResize = await browser.waitForMessage<FrameMessage>(

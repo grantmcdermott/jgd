@@ -16,6 +16,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { testLog } from "./helpers/test_log.ts";
@@ -55,8 +56,8 @@ Deno.test({
 
       // Send a resize with DIFFERENT dimensions to trigger a replay
       browser.sendResize(640, 480);
-      await delay(100);
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       // Collect all frames until we get 3 newPage frames
       const allFrames: FrameMessage[] = [frame1];
@@ -201,8 +202,8 @@ Deno.test({
 
       // Send resize after plot 1
       browser.sendResize(640, 480);
-      await delay(100);
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       // Wait for resize frame
       let gotResize1 = false;
@@ -241,8 +242,8 @@ Deno.test({
 
       // Send resize after plot 2
       browser.sendResize(700, 500);
-      await delay(100);
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       // Wait for resize frame
       let gotResize2 = false;

@@ -22,6 +22,7 @@ import {
 } from "../server/tests/helpers/e2e_browser.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
@@ -64,8 +65,7 @@ Deno.test({
       console.error(`After plot 1 + quiet window: "${info}"`);
 
       // Process any browser resize before next plot
-      await delay(100);
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await pollResize(arf, 40);
       await assertPlotInfoStable(page, "1 / 1");
       info = await plotInfoText(page);
       console.error(`After resize poll before plot 2: "${info}"`);
@@ -86,8 +86,7 @@ Deno.test({
           "plot duplication bug detected",
       );
 
-      await delay(100);
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await pollResize(arf, 40);
       await assertPlotInfoStable(page, "2 / 2");
       info = await plotInfoText(page);
       console.error(`After resize poll before plot 3: "${info}"`);

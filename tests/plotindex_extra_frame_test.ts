@@ -20,6 +20,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
@@ -70,8 +71,8 @@ Deno.test({
       // At the protocol level, this is a resize with plotIndex=0.
       const sessionId = frame1.plot.sessionId!;
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       // Wait for the resize response frame
       const resized = await browser.waitForMessage<FrameMessage>(

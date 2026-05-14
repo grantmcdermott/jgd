@@ -20,6 +20,7 @@ import {
   plotInfoText,
   waitForPlotInfo,
 } from "../server/tests/helpers/e2e_browser.ts";
+import { BrowserClient } from "../server/tests/helpers/browser_client.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { pollResize } from "./helpers/arf_poll.ts";
@@ -182,7 +183,7 @@ Deno.test({
     testLog("test start");
     const server = new TestServer({ tcp: true });
     const e2e = new E2EBrowser();
-    const observer = new AutoMetricsBrowserClient();
+    const observer = new BrowserClient();
     const arf = new ArfSession();
 
     try {

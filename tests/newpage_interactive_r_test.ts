@@ -63,8 +63,10 @@ Deno.test({
       const encoder = new TextEncoder();
 
       // Drain stdout/stderr in background
-      proc.stdout.pipeTo(new WritableStream({ write() {} })).catch(() => {});
-      proc.stderr.pipeTo(
+      const stdoutDrained = proc.stdout.pipeTo(
+        new WritableStream({ write() {} }),
+      ).catch(() => {});
+      const stderrDrained = proc.stderr.pipeTo(
         new WritableStream({
           write(chunk) {
             if (Deno.env.get("JGD_TEST_VERBOSE")) {
@@ -136,8 +138,9 @@ Deno.test({
           proc.kill("SIGKILL");
         } catch { /* ignore */ }
         try {
-          await proc.output();
+          await proc.status;
         } catch { /* ignore */ }
+        await Promise.allSettled([stdoutDrained, stderrDrained]);
       }
     } finally {
       await e2e.close();

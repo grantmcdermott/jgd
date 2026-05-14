@@ -106,6 +106,13 @@ jobs:
               exit 1
               ;;
           esac
+
+          arf_bin="$install_dir/arf"
+          if [ ! -x "$arf_bin" ] && [ -x "$install_dir/arf.exe" ]; then
+            arf_bin="$install_dir/arf.exe"
+          fi
+          "$arf_bin" --version
+
           echo "$install_dir" >> "$GITHUB_PATH"
         shell: bash
 

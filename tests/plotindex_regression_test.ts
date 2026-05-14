@@ -19,6 +19,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
@@ -58,8 +59,8 @@ Deno.test({
 
       // Step 3: Normal resize — verify latest plot (plot 2) re-renders
       browser.sendResize(640, 480);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const normalResize1 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -84,8 +85,8 @@ Deno.test({
       // Step 5: plotIndex=0 resize — verify historical plot (plot 1) re-renders
       const sessionId = frame1.plot.sessionId!;
       browser.sendResizeWithPlotIndex(700, 500, 0, sessionId);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const plotIndexResize = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -118,8 +119,8 @@ Deno.test({
       // After plotIndex resize, a subsequent normal resize should
       // re-render the current (latest) plot.
       browser.sendResize(750, 550);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const normalResize2 = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -193,8 +194,8 @@ Deno.test({
       // Normal resize AFTER R session is established to properly set
       // the server's lastResizeW/H dedup state.
       browser.sendResize(640, 480);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const firstNormal = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -207,8 +208,8 @@ Deno.test({
       // This bypasses dedup and updates lastResizeW/H to 700x500.
       // R's device dimensions are also changed to 700x500.
       browser.sendResizeWithPlotIndex(700, 500, 0, sessionId);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const plotIndexFrame = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -220,8 +221,8 @@ Deno.test({
       // is 700x500 (plotIndex resize updated dedup state), so 640x480
       // should be forwarded (different dims).
       browser.sendResize(640, 480);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const normalFrame = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
