@@ -22,6 +22,7 @@ import {
 } from "../server/tests/helpers/e2e_browser.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
@@ -123,10 +124,8 @@ Deno.test({
 
       // Request resize of historical plot 1 (plotIndex = 0)
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
-      await delay(100); // allow WS message to propagate to server → R socket
-
-      // Explicitly trigger poll — no polling loop needed with ArfSession
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const resized = await browser.waitForMessage<FrameMessage>(
         (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
@@ -183,6 +182,7 @@ Deno.test({
     testLog("test start");
     const server = new TestServer({ tcp: true });
     const e2e = new E2EBrowser();
+    const observer = new AutoMetricsBrowserClient();
     const arf = new ArfSession();
 
     try {
@@ -191,6 +191,7 @@ Deno.test({
       // Launch browser before R so it receives frames in order
       await e2e.launch();
       const page = await e2e.newPage(server.httpBaseUrl);
+      await observer.connect(server.wsUrl);
       await delay(500);
 
       await arf.start();
@@ -229,11 +230,18 @@ Deno.test({
         c.style.height = '350px';
       })()`);
 
-      // Wait for debounce (300ms) + message propagation to R's socket
+      // Wait for the page's ResizeObserver debounce and then process the
+      // server-side resize message in R.
       await delay(500);
-
-      // Explicitly process the resize in R (no embedded polling loop needed)
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      const replayFramePromise = observer.waitForMessage<FrameMessage>(
+        (msg) =>
+          msg.type === "frame" &&
+          (msg as FrameMessage).resize === true &&
+          (msg as FrameMessage).plotIndex === 0,
+        15_000,
+      );
+      await pollResize(arf, 40);
+      await replayFramePromise;
 
       // Wait for a post-resize render signal before asserting non-blank.
       // Content can already be non-blank due to local browser replay.
@@ -258,6 +266,7 @@ Deno.test({
       );
     } finally {
       await arf.shutdown();
+      observer.close();
       await e2e.close();
       await delay(100);
       await server.shutdown();

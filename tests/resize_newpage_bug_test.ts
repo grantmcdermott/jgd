@@ -20,6 +20,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { testLog } from "./helpers/test_log.ts";
@@ -58,8 +59,8 @@ Deno.test({
 
       // Send a resize with different dimensions
       browser.sendResize(640, 480);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       // Wait for ANY frame (not filtering by resize:true) to see what R
       // actually sends after the resize.
@@ -124,8 +125,8 @@ Deno.test({
       // Count total frames received: should be exactly 2 so far.
       // Now send resize — should produce exactly 1 more frame with resize:true.
       browser.sendResize(640, 480);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const frame3 = await browser.waitForType<FrameMessage>(
         "frame",
@@ -145,8 +146,8 @@ Deno.test({
 
       // Send another resize
       browser.sendResize(700, 500);
-      await delay(100); // allow WS message to propagate to server
-      await arf.eval(".Call(jgd:::C_jgd_poll_resize)");
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
       const frame4 = await browser.waitForType<FrameMessage>(
         "frame",

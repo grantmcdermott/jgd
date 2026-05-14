@@ -84,7 +84,8 @@ Deno.test({
           frames.push(msg);
           if (msg.newPage) newPageCount++;
         } catch {
-          break;
+          // Keep polling until the overall deadline; ggplot2/grid frame
+          // delivery can have transient gaps.
         }
       }
 

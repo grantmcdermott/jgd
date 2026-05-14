@@ -107,6 +107,11 @@ export class ArfSession {
             if (this.#process !== process || this.#startupId !== startupId) {
               throw new Error("arf headless startup was aborted");
             }
+            if (!Number.isFinite(info.pid)) {
+              throw new Error(
+                `arf headless ready JSON did not contain a numeric pid: ${line}`,
+              );
+            }
             this.#pid = info.pid;
             return;
           }
@@ -301,7 +306,7 @@ export class ArfSession {
 }
 
 /**
- * Convenience wrapper for use with `ignore: !arfTestAvailable` in Deno.test.
+ * Check only the `arf` binary/version. Use checkArfTestAvailable() for tests.
  */
 export async function checkArfAvailable(): Promise<boolean> {
   if (!await ArfSession.isAvailable()) return false;
