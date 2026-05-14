@@ -21,26 +21,12 @@ import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
+import { checkGgplot2Available } from "./helpers/r_packages.ts";
 import { testLog } from "./helpers/test_log.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const ggplot2Available = arfTestAvailable && await checkGgplot2Available();
 const skip = !ggplot2Available;
-
-async function checkGgplot2Available(): Promise<boolean> {
-  try {
-    const cmd = new Deno.Command("Rscript", {
-      args: ["-e", 'library(ggplot2); cat("ok")'],
-      stdout: "piped",
-      stderr: "piped",
-    });
-    const output = await cmd.output();
-    const stdout = new TextDecoder().decode(output.stdout);
-    return output.success && stdout.includes("ok");
-  } catch {
-    return false;
-  }
-}
 
 Deno.test({
   name:
