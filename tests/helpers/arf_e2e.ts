@@ -25,35 +25,66 @@ export interface ArfPageTestContext {
   close(): Promise<void>;
 }
 
+async function closeArfBrowserResources(
+  server: TestServer,
+  browser: AutoMetricsBrowserClient,
+  arf: ArfSession,
+): Promise<void> {
+  browser.close();
+  await delay(100);
+  try {
+    await server.shutdown();
+  } finally {
+    server.cleanup();
+    await arf.shutdown();
+  }
+}
+
+async function closeArfPageResources(
+  server: TestServer,
+  e2e: E2EBrowser,
+  arf: ArfSession,
+): Promise<void> {
+  await arf.shutdown();
+  await e2e.close();
+  await delay(100);
+  try {
+    await server.shutdown();
+  } finally {
+    server.cleanup();
+  }
+}
+
 export async function startArfBrowserTest(): Promise<ArfBrowserTestContext> {
   const server = new TestServer({ tcp: true });
   const browser = new AutoMetricsBrowserClient();
   const arf = new ArfSession();
 
-  await server.start();
-  await browser.connect(server.wsUrl);
-  browser.sendResize(800, 600);
-  await delay(100);
+  try {
+    await server.start();
+    await browser.connect(server.wsUrl);
+    browser.sendResize(800, 600);
+    await delay(100);
 
-  await arf.start();
-  const socketAddr = toRSocketAddress(server.socketPath);
-  await arf.eval(
-    `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-  );
+    await arf.start();
+    const socketAddr = toRSocketAddress(server.socketPath);
+    await arf.eval(
+      `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+    );
 
-  return {
-    server,
-    browser,
-    arf,
-    socketAddr,
-    async close() {
-      browser.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
-      await arf.shutdown();
-    },
-  };
+    return {
+      server,
+      browser,
+      arf,
+      socketAddr,
+      async close() {
+        await closeArfBrowserResources(server, browser, arf);
+      },
+    };
+  } catch (error) {
+    await closeArfBrowserResources(server, browser, arf);
+    throw error;
+  }
 }
 
 export async function startArfPageTest(
@@ -63,45 +94,46 @@ export async function startArfPageTest(
   const e2e = new E2EBrowser();
   const arf = new ArfSession();
 
-  await server.start();
-  const socketAddr = toRSocketAddress(server.socketPath);
-  let page: Awaited<ReturnType<E2EBrowser["newPage"]>>;
+  try {
+    await server.start();
+    const socketAddr = toRSocketAddress(server.socketPath);
+    let page: Awaited<ReturnType<E2EBrowser["newPage"]>>;
 
-  if (opts.browserFirst) {
-    await e2e.launch();
-    page = await e2e.newPage(server.httpBaseUrl);
-    await delay(100);
-
-    await arf.start();
-    await arf.eval(
-      `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-    );
-  } else {
-    await arf.start();
-    await arf.eval(
-      `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
-    );
-    await delay(100);
-
-    await e2e.launch();
-    page = await e2e.newPage(server.httpBaseUrl);
-    await delay(300);
-  }
-
-  return {
-    server,
-    e2e,
-    arf,
-    page,
-    socketAddr,
-    async close() {
-      await arf.shutdown();
-      await e2e.close();
+    if (opts.browserFirst) {
+      await e2e.launch();
+      page = await e2e.newPage(server.httpBaseUrl);
       await delay(100);
-      await server.shutdown();
-      server.cleanup();
-    },
-  };
+
+      await arf.start();
+      await arf.eval(
+        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+      );
+    } else {
+      await arf.start();
+      await arf.eval(
+        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+      );
+      await delay(100);
+
+      await e2e.launch();
+      page = await e2e.newPage(server.httpBaseUrl);
+      await delay(300);
+    }
+
+    return {
+      server,
+      e2e,
+      arf,
+      page,
+      socketAddr,
+      async close() {
+        await closeArfPageResources(server, e2e, arf);
+      },
+    };
+  } catch (error) {
+    await closeArfPageResources(server, e2e, arf);
+    throw error;
+  }
 }
 
 export async function waitForFrameWithOps(
