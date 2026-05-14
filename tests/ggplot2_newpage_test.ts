@@ -24,6 +24,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { checkGgplot2Available } from "./helpers/r_packages.ts";
@@ -33,23 +34,6 @@ const arfTestAvailable = await checkArfTestAvailable();
 const ggplot2Available = arfTestAvailable && await checkGgplot2Available();
 const FRAME_WAIT_MS = 1000;
 const NEWPAGE_DEADLINE_MS = 2000;
-
-async function evalOk(
-  arf: ArfSession,
-  code: string,
-  timeoutMs?: number,
-): Promise<void> {
-  const result = await arf.eval(code, timeoutMs);
-  assertEquals(result.error, null, `R eval failed: ${result.error}`);
-}
-
-async function pollR(arf: ArfSession, iterations = 120): Promise<void> {
-  await evalOk(
-    arf,
-    `for (i in 1:${iterations}) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.005) }`,
-    60_000,
-  );
-}
 
 async function collectFramesUntilQuiet(
   browser: AutoMetricsBrowserClient,
@@ -109,18 +93,17 @@ Deno.test({
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
 
-      await evalOk(arf, `options(jgd.socket = "${socketAddr}"); library(jgd)`);
+      await arf.eval(`options(jgd.socket = "${socketAddr}"); library(jgd)`);
       // Two ggplot2 faceted plots.  facet_wrap produces many incremental
       // frames and leaves some ops unflushed when the second plot starts.
-      await evalOk(arf, "jgd(width=8, height=6, dpi=96)");
-      await evalOk(
-        arf,
+      await arf.eval("jgd(width=8, height=6, dpi=96)");
+      await arf.eval(
         "library(ggplot2); " +
           "print(ggplot(mpg, aes(displ, hwy, col=class)) + geom_point() + facet_wrap(~drv) + theme_bw()); " +
           "print(ggplot(mpg, aes(displ, hwy, col=class)) + geom_point() + facet_wrap(~drv) + theme_bw())",
         60_000,
       );
-      await pollR(arf);
+      await pollResize(arf);
 
       // Collect until 2 newPage frames, then drain trailing frames so
       // assertions also cover late-arriving complete frames.
@@ -209,17 +192,16 @@ Deno.test({
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
 
-      await evalOk(arf, `options(jgd.socket = "${socketAddr}"); library(jgd)`);
+      await arf.eval(`options(jgd.socket = "${socketAddr}"); library(jgd)`);
       // Two ggplot2 plots, then poll_resize to handle the plotIndex resize.
-      await evalOk(arf, "jgd(width=8, height=6, dpi=96)");
-      await evalOk(
-        arf,
+      await arf.eval("jgd(width=8, height=6, dpi=96)");
+      await arf.eval(
         "library(ggplot2); " +
           "print(ggplot(mpg, aes(displ, hwy, col=class)) + geom_point() + facet_wrap(~drv) + theme_bw()); " +
           "print(ggplot(mpg, aes(displ, hwy, col=class)) + geom_point() + facet_wrap(~drv) + theme_bw())",
         60_000,
       );
-      await pollR(arf);
+      await pollResize(arf);
 
       // Wait for both plots: collect until drawing settles
       let sessionId = "";
@@ -256,7 +238,7 @@ Deno.test({
       // Now send a plotIndex resize for plot 0 (the first ggplot)
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
       await delay(100);
-      await pollR(arf, 40);
+      await pollResize(arf, 40);
 
       // Wait for the plotIndex replay frame
       const replayFrame = await browser.waitForMessage<FrameMessage>(

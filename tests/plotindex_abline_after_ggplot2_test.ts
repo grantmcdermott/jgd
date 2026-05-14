@@ -23,6 +23,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { checkGgplot2Available } from "./helpers/r_packages.ts";
@@ -34,23 +35,6 @@ const skip = !ggplot2Available;
 
 const FRAME_WAIT_MS = 1000;
 const NEWPAGE_DEADLINE_MS = 6000;
-
-async function evalOk(
-  arf: ArfSession,
-  code: string,
-  timeoutMs?: number,
-): Promise<void> {
-  const result = await arf.eval(code, timeoutMs);
-  assertEquals(result.error, null, `R eval failed: ${result.error}`);
-}
-
-async function pollR(arf: ArfSession, iterations = 120): Promise<void> {
-  await evalOk(
-    arf,
-    `for (i in 1:${iterations}) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.005) }`,
-    60_000,
-  );
-}
 
 Deno.test({
   name: "E2E: abline survives plotIndex resize when ggplot2 is the next plot",
@@ -69,25 +53,22 @@ Deno.test({
 
       await arf.start();
       const socketAddr = toRSocketAddress(server.socketPath);
-      await evalOk(
-        arf,
+      await arf.eval(
         `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
       );
 
       // Plot 1: plot(cars) + abline (base graphics with line annotation)
       // Plot 2: ggplot2 (grid-based — triggers the bug path)
-      await evalOk(
-        arf,
+      await arf.eval(
         'library(ggplot2); plot(cars); abline(lm(dist ~ speed, data = cars), col = "red", lwd = 2)',
       );
-      await pollR(arf, 80);
+      await pollResize(arf, 80);
 
       // Plot 3: another base plot (pushes plot 1 to snapshot history)
-      await evalOk(
-        arf,
+      await arf.eval(
         "print(ggplot(mpg, aes(displ, hwy)) + geom_point()); plot(1:5)",
       );
-      await pollR(arf, 120);
+      await pollResize(arf, 120);
 
       // Collect frames until we have at least 3 newPage frames
       const frames: FrameMessage[] = [];
@@ -126,7 +107,7 @@ Deno.test({
       browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
 
       await delay(100);
-      await pollR(arf, 40);
+      await pollResize(arf, 40);
 
       const resized = await browser.waitForMessage<FrameMessage>(
         (msg) =>
