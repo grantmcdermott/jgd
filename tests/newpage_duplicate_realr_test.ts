@@ -17,6 +17,7 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
 import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { toRSocketAddress } from "./helpers/r_process.ts";
 import { testLog } from "./helpers/test_log.ts";
@@ -45,9 +46,8 @@ Deno.test({
       await arf.eval(
         `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
       );
-      await arf.eval(
-        "plot(1:3); plot(4:6); plot(7:9); for (i in 1:120) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.005) }",
-      );
+      await arf.eval("plot(1:3); plot(4:6); plot(7:9)");
+      await pollResize(arf, 120);
 
       // Collect all frames that arrive within a reasonable window.
       // We expect 3 newPage frames (one per plot) plus possibly
