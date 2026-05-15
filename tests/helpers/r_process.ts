@@ -1,14 +1,6 @@
 /**
- * R subprocess manager for E2E tests.
- * Spawns Rscript with plotting commands that use the real jgd device.
+ * R availability and socket helper functions for E2E tests.
  */
-
-export interface RProcessResult {
-  success: boolean;
-  exitCode: number;
-  stdout: string;
-  stderr: string;
-}
 
 /**
  * Translate TestServer's socket path to R's socket address format.
@@ -22,80 +14,6 @@ export function toRSocketAddress(serverSocketPath: string): string {
   // npipe:////./pipe/NAME and Unix socket paths — pass through as-is
   // (R's transport.c understands both formats directly)
   return serverSocketPath;
-}
-
-/**
- * Run an R expression that uses jgd() to produce plots.
- *
- * @param rCode R code to execute (will be wrapped in appropriate setup)
- * @param serverSocketPath Socket path from TestServer (e.g. "tcp:12345" or "/tmp/jgd.sock")
- * @param timeoutMs Maximum time to wait for R process (default 30s)
- */
-export async function runR(
-  rCode: string,
-  serverSocketPath: string,
-  timeoutMs = 30_000,
-): Promise<RProcessResult> {
-  const socketAddr = toRSocketAddress(serverSocketPath);
-
-  // Build the full R expression: load jgd, set socket, run user code
-  const fullCode = `options(jgd.socket = "${socketAddr}"); library(jgd); ${rCode}`;
-
-  const cmd = new Deno.Command("Rscript", {
-    args: ["-e", fullCode],
-    stdout: "piped",
-    stderr: "piped",
-  });
-
-  const process = cmd.spawn();
-
-  // Timeout with SIGKILL fallback
-  const timeoutId = setTimeout(() => {
-    try {
-      process.kill("SIGKILL");
-    } catch {
-      // Already exited
-    }
-  }, timeoutMs);
-
-  try {
-    const output = await process.output();
-    const decoder = new TextDecoder();
-    return {
-      success: output.success,
-      exitCode: output.code,
-      stdout: decoder.decode(output.stdout),
-      stderr: decoder.decode(output.stderr),
-    };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-/**
- * Start a background R process.  Returns handles to read output and kill it.
- * Unlike runR(), the process stays alive until explicitly killed.
- */
-export function startR(
-  rCode: string,
-  serverSocketPath: string,
-): { process: Deno.ChildProcess; kill: () => void } {
-  const socketAddr = toRSocketAddress(serverSocketPath);
-  const fullCode = `options(jgd.socket = "${socketAddr}"); library(jgd); ${rCode}`;
-
-  const cmd = new Deno.Command("Rscript", {
-    args: ["-e", fullCode],
-    stdout: "piped",
-    stderr: "piped",
-  });
-
-  const process = cmd.spawn();
-  return {
-    process,
-    kill() {
-      try { process.kill("SIGKILL"); } catch { /* already exited */ }
-    },
-  };
 }
 
 /** Check if Rscript is available and the jgd package is installed. */

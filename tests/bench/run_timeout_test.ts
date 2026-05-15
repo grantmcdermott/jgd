@@ -1,7 +1,9 @@
 import { assertEquals } from "@std/assert";
 import { settleTimeoutPath } from "./run.ts";
+import { testLog } from "../helpers/test_log.ts";
 
 Deno.test("settleTimeoutPath returns after collectors settle", async () => {
+  testLog("test start");
   const start = Date.now();
   await settleTimeoutPath(
     Promise.resolve(),
@@ -13,6 +15,7 @@ Deno.test("settleTimeoutPath returns after collectors settle", async () => {
 });
 
 Deno.test("settleTimeoutPath bounds collector wait when collectors never close", async () => {
+  testLog("test start");
   const never = new Promise<void>(() => {});
   const start = Date.now();
   await settleTimeoutPath(Promise.resolve(), [never, never], 50);

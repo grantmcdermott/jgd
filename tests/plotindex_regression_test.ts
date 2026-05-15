@@ -15,189 +15,165 @@
  */
 
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
-import type { FrameMessage } from "../server/tests/helpers/types.ts";
-import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import {
+  createTwoBasePlots,
+  sendPlotIndexResizeAndPoll,
+  sendResizeAndPoll,
+  startArfBrowserTest,
+  waitForResizeFrame,
+} from "./helpers/arf_e2e.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
-import { checkRAvailable, startR } from "./helpers/r_process.ts";
+import { checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { testLog } from "./helpers/test_log.ts";
 
-const rAvailable = await checkRAvailable();
+const arfTestAvailable = await checkArfTestAvailable();
+const skip = !arfTestAvailable;
 
 Deno.test({
   name: "E2E: normal resize works after plotIndex resize (regression)",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
+    testLog("test start");
+    const ctx = await startArfBrowserTest();
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(200);
+      const [frame1] = await createTwoBasePlots(ctx);
 
-      const r = startR(
-        'jgd(width=8, height=6, dpi=96); plot(1:3); plot(4:6); for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      // Step 3: Normal resize — verify latest plot (plot 2) re-renders
+      await sendResizeAndPoll(ctx, 640, 480);
+
+      const normalResize1 = await waitForResizeFrame(ctx.browser);
+
+      assertEquals(
+        normalResize1.resize,
+        true,
+        "Step 3: should have resize:true",
+      );
+      assertEquals(
+        normalResize1.plotIndex,
+        undefined,
+        "Step 3: should NOT have plotIndex",
+      );
+      assert(normalResize1.plot.ops.length > 0, "Step 3: should have ops");
+
+      const textsStep3 = extractTextOps(normalResize1);
+      assert(textsStep3.length > 0, "Step 3: should have text ops");
+
+      // Step 5: plotIndex=0 resize — verify historical plot (plot 1) re-renders
+      const sessionId = frame1.plot.sessionId!;
+      await sendPlotIndexResizeAndPoll(ctx, 700, 500, 0, sessionId);
+
+      const plotIndexResize = await waitForResizeFrame(ctx.browser);
+
+      assertEquals(
+        plotIndexResize.resize,
+        true,
+        "Step 5: should have resize:true",
+      );
+      assertEquals(
+        plotIndexResize.plotIndex,
+        0,
+        "Step 5: should have plotIndex:0",
+      );
+      assert(plotIndexResize.plot.ops.length > 0, "Step 5: should have ops");
+
+      const textsStep5 = extractTextOps(plotIndexResize);
+      assert(textsStep5.length > 0, "Step 5: should have text ops");
+
+      // Verify plot 1 (step 5) and plot 2 (step 3) have different content
+      assertNotEquals(
+        JSON.stringify(textsStep3),
+        JSON.stringify(textsStep5),
+        "Step 5 (plot 1) should differ from step 3 (plot 2)",
       );
 
-      try {
-        // Step 1-2: Wait for both plots
-        const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
-        assert(frame1.plot.ops.length > 0, "First frame should have ops");
+      // Step 7: Normal resize — THIS is the regression test.
+      // After plotIndex resize, a subsequent normal resize should
+      // re-render the current (latest) plot.
+      await sendResizeAndPoll(ctx, 750, 550);
 
-        const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
-        assert(frame2.plot.ops.length > 0, "Second frame should have ops");
+      const normalResize2 = await waitForResizeFrame(ctx.browser);
 
-        // Step 3: Normal resize — verify latest plot (plot 2) re-renders
-        browser.sendResize(640, 480);
+      assertEquals(
+        normalResize2.resize,
+        true,
+        "Step 7: should have resize:true",
+      );
+      assertEquals(
+        normalResize2.plotIndex,
+        undefined,
+        "Step 7: should NOT have plotIndex",
+      );
+      assert(normalResize2.plot.ops.length > 0, "Step 7: should have ops");
 
-        const normalResize1 = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
+      // Step 7 should re-render the current (latest) plot, i.e. plot(4:6),
+      // which has the same content as step 3 (also plot 2).
+      const textsStep7 = extractTextOps(normalResize2);
+      assertEquals(
+        JSON.stringify(textsStep7),
+        JSON.stringify(textsStep3),
+        "Step 7 should re-render the same plot as step 3 (both are the latest plot)",
+      );
 
-        assertEquals(normalResize1.resize, true, "Step 3: should have resize:true");
-        assertEquals(normalResize1.plotIndex, undefined, "Step 3: should NOT have plotIndex");
-        assert(normalResize1.plot.ops.length > 0, "Step 3: should have ops");
-
-        const textsStep3 = extractTextOps(normalResize1);
-        assert(textsStep3.length > 0, "Step 3: should have text ops");
-
-        // Step 5: plotIndex=0 resize — verify historical plot (plot 1) re-renders
-        const sessionId = frame1.plot.sessionId!;
-        browser.sendResizeWithPlotIndex(700, 500, 0, sessionId);
-
-        const plotIndexResize = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
-
-        assertEquals(plotIndexResize.resize, true, "Step 5: should have resize:true");
-        assertEquals(plotIndexResize.plotIndex, 0, "Step 5: should have plotIndex:0");
-        assert(plotIndexResize.plot.ops.length > 0, "Step 5: should have ops");
-
-        const textsStep5 = extractTextOps(plotIndexResize);
-        assert(textsStep5.length > 0, "Step 5: should have text ops");
-
-        // Verify plot 1 (step 5) and plot 2 (step 3) have different content
-        assertNotEquals(
-          JSON.stringify(textsStep3),
-          JSON.stringify(textsStep5),
-          "Step 5 (plot 1) should differ from step 3 (plot 2)",
-        );
-
-        // Step 7: Normal resize — THIS is the regression test.
-        // After plotIndex resize, a subsequent normal resize should
-        // re-render the current (latest) plot.
-        browser.sendResize(750, 550);
-
-        const normalResize2 = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
-
-        assertEquals(normalResize2.resize, true, "Step 7: should have resize:true");
-        assertEquals(normalResize2.plotIndex, undefined, "Step 7: should NOT have plotIndex");
-        assert(normalResize2.plot.ops.length > 0, "Step 7: should have ops");
-
-        // Step 7 should re-render the current (latest) plot, i.e. plot(4:6),
-        // which has the same content as step 3 (also plot 2).
-        const textsStep7 = extractTextOps(normalResize2);
-        assertEquals(
-          JSON.stringify(textsStep7),
-          JSON.stringify(textsStep3),
-          "Step 7 should re-render the same plot as step 3 (both are the latest plot)",
-        );
-
-        // Also verify step 7 differs from step 5 (which was plot 1)
-        assertNotEquals(
-          JSON.stringify(textsStep7),
-          JSON.stringify(textsStep5),
-          "Step 7 (latest plot) should differ from step 5 (historical plot)",
-        );
-      } finally {
-        r.kill();
-        try { await r.process.output(); } catch { /* ignore */ }
-      }
+      // Also verify step 7 differs from step 5 (which was plot 1)
+      assertNotEquals(
+        JSON.stringify(textsStep7),
+        JSON.stringify(textsStep5),
+        "Step 7 (latest plot) should differ from step 5 (historical plot)",
+      );
     } finally {
-      browser.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
+      await ctx.close();
     }
   },
 });
 
 Deno.test({
   name: "E2E: normal resize not deduped when dims match pre-plotIndex state",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
+    testLog("test start");
+    const ctx = await startArfBrowserTest();
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(200);
+      const [initFrame] = await createTwoBasePlots(ctx);
+      const sessionId = initFrame.plot.sessionId!;
 
-      const r = startR(
-        'jgd(width=8, height=6, dpi=96); plot(1:3); plot(4:6); for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      // Normal resize AFTER R session is established to properly set
+      // the server's lastResizeW/H dedup state.
+      await sendResizeAndPoll(ctx, 640, 480);
+
+      const firstNormal = await waitForResizeFrame(ctx.browser);
+      assertEquals(firstNormal.resize, true);
+      // lastResizeW/H is now 640x480 on the server
+
+      // plotIndex resize with DIFFERENT dimensions (700x500).
+      // This bypasses dedup and updates lastResizeW/H to 700x500.
+      // R's device dimensions are also changed to 700x500.
+      await sendPlotIndexResizeAndPoll(ctx, 700, 500, 0, sessionId);
+
+      const plotIndexFrame = await waitForResizeFrame(ctx.browser);
+      assertEquals(plotIndexFrame.plotIndex, 0);
+
+      // Now send a normal resize with 640x480.  The server's lastResizeW/H
+      // is 700x500 (plotIndex resize updated dedup state), so 640x480
+      // should be forwarded (different dims).
+      await sendResizeAndPoll(ctx, 640, 480);
+
+      const normalFrame = await waitForResizeFrame(ctx.browser);
+
+      assertEquals(
+        normalFrame.resize,
+        true,
+        "Normal resize should not be deduped",
       );
-
-      try {
-        // Wait for both plots
-        const initFrame = await browser.waitForType<FrameMessage>("frame", 15000);
-        await browser.waitForType<FrameMessage>("frame", 15000);
-        const sessionId = initFrame.plot.sessionId!;
-
-        // Normal resize AFTER R session is established to properly set
-        // the server's lastResizeW/H dedup state.
-        browser.sendResize(640, 480);
-
-        const firstNormal = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
-        assertEquals(firstNormal.resize, true);
-        // lastResizeW/H is now 640x480 on the server
-
-        // plotIndex resize with DIFFERENT dimensions (700x500).
-        // This bypasses dedup and updates lastResizeW/H to 700x500.
-        // R's device dimensions are also changed to 700x500.
-        browser.sendResizeWithPlotIndex(700, 500, 0, sessionId);
-
-        const plotIndexFrame = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
-        assertEquals(plotIndexFrame.plotIndex, 0);
-
-        // Now send a normal resize with 640x480.  The server's lastResizeW/H
-        // is 700x500 (plotIndex resize updated dedup state), so 640x480
-        // should be forwarded (different dims).
-        browser.sendResize(640, 480);
-
-        const normalFrame = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
-
-        assertEquals(normalFrame.resize, true, "Normal resize should not be deduped");
-        assertEquals(normalFrame.plotIndex, undefined, "Should be a normal resize");
-        assert(normalFrame.plot.ops.length > 0, "Should have ops");
-      } finally {
-        r.kill();
-        try { await r.process.output(); } catch { /* ignore */ }
-      }
+      assertEquals(
+        normalFrame.plotIndex,
+        undefined,
+        "Should be a normal resize",
+      );
+      assert(normalFrame.plot.ops.length > 0, "Should have ops");
     } finally {
-      browser.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
+      await ctx.close();
     }
   },
 });

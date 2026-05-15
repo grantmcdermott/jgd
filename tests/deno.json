@@ -11,6 +11,7 @@
     // Rscript, and deno subprocesses, and Astral launches a Chromium binary
     // from a versioned cache path that cannot be allow-listed statically.
     "test": "deno test --allow-net --allow-read --allow-write --allow-env --allow-run .",
+    "test:fail-fast": "deno test --fail-fast --allow-net --allow-read --allow-write --allow-env --allow-run .",
     "bench": "deno run --allow-all bench/run.ts"
   }
 }

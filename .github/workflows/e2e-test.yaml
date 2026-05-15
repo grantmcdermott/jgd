@@ -29,9 +29,13 @@ jobs:
   e2e:
     strategy:
       matrix:
-        os:
-          - ubuntu-latest
-          - windows-latest
+        include:
+          - os: ubuntu-latest
+            arf-archive: arf-console-x86_64-unknown-linux-gnu.tar.xz
+            arf-sha256: 7d1bdc82ac181b9a422a1274fffd390d9bda3e1d093ed617801786f8fe0821f7
+          - os: windows-latest
+            arf-archive: arf-console-x86_64-pc-windows-msvc.zip
+            arf-sha256: 43c3556ea68cebd58fa44ca3bb50e203a899c3a36e4c34054e54eb3a4a5b1938
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
@@ -49,6 +53,57 @@ jobs:
       - uses: denoland/setup-deno@v2
         with:
           deno-version: v2.x
+
+      - name: Install arf
+        run: |
+          set -euo pipefail
+
+          if [ "${{ runner.arch }}" != "X64" ]; then
+            echo "Unsupported arf CI architecture: ${{ runner.arch }}" >&2
+            exit 1
+          fi
+
+          version="v0.3.3"
+          archive="${{ matrix.arf-archive }}"
+          expected_sha256="${{ matrix.arf-sha256 }}"
+          install_dir="$RUNNER_TEMP/arf"
+          extract_dir="$RUNNER_TEMP/arf-extract"
+
+          curl -fsSLO "https://github.com/eitsupi/arf/releases/download/${version}/${archive}"
+          echo "${expected_sha256}  ${archive}" | sha256sum --check -
+
+          rm -rf "$install_dir" "$extract_dir"
+          mkdir -p "$install_dir"
+          mkdir -p "$extract_dir"
+          case "$archive" in
+            *.zip)
+              unzip -q "$archive" -d "$extract_dir"
+              ;;
+            *.tar.*)
+              tar -xf "$archive" -C "$extract_dir"
+              ;;
+            *)
+              echo "Unsupported arf archive type: $archive" >&2
+              exit 1
+              ;;
+          esac
+
+          source_dir="$extract_dir"
+          child_count="$(find "$source_dir" -mindepth 1 -maxdepth 1 | wc -l)"
+          child_dir="$(find "$source_dir" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+          if [ "$child_count" = "1" ] && [ -n "$child_dir" ]; then
+            source_dir="$child_dir"
+          fi
+          cp -a "$source_dir"/. "$install_dir"/
+
+          arf_bin="$install_dir/arf"
+          if [ ! -x "$arf_bin" ] && [ -x "$install_dir/arf.exe" ]; then
+            arf_bin="$install_dir/arf.exe"
+          fi
+          "$arf_bin" --version
+
+          echo "$install_dir" >> "$GITHUB_PATH"
+        shell: bash
 
       - name: Install jgd R package
         run: R CMD INSTALL r-pkg

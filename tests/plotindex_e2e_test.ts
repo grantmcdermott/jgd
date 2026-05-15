@@ -11,119 +11,140 @@
  */
 
 import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
-import type { FrameMessage } from "../server/tests/helpers/types.ts";
-import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import {
+  createTwoBasePlots,
+  sendPlotIndexResizeAndPoll,
+  sendResizeAndPoll,
+  startArfBrowserTest,
+  waitForResizeFrame,
+} from "./helpers/arf_e2e.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
-import { checkRAvailable, startR } from "./helpers/r_process.ts";
+import { checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { testLog } from "./helpers/test_log.ts";
 
-const rAvailable = await checkRAvailable();
+const arfTestAvailable = await checkArfTestAvailable();
+const skip = !arfTestAvailable;
 
 Deno.test({
   name: "E2E: plotIndex resize re-renders historical plot",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
+    testLog("test start");
+    testLog("plotindex_e2e_test start");
+    const ctx = await startArfBrowserTest();
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(200);
+      testLog("server/browser connected and arf session started");
+      testLog("plot generation begin");
+      const [frame1, frame2] = await createTwoBasePlots(ctx);
+      testLog("R device initialized and two plots generated");
+      testLog("received frame1");
+      assert(frame2.plot.ops.length > 0, "Second frame should have ops");
+      testLog("received frame2");
 
-      // Start R with two plots + polling loop to keep the device open
-      // and responsive to resize messages.  Rscript (batch mode) does not
-      // process R input handlers during Sys.sleep, so we poll explicitly.
-      const r = startR(
-        'jgd(width=8, height=6, dpi=96); plot(1:3); plot(4:6); for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      // --- Test 1: plotIndex=0 resize re-renders the first plot ---
+      const sessionId = frame1.plot.sessionId!;
+      await sendPlotIndexResizeAndPoll(ctx, 640, 480, 0, sessionId);
+      testLog("sent resize with plotIndex=0; calling poll_resize");
+      testLog("poll_resize returned for plotIndex=0");
+
+      const resized0 = await waitForResizeFrame(ctx.browser);
+      testLog("received resized frame for plotIndex=0");
+
+      assertEquals(
+        resized0.resize,
+        true,
+        "plotIndex=0 frame should have resize:true",
+      );
+      assertEquals(
+        resized0.plotIndex,
+        0,
+        "plotIndex=0 frame should have plotIndex:0",
+      );
+      assert(resized0.plot.ops.length > 0, "plotIndex=0 frame should have ops");
+
+      // The re-rendered frame should contain text from plot(1:3), not plot(4:6)
+      const texts0 = extractTextOps(resized0);
+      assert(
+        texts0.length > 0,
+        "plotIndex=0 re-render should contain text ops",
       );
 
-      try {
-        // Wait for both frames
-        const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
-        assert(frame1.plot.ops.length > 0, "First frame should have ops");
+      // --- Test 2: plotIndex=1 is the latest plot (no snapshot exists) ---
+      // With 2 plots, R has 1 snapshot (plot 1) and the active display list
+      // (plot 2).  plotIndex=1 exceeds the snapshot count, so R falls
+      // through to a normal resize of the current display list.  The frame
+      // should have resize:true but no plotIndex.
+      await sendPlotIndexResizeAndPoll(ctx, 700, 500, 1, sessionId);
+      testLog("sent resize with plotIndex=1; calling poll_resize");
+      testLog("poll_resize returned for plotIndex=1");
 
-        const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
-        assert(frame2.plot.ops.length > 0, "Second frame should have ops");
+      const resized1 = await waitForResizeFrame(ctx.browser);
+      testLog("received resized frame for plotIndex=1/latest");
 
-        // --- Test 1: plotIndex=0 resize re-renders the first plot ---
-        const sessionId = frame1.plot.sessionId!;
-        browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
+      assertEquals(
+        resized1.resize,
+        true,
+        "plotIndex=1 frame should have resize:true",
+      );
+      assertEquals(
+        resized1.plotIndex,
+        undefined,
+        "plotIndex=1 targets the latest plot (no snapshot) — R treats as normal resize",
+      );
+      assert(resized1.plot.ops.length > 0, "plotIndex=1 frame should have ops");
 
-        const resized0 = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
+      const texts1 = extractTextOps(resized1);
+      assert(
+        texts1.length > 0,
+        "plotIndex=1 re-render should contain text ops",
+      );
 
-        assertEquals(resized0.resize, true, "plotIndex=0 frame should have resize:true");
-        assertEquals(resized0.plotIndex, 0, "plotIndex=0 frame should have plotIndex:0");
-        assert(resized0.plot.ops.length > 0, "plotIndex=0 frame should have ops");
+      // plot(1:3) and plot(4:6) produce different axis labels, so the
+      // text ops from plotIndex=0 and plotIndex=1 should differ.
+      assertNotEquals(
+        JSON.stringify(texts0),
+        JSON.stringify(texts1),
+        "plotIndex=0 and plotIndex=1 should produce different text ops (different plots)",
+      );
 
-        // The re-rendered frame should contain text from plot(1:3), not plot(4:6)
-        const texts0 = extractTextOps(resized0);
-        assert(texts0.length > 0, "plotIndex=0 re-render should contain text ops");
+      // --- Test 3: normal resize (no plotIndex) still works ---
+      await sendResizeAndPoll(ctx, 750, 550);
+      testLog("sent normal resize; calling poll_resize");
+      testLog("poll_resize returned for normal resize");
 
-        // --- Test 2: plotIndex=1 is the latest plot (no snapshot exists) ---
-        // With 2 plots, R has 1 snapshot (plot 1) and the active display list
-        // (plot 2).  plotIndex=1 exceeds the snapshot count, so R falls
-        // through to a normal resize of the current display list.  The frame
-        // should have resize:true but no plotIndex.
-        browser.sendResizeWithPlotIndex(700, 500, 1, sessionId);
+      const normalResize = await waitForResizeFrame(ctx.browser);
+      testLog("received normal resize frame");
 
-        const resized1 = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
+      assertEquals(
+        normalResize.resize,
+        true,
+        "Normal resize frame should have resize:true",
+      );
+      assertEquals(
+        normalResize.plotIndex,
+        undefined,
+        "Normal resize should NOT have plotIndex",
+      );
+      assert(
+        normalResize.plot.ops.length > 0,
+        "Normal resize frame should have ops",
+      );
 
-        assertEquals(resized1.resize, true, "plotIndex=1 frame should have resize:true");
-        assertEquals(resized1.plotIndex, undefined,
-          "plotIndex=1 targets the latest plot (no snapshot) — R treats as normal resize");
-        assert(resized1.plot.ops.length > 0, "plotIndex=1 frame should have ops");
-
-        const texts1 = extractTextOps(resized1);
-        assert(texts1.length > 0, "plotIndex=1 re-render should contain text ops");
-
-        // plot(1:3) and plot(4:6) produce different axis labels, so the
-        // text ops from plotIndex=0 and plotIndex=1 should differ.
-        assertNotEquals(
-          JSON.stringify(texts0),
-          JSON.stringify(texts1),
-          "plotIndex=0 and plotIndex=1 should produce different text ops (different plots)",
-        );
-
-        // --- Test 3: normal resize (no plotIndex) still works ---
-        browser.sendResize(750, 550);
-
-        const normalResize = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
-
-        assertEquals(normalResize.resize, true, "Normal resize frame should have resize:true");
-        assertEquals(normalResize.plotIndex, undefined, "Normal resize should NOT have plotIndex");
-        assert(normalResize.plot.ops.length > 0, "Normal resize frame should have ops");
-
-        // Normal resize re-renders the current (latest) plot, which is plot(4:6).
-        // Its text ops should match the plotIndex=1 response (also the latest plot).
-        const textsNormal = extractTextOps(normalResize);
-        assertEquals(
-          JSON.stringify(textsNormal),
-          JSON.stringify(texts1),
-          "Normal resize should re-render the current (latest) plot, matching plotIndex=1",
-        );
-      } finally {
-        r.kill();
-        // Drain process output to avoid resource leaks
-        try { await r.process.output(); } catch { /* ignore */ }
-      }
+      // Normal resize re-renders the current (latest) plot, which is plot(4:6).
+      // Its text ops should match the plotIndex=1 response (also the latest plot).
+      const textsNormal = extractTextOps(normalResize);
+      assertEquals(
+        JSON.stringify(textsNormal),
+        JSON.stringify(texts1),
+        "Normal resize should re-render the current (latest) plot, matching plotIndex=1",
+      );
+      testLog("plotindex_e2e_test assertions complete");
     } finally {
-      browser.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
+      testLog("plotindex_e2e_test cleanup start");
+      await ctx.close();
+      testLog("plotindex_e2e_test server shutdown done");
+      testLog("plotindex_e2e_test cleanup done");
     }
   },
 });

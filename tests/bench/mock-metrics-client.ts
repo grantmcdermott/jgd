@@ -144,7 +144,9 @@ export class MockMetricsClient {
 if (import.meta.main) {
   const url = Deno.args[0];
   if (!url) {
-    console.error("Usage: deno run --allow-net mock-metrics-client.ts <ws_url>");
+    console.error(
+      "Usage: deno run --allow-net mock-metrics-client.ts <ws_url>",
+    );
     Deno.exit(1);
   }
 

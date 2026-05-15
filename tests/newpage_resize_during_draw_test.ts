@@ -15,97 +15,120 @@
  */
 
 import { assertEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
-import { E2EBrowser, plotInfoText, waitForPlotCount } from "../server/tests/helpers/e2e_browser.ts";
-import { checkRAvailable, startR } from "./helpers/r_process.ts";
+import { testLog } from "./helpers/test_log.ts";
+import {
+  plotInfoText,
+  waitForPlotCount,
+} from "../server/tests/helpers/e2e_browser.ts";
+import { BrowserClient } from "../server/tests/helpers/browser_client.ts";
+import type { FrameMessage } from "../server/tests/helpers/types.ts";
+import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { startArfPageTest } from "./helpers/arf_e2e.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
+import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
 
-const rAvailable = await checkRAvailable();
+const arfTestAvailable = await checkArfTestAvailable();
+const skip = !arfTestAvailable;
+const RESIZE_REPLAY_TIMEOUT_MS = 20_000;
+
+async function pollUntilResizeReplay(
+  arf: ArfSession,
+  replayFramePromise: Promise<FrameMessage>,
+): Promise<void> {
+  let replayDone = false;
+  replayFramePromise.then(() => (replayDone = true)).catch(
+    () => (replayDone = true),
+  );
+
+  const deadline = Date.now() + 7_000;
+  while (!replayDone && Date.now() < deadline) {
+    await pollResize(arf, 40);
+  }
+  await replayFramePromise;
+}
 
 Deno.test({
   name: "Full-stack: resize arrives during R drawing — must not duplicate",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
-    const server = new TestServer({ tcp: true });
-    const e2e = new E2EBrowser();
+    testLog("test start");
+    const ctx = await startArfPageTest({ browserFirst: false });
+    const { arf, page, server } = ctx;
+    const observer = new BrowserClient();
 
     try {
-      await server.start();
-
-      // Start R FIRST — before browser — so R is connected when
-      // the browser's ResizeObserver fires.
-      // R sleeps long enough for the browser to launch and connect
-      // (Windows CI can take 5-10s to launch headless Chrome).
-      const r = startR(
-        'jgd(width=8, height=6, dpi=96); ' +
-          'Sys.sleep(8); ' +
-          'plot(1:3); ' +
-          'Sys.sleep(3); ' +
-          'for (i in 1:20) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }; ' +
-          'plot(4:6); ' +
-          'Sys.sleep(3); ' +
-          'for (i in 1:20) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }; ' +
-          'plot(7:9); ' +
-          'Sys.sleep(1); ' +
-          'for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      await observer.connect(server.wsUrl);
+      const replayFramePromise = observer.waitForMessage<FrameMessage>(
+        (msg) =>
+          msg.type === "frame" &&
+          (msg as FrameMessage).resize === true &&
+          (msg as FrameMessage).resizeReplay === true,
+        RESIZE_REPLAY_TIMEOUT_MS,
       );
 
-      try {
-        // Wait for R to load library and connect to the server
-        await delay(2000);
+      // Force a browser-originated resize while R is connected, then start
+      // drawing immediately. The ResizeObserver debounce can let this arrive
+      // while plot 1 is in progress; the replay assertion below proves R saw
+      // and processed it.
+      await page.evaluate(`(function() {
+        var c = document.getElementById('canvas-container');
+        c.style.width = '620px';
+        c.style.height = '420px';
+      })()`);
 
-        // NOW open browser — R is already connected.
-        // ResizeObserver will fire → resize reaches R's socket.
-        await e2e.launch();
-        const page = await e2e.newPage(server.httpBaseUrl);
+      // Plot 1
+      await arf.eval("plot(1:3)");
 
-        // Wait for plot 1
-        let info = await waitForPlotCount(page, 1, 15_000);
-        console.error(`After plot 1: "${info}"`);
+      // Wait for plot 1
+      let info = await waitForPlotCount(page, 1, 8_000);
+      console.error(`After plot 1: "${info}"`);
 
-        // Settle: verify no ghost entries from resize processing
-        await delay(1500);
-        info = await plotInfoText(page);
-        console.error(`After plot 1 + settle: "${info}"`);
-        assertEquals(
-          info,
-          "1 / 1",
-          `After plot 1 + settle, should be 1 / 1, got "${info}" — ` +
-            "resize replay created ghost entry",
-        );
+      // Observe quiet window to catch delayed ghost entries.
+      await assertPlotInfoStable(page, "1 / 1");
+      info = await plotInfoText(page);
+      console.error(`After plot 1 + quiet window: "${info}"`);
 
-        // Wait for plot 2
-        info = await waitForPlotCount(page, 2, 15_000);
-        console.error(`After plot 2: "${info}"`);
-        assertEquals(
-          info,
-          "2 / 2",
-          `After 2 plots, should show 2 / 2, got "${info}" — ` +
-            "plot duplication bug detected",
-        );
+      // Process the browser-originated resize and require an observable replay.
+      await pollUntilResizeReplay(arf, replayFramePromise);
+      await assertPlotInfoStable(page, "1 / 1");
+      info = await plotInfoText(page);
+      console.error(`After resize poll before plot 2: "${info}"`);
 
-        // Wait for plot 3
-        info = await waitForPlotCount(page, 3, 15_000);
-        console.error(`After plot 3: "${info}"`);
-        assertEquals(
-          info,
-          "3 / 3",
-          `After 3 plots, should show 3 / 3, got "${info}" — ` +
-            "plot duplication bug detected",
-        );
+      // Plot 2
+      await arf.eval("plot(4:6)");
 
-      } finally {
-        r.kill();
-        try {
-          await r.process.output();
-        } catch { /* ignore */ }
-      }
+      // Wait for plot 2
+      info = await waitForPlotCount(page, 2, 8_000);
+      console.error(`After plot 2: "${info}"`);
+      assertEquals(
+        info,
+        "2 / 2",
+        `After 2 plots, should show 2 / 2, got "${info}" — ` +
+          "plot duplication bug detected",
+      );
+
+      // Poll any later resize without requiring one: the initial resize replay
+      // above is the coverage target for this regression.
+      await pollResize(arf, 40);
+      await assertPlotInfoStable(page, "2 / 2");
+      info = await plotInfoText(page);
+      console.error(`After resize poll before plot 3: "${info}"`);
+
+      // Plot 3
+      await arf.eval("plot(7:9)");
+
+      // Wait for plot 3
+      info = await waitForPlotCount(page, 3, 8_000);
+      console.error(`After plot 3: "${info}"`);
+      assertEquals(
+        info,
+        "3 / 3",
+        `After 3 plots, should show 3 / 3, got "${info}" — ` +
+          "plot duplication bug detected",
+      );
     } finally {
-      await e2e.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
+      observer.close();
+      await ctx.close();
     }
   },
 });

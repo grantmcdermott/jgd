@@ -75,7 +75,12 @@ export class AutoMetricsBrowserClient {
   }
 
   /** Send a resize message with plotIndex for historical plot resizing. */
-  sendResizeWithPlotIndex(width: number, height: number, plotIndex: number, sessionId?: string): void {
+  sendResizeWithPlotIndex(
+    width: number,
+    height: number,
+    plotIndex: number,
+    sessionId?: string,
+  ): void {
     this.#inner.sendResizeWithPlotIndex(width, height, plotIndex, sessionId);
   }
 

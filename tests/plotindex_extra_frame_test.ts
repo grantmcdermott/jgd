@@ -15,105 +15,77 @@
  *  - No extra frame leaks after the resize
  */
 
-import { assert, assertEquals, assertNotEquals } from "@std/assert";
-import { delay } from "@std/async";
-import { TestServer } from "../server/tests/helpers/server.ts";
-import type { FrameMessage } from "../server/tests/helpers/types.ts";
-import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
+import { assertEquals, assertNotEquals } from "@std/assert";
+import {
+  assertNoExtraFrameBeforePong,
+  createTwoBasePlots,
+  sendPlotIndexResizeAndPoll,
+  startArfBrowserTest,
+  waitForResizeFrame,
+} from "./helpers/arf_e2e.ts";
 import { extractTextOps } from "./helpers/plot_ops.ts";
-import { checkRAvailable, startR } from "./helpers/r_process.ts";
+import { checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { testLog } from "./helpers/test_log.ts";
 
-const rAvailable = await checkRAvailable();
+const arfTestAvailable = await checkArfTestAvailable();
+const skip = !arfTestAvailable;
 
 Deno.test({
   name: "E2E: plotIndex resize produces exactly one frame with correct content",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
-    const server = new TestServer({ tcp: true });
-    const browser = new AutoMetricsBrowserClient();
+    testLog("test start");
+    const ctx = await startArfBrowserTest();
+    const { browser } = ctx;
 
     try {
-      await server.start();
-      await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(200);
+      const [frame1, frame2] = await createTwoBasePlots(ctx);
+      const texts1 = extractTextOps(frame1);
+      const texts2 = extractTextOps(frame2);
 
-      const r = startR(
-        'jgd(width=8, height=6, dpi=96); plot(1:3); plot(4:6); for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }',
-        server.socketPath,
+      // Verify the two plots are different
+      assertNotEquals(
+        JSON.stringify(texts1),
+        JSON.stringify(texts2),
+        "Plot 1 and plot 2 should have different text ops",
       );
 
-      try {
-        // Wait for both plot frames
-        const frame1 = await browser.waitForType<FrameMessage>("frame", 15000);
-        assert(frame1.plot.ops.length > 0, "First frame should have ops");
-        const texts1 = extractTextOps(frame1);
+      // Simulate: navigate to plot 1, then resize.
+      // At the protocol level, this is a resize with plotIndex=0.
+      const sessionId = frame1.plot.sessionId!;
+      await sendPlotIndexResizeAndPoll(ctx, 640, 480, 0, sessionId);
 
-        const frame2 = await browser.waitForType<FrameMessage>("frame", 15000);
-        assert(frame2.plot.ops.length > 0, "Second frame should have ops");
-        const texts2 = extractTextOps(frame2);
+      // Wait for the resize response frame
+      const resized = await waitForResizeFrame(browser);
 
-        // Verify the two plots are different
-        assertNotEquals(
-          JSON.stringify(texts1),
-          JSON.stringify(texts2),
-          "Plot 1 and plot 2 should have different text ops",
-        );
+      assertEquals(resized.resize, true, "Should have resize:true");
+      assertEquals(resized.plotIndex, 0, "Should have plotIndex:0");
 
-        // Simulate: navigate to plot 1, then resize.
-        // At the protocol level, this is a resize with plotIndex=0.
-        const sessionId = frame1.plot.sessionId!;
-        browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
+      // CRITICAL: The resized frame must contain plot 1's content, not plot 2's.
+      // Bug 1 manifests as the frame containing plot 2's content because the
+      // snapshot replay produces the wrong plot.
+      const textsResized = extractTextOps(resized);
+      assertEquals(
+        JSON.stringify(textsResized),
+        JSON.stringify(texts1),
+        "plotIndex=0 resize should render plot 1's content, not plot 2's",
+      );
 
-        // Wait for the resize response frame
-        const resized = await browser.waitForMessage<FrameMessage>(
-          (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-          10000,
-        );
-
-        assertEquals(resized.resize, true, "Should have resize:true");
-        assertEquals(resized.plotIndex, 0, "Should have plotIndex:0");
-
-        // CRITICAL: The resized frame must contain plot 1's content, not plot 2's.
-        // Bug 1 manifests as the frame containing plot 2's content because the
-        // snapshot replay produces the wrong plot.
-        const textsResized = extractTextOps(resized);
-        assertEquals(
-          JSON.stringify(textsResized),
-          JSON.stringify(texts1),
-          "plotIndex=0 resize should render plot 1's content, not plot 2's",
-        );
-
-        // CRITICAL: No extra frames should arrive after the resize.
-        // Bug 1 also manifests as the current plot restoration leaking an
-        // extra untagged frame, which the browser would treat as a new plot 3.
-        //
-        // Send a ping sentinel: because WebSocket messages are ordered, any
-        // frame queued before the pong will arrive first.  Race the pong
-        // against a frame waiter — if the pong wins, no extra frame arrived.
-        // AbortController cancels the losing waiter so it doesn't consume
-        // later messages.
-        const ac = new AbortController();
-        const sentinel = Symbol("pong");
-        const extraFrame = await Promise.race([
-          browser.waitForType<FrameMessage>("frame", 10000, ac.signal).catch(() => null),
-          browser.sendPing(5000).then(() => { ac.abort(); return sentinel; }),
-        ]);
-
-        assertEquals(
-          extraFrame,
-          sentinel,
-          "No extra frame should arrive after plotIndex resize (would create spurious plot 3)",
-        );
-      } finally {
-        r.kill();
-        try { await r.process.output(); } catch { /* ignore */ }
-      }
+      // CRITICAL: No extra frames should arrive after the resize.
+      // Bug 1 also manifests as the current plot restoration leaking an
+      // extra untagged frame, which the browser would treat as a new plot 3.
+      //
+      // Send a ping sentinel: because WebSocket messages are ordered, any
+      // frame queued before the pong will arrive first.  Race the pong
+      // against a frame waiter — if the pong wins, no extra frame arrived.
+      // AbortController cancels the losing waiter so it doesn't consume
+      // later messages.
+      await assertNoExtraFrameBeforePong(
+        browser,
+        "No extra frame should arrive after plotIndex resize (would create spurious plot 3)",
+      );
     } finally {
-      browser.close();
-      await delay(100);
-      await server.shutdown();
-      server.cleanup();
+      await ctx.close();
     }
   },
 });

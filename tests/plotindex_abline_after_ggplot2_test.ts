@@ -23,113 +23,140 @@ import { delay } from "@std/async";
 import { TestServer } from "../server/tests/helpers/server.ts";
 import type { FrameMessage } from "../server/tests/helpers/types.ts";
 import { AutoMetricsBrowserClient } from "./helpers/auto_metrics_client.ts";
-import { checkRAvailable, startR } from "./helpers/r_process.ts";
+import { pollResize } from "./helpers/arf_poll.ts";
+import { toRSocketAddress } from "./helpers/r_process.ts";
+import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { checkGgplot2Available } from "./helpers/r_packages.ts";
+import { testLog } from "./helpers/test_log.ts";
 
-const rAvailable = await checkRAvailable();
+const arfTestAvailable = await checkArfTestAvailable();
+const ggplot2Available = arfTestAvailable && await checkGgplot2Available();
+const skip = !ggplot2Available;
+
+// Per-iteration step for the frame-collection polling loop below: a short
+// wait so the loop can advance quickly when frames have stopped arriving.
+const FRAME_WAIT_MS = 1000;
+const NEWPAGE_DEADLINE_MS = 6000;
+// Separate timeout for the plotIndex resize replay frame: server→browser
+// delivery can lag noticeably on slow CI even after R has finished polling.
+const RESIZE_REPLAY_MS = 15_000;
 
 Deno.test({
   name: "E2E: abline survives plotIndex resize when ggplot2 is the next plot",
-  ignore: !rAvailable,
+  ignore: skip,
   async fn() {
+    testLog("test start");
     const server = new TestServer({ tcp: true });
     const browser = new AutoMetricsBrowserClient();
+    const arf = new ArfSession();
 
     try {
       await server.start();
       await browser.connect(server.wsUrl);
-      browser.sendResize(800, 600);
-      await delay(200);
+      await arf.start();
+      const socketAddr = toRSocketAddress(server.socketPath);
+      await arf.eval(
+        `options(jgd.socket = "${socketAddr}"); library(jgd); jgd(width=8, height=6, dpi=96)`,
+      );
 
       // Plot 1: plot(cars) + abline (base graphics with line annotation)
       // Plot 2: ggplot2 (grid-based — triggers the bug path)
+      await arf.eval(
+        'library(ggplot2); plot(cars); abline(lm(dist ~ speed, data = cars), col = "red", lwd = 2)',
+      );
+      await pollResize(arf, 80);
+
       // Plot 3: another base plot (pushes plot 1 to snapshot history)
-      // Then poll for resize.
-      const rCode = [
-        "library(ggplot2)",
-        "jgd(width=8, height=6, dpi=96)",
-        "plot(cars)",
-        "abline(lm(dist ~ speed, data = cars), col = 'red', lwd = 2)",
-        "ggplot(mpg, aes(displ, hwy)) + geom_point()",
-        "plot(1:5)",
-        "for (i in 1:200) { .Call(jgd:::C_jgd_poll_resize); Sys.sleep(0.05) }",
-      ].join("; ");
+      await arf.eval(
+        "print(ggplot(mpg, aes(displ, hwy)) + geom_point()); plot(1:5)",
+      );
+      await pollResize(arf, 120);
 
-      const r = startR(rCode, server.socketPath);
+      // Collect frames until we have at least 3 newPage frames
+      const frames: FrameMessage[] = [];
+      let newPageCount = 0;
+      const deadline = Date.now() + NEWPAGE_DEADLINE_MS;
 
-      try {
-        // Collect frames until we have at least 3 newPage frames
-        const frames: FrameMessage[] = [];
-        let newPageCount = 0;
-        const deadline = Date.now() + 30000;
-
-        while (newPageCount < 3 && Date.now() < deadline) {
-          const msg = await browser.waitForType<FrameMessage>("frame", 15000);
+      while (newPageCount < 3 && Date.now() < deadline) {
+        try {
+          const msg = await browser.waitForType<FrameMessage>(
+            "frame",
+            FRAME_WAIT_MS,
+          );
           frames.push(msg);
           if (msg.newPage) newPageCount++;
+        } catch {
+          // Keep polling until the overall deadline; ggplot2/grid frame
+          // delivery can have transient gaps.
         }
+      }
 
-        assert(
-          newPageCount >= 3,
-          `Expected at least 3 newPage frames, got ${newPageCount}`,
-        );
+      assert(
+        newPageCount >= 3,
+        `Expected at least 3 newPage frames, got ${newPageCount}`,
+      );
 
-        // Find newPage frames: [plot(cars), ggplot2, plot(1:5)]
-        const newPageFrames = frames.filter((f) => f.newPage);
-        const carsFrame = newPageFrames[0]; // plot(cars) is the first newPage
+      // Find newPage frames: [plot(cars), ggplot2, plot(1:5)]
+      const newPageFrames = frames.filter((f) => f.newPage);
+      const carsFrame = newPageFrames[0]; // plot(cars) is the first newPage
 
-        assert(carsFrame, "cars plot frame should exist");
+      assert(carsFrame, "cars plot frame should exist");
 
-        // Get sessionId for plotIndex resize
-        const sessionId = carsFrame.plot.sessionId!;
+      // Get sessionId for plotIndex resize
+      const sessionId = carsFrame.plot.sessionId!;
 
-        // plotIndex 0 = plot(cars)+abline, plotIndex 1 = ggplot2
-        // Use plotIndex 0 to resize the base plot with abline.
-        browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
+      // plotIndex 0 = plot(cars)+abline, plotIndex 1 = ggplot2
+      // Use plotIndex 0 to resize the base plot with abline.
+      browser.sendResizeWithPlotIndex(640, 480, 0, sessionId);
 
-        const resized = await browser.waitForMessage<FrameMessage>(
-          (msg) =>
-            msg.type === "frame" && (msg as FrameMessage).resize === true &&
-            (msg as FrameMessage).plotIndex === 0,
-          15000,
-        );
+      // Ping ordering probe: the WebSocket is FIFO, so awaiting the pong
+      // guarantees the server has already enqueued the resize before R polls.
+      await browser.sendPing(3000);
+      await pollResize(arf, 40);
 
-        assertEquals(
-          resized.resize,
-          true,
-          "Resized frame should have resize:true",
-        );
-        assertEquals(
-          resized.plotIndex,
-          0,
-          "Resized frame should have plotIndex=0",
-        );
+      const resized = await browser.waitForMessage<FrameMessage>(
+        (msg) =>
+          msg.type === "frame" && (msg as FrameMessage).resize === true &&
+          (msg as FrameMessage).plotIndex === 0,
+        RESIZE_REPLAY_MS,
+      );
 
-        // The resized frame MUST contain abline's red line.
-        // The snapshot's display list must include the abline annotation,
-        // not just the base plot(cars) scatter and tick marks.
-        const resizedOps = resized.plot.ops as Array<Record<string, unknown>>;
-        const redLineOps = resizedOps.filter((op) => {
-          if (op.op !== "line") return false;
-          const gc = op.gc as Record<string, unknown> | undefined;
-          const col = (gc?.col as string | undefined) ?? "";
-          // Color may be "#ff0000", "rgba(255,0,0,1)", etc.
-          return col.toLowerCase().includes("ff0000") ||
-            col.includes("255,0,0");
-        });
-        assert(
-          redLineOps.length > 0,
-          `Resized plot(cars) must contain red line op from abline(), ` +
-            `got line colors: ${JSON.stringify(
+      assertEquals(
+        resized.resize,
+        true,
+        "Resized frame should have resize:true",
+      );
+      assertEquals(
+        resized.plotIndex,
+        0,
+        "Resized frame should have plotIndex=0",
+      );
+
+      // The resized frame MUST contain abline's red line.
+      // The snapshot's display list must include the abline annotation,
+      // not just the base plot(cars) scatter and tick marks.
+      const resizedOps = resized.plot.ops as Array<Record<string, unknown>>;
+      const redLineOps = resizedOps.filter((op) => {
+        if (op.op !== "line") return false;
+        const gc = op.gc as Record<string, unknown> | undefined;
+        const col = (gc?.col as string | undefined) ?? "";
+        // Color may be "#ff0000", "rgba(255,0,0,1)", etc.
+        return col.toLowerCase().includes("ff0000") ||
+          col.includes("255,0,0");
+      });
+      assert(
+        redLineOps.length > 0,
+        `Resized plot(cars) must contain red line op from abline(), ` +
+          `got line colors: ${
+            JSON.stringify(
               resizedOps
                 .filter((o) => o.op === "line")
                 .map((o) => (o.gc as Record<string, unknown>)?.col),
-            )}`,
-        );
-      } finally {
-        r.kill();
-        try { await r.process.output(); } catch { /* ignore */ }
-      }
+            )
+          }`,
+      );
     } finally {
+      await arf.shutdown();
       await browser.close();
       await delay(100);
       await server.shutdown();
