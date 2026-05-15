@@ -32,12 +32,8 @@ const skip = !arfTestAvailable;
 
 async function pollUntilResizeReplay(
   arf: ArfSession,
-  observer: BrowserClient,
+  replayFramePromise: Promise<FrameMessage>,
 ): Promise<void> {
-  const replayFramePromise = observer.waitForMessage<FrameMessage>(
-    (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
-    8_000,
-  );
   let replayDone = false;
   replayFramePromise.then(() => (replayDone = true)).catch(
     () => (replayDone = true),
@@ -61,6 +57,13 @@ Deno.test({
 
     try {
       await observer.connect(server.wsUrl);
+      const replayFramePromise = observer.waitForMessage<FrameMessage>(
+        (msg) =>
+          msg.type === "frame" &&
+          (msg as FrameMessage).resize === true &&
+          (msg as FrameMessage).resizeReplay === true,
+        8_000,
+      );
 
       // Force a browser-originated resize while R is connected, then start
       // drawing immediately. The ResizeObserver debounce can let this arrive
@@ -85,7 +88,7 @@ Deno.test({
       console.error(`After plot 1 + quiet window: "${info}"`);
 
       // Process the browser-originated resize and require an observable replay.
-      await pollUntilResizeReplay(arf, observer);
+      await pollUntilResizeReplay(arf, replayFramePromise);
       await assertPlotInfoStable(page, "1 / 1");
       info = await plotInfoText(page);
       console.error(`After resize poll before plot 2: "${info}"`);

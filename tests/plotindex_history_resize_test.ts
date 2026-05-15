@@ -239,14 +239,6 @@ Deno.test({
         "canvas should have foreground pixels when viewing plot 1",
       );
 
-      // Trigger resize — ResizeObserver fires with plotIndex=0 because we're
-      // viewing a historical plot
-      await page.evaluate(`(function() {
-        var c = document.getElementById('canvas-container');
-        c.style.width = '500px';
-        c.style.height = '350px';
-      })()`);
-
       // The page's ResizeObserver debounces resize sends by ~300ms, so the
       // resize message may arrive in R's queue well after a single poll
       // window closes. Keep polling R until the replay frame is observed
@@ -255,9 +247,19 @@ Deno.test({
         (msg) =>
           msg.type === "frame" &&
           (msg as FrameMessage).resize === true &&
+          (msg as FrameMessage).resizeReplay === true &&
           (msg as FrameMessage).plotIndex === 0,
         15_000,
       );
+
+      // Trigger resize — ResizeObserver fires with plotIndex=0 because we're
+      // viewing a historical plot. The replay waiter is already registered so
+      // it cannot be satisfied by a buffered frame from after this action.
+      await page.evaluate(`(function() {
+        var c = document.getElementById('canvas-container');
+        c.style.width = '500px';
+        c.style.height = '350px';
+      })()`);
       let replayDone = false;
       replayFramePromise.then(() => (replayDone = true)).catch(
         () => (replayDone = true),
