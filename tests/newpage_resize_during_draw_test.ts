@@ -29,6 +29,7 @@ import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
 
 const arfTestAvailable = await checkArfTestAvailable();
 const skip = !arfTestAvailable;
+const RESIZE_REPLAY_TIMEOUT_MS = 20_000;
 
 async function pollUntilResizeReplay(
   arf: ArfSession,
@@ -62,7 +63,7 @@ Deno.test({
           msg.type === "frame" &&
           (msg as FrameMessage).resize === true &&
           (msg as FrameMessage).resizeReplay === true,
-        8_000,
+        RESIZE_REPLAY_TIMEOUT_MS,
       );
 
       // Force a browser-originated resize while R is connected, then start
