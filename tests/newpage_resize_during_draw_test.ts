@@ -20,7 +20,9 @@ import {
   plotInfoText,
   waitForPlotCount,
 } from "../server/tests/helpers/e2e_browser.ts";
-import { checkArfTestAvailable } from "./helpers/arf_session.ts";
+import { BrowserClient } from "../server/tests/helpers/browser_client.ts";
+import type { FrameMessage } from "../server/tests/helpers/types.ts";
+import { ArfSession, checkArfTestAvailable } from "./helpers/arf_session.ts";
 import { startArfPageTest } from "./helpers/arf_e2e.ts";
 import { pollResize } from "./helpers/arf_poll.ts";
 import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
@@ -28,15 +30,48 @@ import { assertPlotInfoStable } from "./helpers/plot_settle.ts";
 const arfTestAvailable = await checkArfTestAvailable();
 const skip = !arfTestAvailable;
 
+async function pollUntilResizeReplay(
+  arf: ArfSession,
+  observer: BrowserClient,
+): Promise<void> {
+  const replayFramePromise = observer.waitForMessage<FrameMessage>(
+    (msg) => msg.type === "frame" && (msg as FrameMessage).resize === true,
+    8_000,
+  );
+  let replayDone = false;
+  replayFramePromise.then(() => (replayDone = true)).catch(
+    () => (replayDone = true),
+  );
+
+  const deadline = Date.now() + 7_000;
+  while (!replayDone && Date.now() < deadline) {
+    await pollResize(arf, 40);
+  }
+  await replayFramePromise;
+}
+
 Deno.test({
   name: "Full-stack: resize arrives during R drawing — must not duplicate",
   ignore: skip,
   async fn() {
     testLog("test start");
     const ctx = await startArfPageTest({ browserFirst: false });
-    const { arf, page } = ctx;
+    const { arf, page, server } = ctx;
+    const observer = new BrowserClient();
 
     try {
+      await observer.connect(server.wsUrl);
+
+      // Force a browser-originated resize while R is connected, then start
+      // drawing immediately. The ResizeObserver debounce can let this arrive
+      // while plot 1 is in progress; the replay assertion below proves R saw
+      // and processed it.
+      await page.evaluate(`(function() {
+        var c = document.getElementById('canvas-container');
+        c.style.width = '620px';
+        c.style.height = '420px';
+      })()`);
+
       // Plot 1
       await arf.eval("plot(1:3)");
 
@@ -49,8 +84,8 @@ Deno.test({
       info = await plotInfoText(page);
       console.error(`After plot 1 + quiet window: "${info}"`);
 
-      // Process any pending resize
-      await pollResize(arf, 40);
+      // Process the browser-originated resize and require an observable replay.
+      await pollUntilResizeReplay(arf, observer);
       await assertPlotInfoStable(page, "1 / 1");
       info = await plotInfoText(page);
       console.error(`After resize poll before plot 2: "${info}"`);
@@ -68,7 +103,8 @@ Deno.test({
           "plot duplication bug detected",
       );
 
-      // Poll resize
+      // Poll any later resize without requiring one: the initial resize replay
+      // above is the coverage target for this regression.
       await pollResize(arf, 40);
       await assertPlotInfoStable(page, "2 / 2");
       info = await plotInfoText(page);
@@ -87,6 +123,7 @@ Deno.test({
           "plot duplication bug detected",
       );
     } finally {
+      observer.close();
       await ctx.close();
     }
   },

@@ -66,18 +66,30 @@ function hasRedLineOp(frames: FrameMessage[]): boolean {
   return false;
 }
 
-async function canvasAlphaChecksum(
+async function canvasPaintStats(
   page: Awaited<ReturnType<E2EBrowser["newPage"]>>,
-): Promise<number> {
+): Promise<{ paintedPixels: number; checksum: number }> {
   return await page.evaluate(`(function() {
     var c = document.getElementById('plot-canvas');
-    if (!c || c.width === 0 || c.height === 0) return 0;
+    if (!c || c.width === 0 || c.height === 0) {
+      return { paintedPixels: 0, checksum: 0 };
+    }
     var ctx = c.getContext('2d');
     var data = ctx.getImageData(0, 0, c.width, c.height).data;
-    var sum = 0;
-    for (var i = 3; i < data.length; i += 4) sum += data[i];
-    return sum;
-  })()`) as number;
+    var paintedPixels = 0;
+    var checksum = 0;
+    for (var i = 0; i < data.length; i += 4) {
+      var r = data[i];
+      var g = data[i + 1];
+      var b = data[i + 2];
+      var a = data[i + 3];
+      if (a > 0 && (r < 245 || g < 245 || b < 245)) {
+        paintedPixels++;
+        checksum = (checksum + paintedPixels * (r + 3 * g + 7 * b + 11 * a)) % 1000000007;
+      }
+    }
+    return { paintedPixels: paintedPixels, checksum: checksum };
+  })()`) as { paintedPixels: number; checksum: number };
 }
 
 Deno.test({
@@ -221,7 +233,11 @@ Deno.test({
         await canvasHasContent(page),
         "canvas should have content when viewing plot 1",
       );
-      const beforeResizeChecksum = await canvasAlphaChecksum(page);
+      const beforeResizeStats = await canvasPaintStats(page);
+      assert(
+        beforeResizeStats.paintedPixels > 0,
+        "canvas should have foreground pixels when viewing plot 1",
+      );
 
       // Trigger resize — ResizeObserver fires with plotIndex=0 because we're
       // viewing a historical plot
@@ -243,8 +259,8 @@ Deno.test({
         15_000,
       );
       let replayDone = false;
-      replayFramePromise.then(() => (replayDone = true)).catch(() =>
-        (replayDone = true)
+      replayFramePromise.then(() => (replayDone = true)).catch(
+        () => (replayDone = true),
       );
       const pollDeadline = Date.now() + 14_000;
       while (!replayDone && Date.now() < pollDeadline) {
@@ -257,15 +273,21 @@ Deno.test({
       const deadline = Date.now() + 5_000;
       let changed = false;
       let hasContent = false;
+      let paintedPixels = 0;
       while (Date.now() < deadline) {
-        const checksum = await canvasAlphaChecksum(page);
+        const stats = await canvasPaintStats(page);
         hasContent = await canvasHasContent(page);
-        if (checksum !== beforeResizeChecksum) changed = true;
-        if (changed && hasContent) break;
+        paintedPixels = stats.paintedPixels;
+        if (stats.checksum !== beforeResizeStats.checksum) changed = true;
+        if (changed && hasContent && paintedPixels > 0) break;
         await delay(100);
       }
       assert(changed, "canvas should update after plotIndex resize replay");
       assert(hasContent, "canvas must not be blank after plotIndex resize");
+      assert(
+        paintedPixels > 0,
+        "canvas must contain foreground pixels after plotIndex resize",
+      );
 
       // Navigation state should be unchanged (still viewing plot 1 of 2)
       assertEquals(

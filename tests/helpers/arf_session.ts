@@ -106,7 +106,15 @@ export class ArfSession {
           const line = buffer.slice(0, nl).trim();
           buffer = buffer.slice(nl + 1);
           if (!line) continue;
-          const info = JSON.parse(line) as { pid: number };
+          let info: { pid: number };
+          try {
+            info = JSON.parse(line) as { pid: number };
+          } catch (error) {
+            throw new Error(
+              `arf headless ready JSON was invalid: ${line}`,
+              { cause: error },
+            );
+          }
           if (this.#process !== process || this.#startupId !== startupId) {
             throw new Error("arf headless startup was aborted");
           }
