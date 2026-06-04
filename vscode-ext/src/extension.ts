@@ -11,6 +11,8 @@ let statusBarItem: vscode.StatusBarItem;
 export function activate(context: vscode.ExtensionContext) {
     console.log('jgd: extension activating');
 
+    context.environmentVariableCollection.persistent = false;
+
     history = new PlotHistory(
         vscode.workspace.getConfiguration('jgd').get('historyLimit', 50)
     );
