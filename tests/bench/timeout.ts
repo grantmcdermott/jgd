@@ -4,7 +4,7 @@ export function raceWithTimeout<T>(
   onTimeout: () => void | Promise<void>,
   message: string,
 ): Promise<T> {
-  let timeoutId: number | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   const timeoutPromise = new Promise<never>((_, reject) => {
     timeoutId = setTimeout(() => {
       try {
