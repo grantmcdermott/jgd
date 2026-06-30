@@ -20,7 +20,7 @@ an external renderer. For example, the VS Code
 Users aren't limited to VS Code as a **jgd** frontend. For example, below we
 also provide a standalone Deno server for rendering your R plots in a web
 browser. More generally, the **jgd** protocol is designed to be frontend
-agnostic; _any_ JSON-coversant client could use it to render R plots (e.g.,
+agnostic; _any_ JSON-conversant client could use it to render R plots (e.g.,
 Neovim, Emacs, Zed, or a custom web app). We encourage users to build
 alternatives and would welcome additional contributions.
 
@@ -56,7 +56,7 @@ _**Update (2026-06-30):** Our `jgd` VS Code extension has been
 VS Code R extension. We have adapted the instructions below accordingly._
 
 The official VS Code [R extension](https://github.com/REditorSupport/vscode-R)
-provides native support for **jgd** as part of its major v0.3.0 updates.
+provides native support for **jgd** as part of its major v3.0.0 updates.
 At the time of writing, this requires installing the release candidate version
 from GitHub:
 
@@ -113,7 +113,7 @@ Once the Deno server is running, open `http://127.0.0.1:<port>/`
 in your browser (the URL is printed on startup). Then you start executing
 plotting commands from any R session.
 
-**Important:** Unlike the VS Code extension, which does this automically behind
+**Important:** Unlike the VS Code extension, which does this automatically behind
 the scenes, you must activate the **jgd** device from your R session so that
 the Deno server can connect to it:
 
@@ -209,11 +209,11 @@ While both packages are currently available again, we were motivated to try a
 different approach that is conceptually simpler and requires a much lighter
 dependency stack.
 
-The key idea behind **jgd** is that doesn't render anything itself. Rather,
+The key idea behind **jgd** is that it doesn't render anything itself. Rather,
 it just records the underlying plotting operations and translates them into
 JSON, which it then passes on to a client that does the actual rendering (e.g.,
 a VS Code webview, a browser tab, or any future frontend). While this might
-sounds like extra work, it turns out that it is both highly efficient and
+sound like extra work, it turns out that it is both highly efficient and
 generalizable (since JSON is so widely supported). Base R already provides most
 of the necessary scaffolding for an efficient translation layer, and we plug
 directly into that. The core of the **jgd** package is written in pure C with
@@ -222,9 +222,9 @@ API (macOS/Linux) and Winsock (Windows), both of which R itself already uses.
 
 As a result, **jgd** supports many of the advanced features of a dedicated
 rendering framework like `httpgd`. But it enjoys a much lighter footprint, which
-reduces the maintence burden and should facilitate long-run stability. Moreover,
+reduces the maintenance burden and should facilitate long-run stability. Moreover,
 we would emphasize the generalizability of the **jgd** approach. While VS Code
-was our initial focus, in principle any JSON-coversant client can be supported.
+was our initial focus, in principle any JSON-conversant client can be supported.
 We already offer a browser-based client (via a Deno server), but the same idea
 could be extended to any modern IDE and even terminal clients. Please let us
 know if you build out a **jgd** extension/plugin for your own preferred R
@@ -367,7 +367,7 @@ to put this together without AI help.
 - [x] **Windows support**: Named pipes (default) and TCP transport
 - [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
 - [x] **Protocol stabilization**: Stabilize and document the JSON protocol
-      (see `?jgd-spec`)
+      (see `?jgd_spec`)
 - [x] **CRAN submission**: Package the R side for CRAN distribution
 - [x] **R extension integration**: Incorporate the code from this package into
       the main VS Code R extension (if the upstream maintainers agree).
