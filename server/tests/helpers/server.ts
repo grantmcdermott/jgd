@@ -64,7 +64,10 @@ export class TestServer {
       bin = "deno";
       prefixArgs = [
         "run",
-        "--allow-net=127.0.0.1",
+        // --allow-net is unrestricted: see comment in server/deno.json on
+        // why Deno.listen({transport:"unix"}) needs unscoped --allow-net
+        // for a socket path that's only known after the process starts.
+        "--allow-net",
         "--allow-read",
         "--allow-write",
         "--allow-env",
