@@ -1,25 +1,26 @@
-## Resubmission notes
+## Submission notes
 
-This is a resubmission addressing reviewer feedback from our previous `jgd`
-submission (jgd_0.1.0, 2026-04-25):
+This is a patch release (0.1.0 -> 0.1.1). It contains internal bug fixes
+and documentation updates only; there are no user-facing API changes.
 
-- Authors@R: Added Dave Gamble and cJSON contributors with `cph` roles
-  to properly attribute the vendored cJSON library (`src/cjson/`).
-  Copyright and license details remain recorded in `inst/COPYRIGHTS`
-  and the upstream headers are preserved in the vendored source files.
+- Fixed the unprotected-variable (`[UP]`) warnings reported for jgd 0.1.0
+  by the CRAN `rchk` checks
+  (<https://raw.githubusercontent.com/kalibera/cran-checks/master/rchk/results/jgd.out>).
+  `PROTECT`/`UNPROTECT` handling has been tightened around allocating calls
+  in `replay_snapshot` (`src/device.c`) and `C_jgd_discover`
+  (`src/transport.c`).
+- Documentation updates noting that the package's VS Code support is now
+  provided by the upstream VS Code R extension.
 
 ## Test environments
 
-- macOS Tahoe 26.4 (aarch64), R 4.5.3
-- Windows Server 2022 (x86_64), R 4.5.3 (win-builder)
-- Windows Server 2022 (x86_64), R-devel (win-builder)
-- GitHub Actions: Ubuntu (R-devel, R 4.1), Windows (R 4.1), macOS (R-release)
+- macOS (aarch64), R 4.6.1
+- Win Builder (x86_64), R 4.6.1
+- GitHub Actions: Ubuntu (R-devel, R 4.6.1), Windows (R 4.6.1), macOS (R-release)
 
 ## R CMD check results
 
-0 errors | 0 warnings | 1 note
-
-- NOTE: New submission.
+0 errors | 0 warnings | 0 notes
 
 ## Additional notes
 
