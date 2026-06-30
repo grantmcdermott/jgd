@@ -15,12 +15,13 @@
 #' It is important to note that `jgd()` does not display any plots; it only
 #' streams them (i.e., converts them to a format that a JSON renderer
 #' understands). To actually _display_ your plots with `jgd`, you'll need an
-#' appropriate frontend. We provide two official renderers, both available for
-#' install from the project repository:
-#' <https://github.com/grantmcdermott/jgd>.
+#' appropriate frontend. Two official renderers are available:
 #'
-#' - **VS Code extension.** An integrated plot pane for VS Code.
-#' - **Deno server.** A standalone browser-based renderer.
+#' - **VS Code.** Native `jgd` support is built into the VS Code R extension
+#'   (<https://github.com/REditorSupport/vscode-R>), which handles device
+#'   activation for you.
+#' - **Deno server.** A standalone browser-based renderer, available from the
+#'   project repository: <https://github.com/grantmcdermott/jgd>.
 #'
 #' Users aren't limited to these two options. The `jgd` protocol is deliberately
 #' frontend-agnostic; you can render plots with any client that reads JSONL

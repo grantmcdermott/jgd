@@ -31,12 +31,13 @@ renderer (e.g. VS Code extension or browser) over a Unix domain socket.
 It is important to note that \code{jgd()} does not display any plots; it only
 streams them (i.e., converts them to a format that a JSON renderer
 understands). To actually \emph{display} your plots with \code{jgd}, you'll need an
-appropriate frontend. We provide two official renderers, both available for
-install from the project repository:
-\url{https://github.com/grantmcdermott/jgd}.
+appropriate frontend. Two official renderers are available:
 \itemize{
-\item \strong{VS Code extension.} An integrated plot pane for VS Code.
-\item \strong{Deno server.} A standalone browser-based renderer.
+\item \strong{VS Code.} Native \code{jgd} support is built into the VS Code R extension
+(\url{https://github.com/REditorSupport/vscode-R}), which handles device
+activation for you.
+\item \strong{Deno server.} A standalone browser-based renderer, available from the
+project repository: \url{https://github.com/grantmcdermott/jgd}.
 }
 
 Users aren't limited to these two options. The \code{jgd} protocol is deliberately
