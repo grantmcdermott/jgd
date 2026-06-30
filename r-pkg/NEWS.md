@@ -1,9 +1,10 @@
-# Development
+# jgd 0.1.1
 
 ## Internals
 
-- Improved GC safety in C internals by tightening `PROTECT`/`UNPROTECT`
-  handling around allocations and replay paths. (#61)
+- Fixed potential GC protection issues in the C internals (flagged by
+  `rchk`) by tightening `PROTECT`/`UNPROTECT` handling around allocations
+  in `replay_snapshot` and `C_jgd_discover`. (#61)
 
 ## Documentation
 
