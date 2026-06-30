@@ -1,26 +1,28 @@
 # jgd — JSON Graphics Device for R
 
 <!-- badges: start -->
+
 <a href="https://CRAN.R-project.org/package=jgd"><img src="https://www.r-pkg.org/badges/version/jgd" class="img-fluid" alt="CRAN version"></a>
 <a href="https://grantmcdermott.r-universe.dev"><img src="https://grantmcdermott.r-universe.dev/badges/jgd" class="img-fluid" alt="R-universe version"></a>
 <a href="https://CRAN.R-project.org/package=jgd"><img src="https://tinyverse.netlify.app/badge/jgd" class="img-fluid" alt="Dependencies"></a>
 <a href="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml"><img src="https://github.com/grantmcdermott/jgd/actions/workflows/r-pkg-check.yaml/badge.svg" class="img-fluid" alt="R CMD check"></a>
 <a href="https://github.com/grantmcdermott/jgd/blob/main/r-pkg/LICENSE.md"><img src="https://img.shields.io/badge/license-MIT-blue" class="img-fluid" alt="License"></a>
+
 <!-- badges: end -->
 
 **jgd** is a lightweight (C-based, zero dependency) R graphics device. It
 works by serializing R plotting operations into JSON and then streaming to
-an external renderer. We provide two official renderers for displaying plots:
-
-- A **VS Code extension** with an integrated plot pane (demo below)
-- A **standalone Deno server** for rendering inside a web browser
+an external renderer. For example, the VS Code
+[R Extension](https://github.com/REditorSupport/vscode-R):
 
 <video src="https://github.com/user-attachments/assets/913c00e9-69ab-4d0e-a3b4-18e11f8573cb" autoplay loop muted playsinline width="100%"></video>
 
-Please note that users aren't limited to these two options. The **jgd** protocol
-is designed to be frontend agnostic; any client able to read JSON could use it
-to render R plots (e.g., Neovim, Emacs, or a custom web app). We encourage users
-to build alternatives and would welcome additional contributions.
+Users aren't limited to VS Code as a **jgd** frontend. For example, below we
+also provide a standalone Deno server for rendering your R plots in a web
+browser. More generally, the **jgd** protocol is designed to be frontend
+agnostic; _any_ JSON-coversant client could use it to render R plots (e.g.,
+Neovim, Emacs, Zed, or a custom web app). We encourage users to build
+alternatives and would welcome additional contributions.
 
 ## Installation
 
@@ -35,53 +37,61 @@ The stable version of `jgd` is available on CRAN:
 install.packages('jgd')
 ```
 
-Alternatively, you can grab the development version from R-universe:
+Or, grab the development version from R-universe:
 
 ```r
 install.packages('jgd', repos = 'https://grantmcdermott.r-universe.dev')
 ```
 
-Or, clone this repo and install locally:
-
-```sh
-git clone https://github.com/grantmcdermott/jgd.git
-R CMD INSTALL r-pkg
-```
-
 ### Display frontend
 
-You have two frontend options. Click to expand for your preferred method.
+There are two officially supported frontends. Click to expand for your
+preferred method.
 
 <details>
-<summary><b>1) VS Code extension</b></summary>
+<summary><b>1) VS Code</b></summary>
 
-The simplest option is to download the `.vsix` from our
-[nightly release](https://github.com/grantmcdermott/jgd/releases/tag/nightly),
-then install it:
+_**Update (2026-06-30):** Our `jgd` VS Code extension has been
+[absorbed](https://github.com/REditorSupport/vscode-R/pull/1706) into the main
+VS Code R extension. We have adapted the instructions below accordingly._
+
+The official VS Code [R extension](https://github.com/REditorSupport/vscode-R)
+provides native support for **jgd** as part of its major v0.3.0 updates.
+At the time of writing, this requires installing the release candidate version
+from GitHub:
 
 ```bash
 curl -fsSL \
-  https://github.com/grantmcdermott/jgd/releases/download/nightly/jgd-vscode-nightly.vsix \
-  -o jgd-vscode-nightly.vsix
-code --install-extension jgd-vscode-nightly.vsix
+  https://github.com/REditorSupport/vscode-R/releases/download/latest/vscode-R.vsix \
+  -o vscode-R.vsix
+code --install-extension vscode-R.vsix
 ```
 
-Alternatively, you can also build and install the extension from source[^1]:
+Once the 3.0.0-rc version of the extension has been installed, you will also
+be prompted to install the `sess` R package. Just say "yes", or install it
+manually:
 
 ```bash
-# git clone https://github.com/grantmcdermott/jgd.git ## clone first
-cd vscode-ext && npm install && npm run compile \
-  && npx @vscode/vsce@3.7.1 package \
-  && code --install-extension jgd-vscode-*.vsix \
-  && cd ..
+Rscript -e 'remotes::install_github("REditorSupport/vscode-R/sess")'
 ```
 
-[^1]: Requires [Node.js](https://nodejs.org/). For extension development, you can also use `code --extensionDevelopmentPath="$(pwd)"` from the `vscode-ext` directory to launch a separate dev host window.
+Provided that you have also installed **jgd** (above), everything should work
+out of the gate. However, one thing to double check is that you don't have
+any (conflicting) legacy R plot setting configurations. Open your VS Code
+settings (`Cmd + ,` / `Ctrl + ,`) and check the following entries:
+
+```
+r.plot.backend: "auto"
+r.plot.useHttpgd: "false"
+```
+
+Test it out by executing some R plotting commands like the example script
+below.
 
 </details>
 
 <details>
-<summary><b>2) Browser (via deno server)</b></summary>
+<summary><b>2) Browser (Deno server)</b></summary>
 
 If you're not using VS Code, our standalone Deno server provides a browser-based
 renderer.
@@ -98,45 +108,28 @@ Or, clone the repo and run locally:
 # git clone https://github.com/grantmcdermott/jgd.git ## clone first
 cd server && deno task start && cd ..
 ```
-</details>
 
+Once the Deno server is running, open `http://127.0.0.1:<port>/`
+in your browser (the URL is printed on startup). Then you start executing
+plotting commands from any R session.
 
-## Use
-
-Test your installation by running some R plotting commands, like those provided
-by the script below. Note that you need to call `jgd::jgd()` first to activate
-the device. The steps differ slightly depending on your chosen frontend:
-
-<details>
-<summary><b>1) VS Code</b></summary>
-
-Once you have installed the `jgd` extension, simply execute the
-below script from an R terminal inside VS Code (either via the
-[R extension](https://marketplace.visualstudio.com/items?itemName=REditorSupport.r)
-or by manually starting R inside the VS Code terminal).
-
-You might want to add the following to your `~/.Rprofile`, so that `jgd`
-automically activates when starting an R session in VS Code:
+**Important:** Unlike the VS Code extension, which does this automically behind
+the scenes, you must activate the **jgd** device from your R session so that
+the Deno server can connect to it:
 
 ```r
-if (interactive() && Sys.getenv("TERM_PROGRAM") == "vscode" && Sys.getenv("POSITRON") != "1") {
-  jgd::jgd()
-}
+jgd::jgd()
 ```
 
 </details>
 
-<details>
-<summary><b>2) Browser</b></summary>
+## Use
 
-Start the Deno server, open `http://127.0.0.1:<port>/`
-in your browser (the URL is printed on startup), then run the script from any
-R session.
-</details>
+Test your installation by running some R plotting commands, like those provided
+by the script below.
 
 ```r
-library(jgd)
-jgd()
+# jgd::jgd() ## only needed if you are using the Deno server
 
 # Base graphics
 plot(cars)
@@ -184,9 +177,6 @@ opacity, shadows, CSS filters, etc.). Three levels of extension are supported:
 Here's a simple example where we add shadows to the point elements of a plot.
 
 ```r
-library(jgd)
-jgd()
-
 plot(1:10, type = "n", main = "Shadowed points")
 # Add shadow to points (group scoping)
 with_jgd_group(
@@ -203,33 +193,42 @@ in `?jgd_spec`.
 
 ## Motivation
 
-The primary motivation for this package is supporting a nicer R graphics
-experience in VS Code. At present, the VS Code [R
-extension](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer) provides
-fairly crude "native" graphics support, since plots are displayed as PNGs. As a
-result, users have for some time relied on the nice
-[httpgd](https://github.com/nx10/httpgd) package for a better graphics
-experience; indeed, the official R extension docs even recommend using it.
-However, the `httpgd` alternative has historically been tricky to rely on
-due to periodic CRAN removals and maintenance challenges. This is because it
-embeds a full C++ SVG rendering stack and HTTP server inside the R process,
-which is powerful but fragile. Both `httpgd` and its core
-[unigd](https://github.com/nx10/unigd) dependency have been removed from CRAN
-multiple times due to C++ toolchain issues (non-API entry points, compiler
-compatibility failures, etc.), and while they are currently available again,
-we were motivated to try a different approach. The result is **jgd**.
+The original motivation for **jgd** was enabling a better R graphics experience
+in VS Code. Historically, the VS Code [R
+extension](https://github.com/REditorSupport/vscode-R/wiki/Plot-viewer)
+provided fairly crude native graphics support, since plots were displayed as
+PNGs. As a result, users had for some time relied on the
+[httpgd](https://github.com/nx10/httpgd) package as a better alternative.
+`httpgd` has numerous cool features, but it has also suffered from reliability
+challenges. This is because the package embeds a full C++ SVG rendering stack
+and HTTP server inside the R process, which is powerful but fragile. Both
+`httpgd` and its core [unigd](https://github.com/nx10/unigd) dependency have
+been removed from CRAN multiple times over the years due to various C++
+toolchain issues (non-API entry points, compiler compatibility failures, etc.).
+While both packages are currently available again, we were motivated to try a
+different approach that is conceptually simpler and requires a much lighter
+dependency stack.
 
-**jgd** doesn't render anything; it just records. All rendering happens in the
-client (a VS Code webview, a browser tab,
-or any future frontend). Second, it is very lightweight. The core of the R
-package is written in pure C with zero external dependencies. The only system
-dependencies are the POSIX socket API (macOS/Linux) and Winsock (Windows),
-both of which R itself already uses.
+The key idea behind **jgd** is that doesn't render anything itself. Rather,
+it just records the underlying plotting operations and translates them into
+JSON, which it then passes on to a client that does the actual rendering (e.g.,
+a VS Code webview, a browser tab, or any future frontend). While this might
+sounds like extra work, it turns out that it is both highly efficient and
+generalizable (since JSON is so widely supported). Base R already provides most
+of the necessary scaffolding for an efficient translation layer, and we plug
+directly into that. The core of the **jgd** package is written in pure C with
+_zero_ external dependencies. The only system dependencies are the POSIX socket
+API (macOS/Linux) and Winsock (Windows), both of which R itself already uses.
 
-Our idea (hope) is that we can support the main features of `httpgd`, but with a
-more stable and lightweight footprint. Ultimately, if the community agrees, we
-might even be able to integrate this simple package into the main R extension
-logic, so that we get nice graphics support in VS Code out of the box.
+As a result, **jgd** supports many of the advanced features of a dedicated
+rendering framework like `httpgd`. But it enjoys a much lighter footprint, which
+reduces the maintence burden and should facilitate long-run stability. Moreover,
+we would emphasize the generalizability of the **jgd** approach. While VS Code
+was our initial focus, in principle any JSON-coversant client can be supported.
+We already offer a browser-based client (via a Deno server), but the same idea
+could be extended to any modern IDE and even terminal clients. Please let us
+know if you build out a **jgd** extension/plugin for your own preferred R
+interface.
 
 ### What about Positron?
 
@@ -290,17 +289,17 @@ The jgd protocol is a simple JSONL (JSON Lines) wire format designed so that
 extension or Deno server. The full specification is documented in the R package
 at `help("jgd_spec")` (or equivalently `?jgd_spec`). Here's a quick overview:
 
-| Aspect | Summary |
-|--------|---------|
-| **Transport** | Unix domain sockets (macOS/Linux), named pipes (Windows), or TCP |
-| **Wire format** | Newline-delimited JSON (JSONL), UTF-8 |
-| **Coordinate system** | Device pixels, top-left origin |
-| **Handshake** | R sends `{"type":"ping"}`, server replies with `{"type":"server_info",...}` |
-| **Drawing** | R streams `frame` messages containing an array of drawing ops (`line`, `rect`, `circle`, `text`, `polygon`, `polyline`, `path`, `raster`, `clip`, `beginGroup`, `endGroup`) |
-| **Resize** | Server sends `{"type":"resize",...}` to R; R replays the plot at new dimensions |
-| **Font metrics** | R requests string/glyph measurements; server responds with widths and ascent/descent |
-| **Discovery** | Optional `discovery.json` file for auto-connection (platform-specific cache dir) |
-| **Extensions** | Free-form `ext` fields at frame, graphics-context, and group levels |
+| Aspect                | Summary                                                                                                                                                                     |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Transport**         | Unix domain sockets (macOS/Linux), named pipes (Windows), or TCP                                                                                                            |
+| **Wire format**       | Newline-delimited JSON (JSONL), UTF-8                                                                                                                                       |
+| **Coordinate system** | Device pixels, top-left origin                                                                                                                                              |
+| **Handshake**         | R sends `{"type":"ping"}`, server replies with `{"type":"server_info",...}`                                                                                                 |
+| **Drawing**           | R streams `frame` messages containing an array of drawing ops (`line`, `rect`, `circle`, `text`, `polygon`, `polyline`, `path`, `raster`, `clip`, `beginGroup`, `endGroup`) |
+| **Resize**            | Server sends `{"type":"resize",...}` to R; R replays the plot at new dimensions                                                                                             |
+| **Font metrics**      | R requests string/glyph measurements; server responds with widths and ascent/descent                                                                                        |
+| **Discovery**         | Optional `discovery.json` file for auto-connection (platform-specific cache dir)                                                                                            |
+| **Extensions**        | Free-form `ext` fields at frame, graphics-context, and group levels                                                                                                         |
 
 The protocol is versioned (`"protocolVersion": 1`) and forward-compatible:
 receivers should ignore unknown fields and message types.
@@ -336,16 +335,6 @@ browse the source at
 - **Frame-level extensions** (experimental): Frame-wide properties such as
   post-processing effects via `jgd_frame_ext()`
 
-## Roadmap
-
-- [x] **Windows support**: Named pipes (default) and TCP transport
-- [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
-- [x] **Protocol stabilization**: Stabilize and document the JSON protocol
-  (see `?jgd-spec`)
-- [x] **CRAN submission**: Package the R side for CRAN distribution
-- [ ] **R extension integration**: Incorporate the code from this package into
-  the main VS Code R extension (if the upstream maintainers agree).
-
 ## Limitations
 
 - **No PDF export**: PNG and SVG export are supported. For PDF, convert the
@@ -353,12 +342,11 @@ browse the source at
 
 ## Project structure
 
-| Directory | Description |
-|-----------|-------------|
-| `r-pkg/` | R package (pure C, zero dependencies) |
+| Directory | Description                                     |
+| --------- | ----------------------------------------------- |
+| `r-pkg/`  | R package (pure C, zero dependencies)           |
 | `server/` | Deno reference server (HTTP/WebSocket renderer) |
-| `vscode-ext/` | VS Code extension |
-| `tests/` | End-to-end tests |
+| `tests/`  | End-to-end tests                                |
 
 ## Acknowledgements
 
@@ -373,6 +361,16 @@ interface made this project feasible.
 This project has made heavy use of AI-assisted pair programming (both
 Claude and Copilot). It is highly doubtful that we would have been able
 to put this together without AI help.
+
+## Roadmap
+
+- [x] **Windows support**: Named pipes (default) and TCP transport
+- [x] **Browser frontend**: Deno reference server with HTTP/WebSocket renderer
+- [x] **Protocol stabilization**: Stabilize and document the JSON protocol
+      (see `?jgd-spec`)
+- [x] **CRAN submission**: Package the R side for CRAN distribution
+- [x] **R extension integration**: Incorporate the code from this package into
+      the main VS Code R extension (if the upstream maintainers agree).
 
 ## License
 
