@@ -58,7 +58,7 @@ export class ArfSession {
       this.#process = process;
       const startupId = ++this.#startupId;
 
-      let timeoutId: number | undefined;
+      let timeoutId: ReturnType<typeof setTimeout> | undefined;
       const timeout = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(
           () =>
@@ -241,7 +241,7 @@ export class ArfSession {
       stderr: "null",
     }).spawn();
 
-    let timeoutId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(() => {
         try {

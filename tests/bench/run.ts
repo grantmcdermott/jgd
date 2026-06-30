@@ -69,7 +69,7 @@ function createStreamCollector(stream: ReadableStream<Uint8Array> | null) {
 }
 
 async function waitUpTo<T>(promise: Promise<T>, waitMs: number): Promise<void> {
-  let timeoutId: number | undefined;
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
   await Promise.race([
     promise.then(() => undefined).catch(() => undefined),
     new Promise<void>((resolve) => {

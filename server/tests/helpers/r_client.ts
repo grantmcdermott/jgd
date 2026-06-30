@@ -221,7 +221,7 @@ function createCancellableTimeout(ms: number): {
   promise: Promise<null>;
   cancel: () => void;
 } {
-  let timer: number;
+  let timer: ReturnType<typeof setTimeout>;
   const promise = new Promise<null>((resolve) => {
     timer = setTimeout(() => resolve(null), ms);
   });

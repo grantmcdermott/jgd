@@ -9,7 +9,7 @@ export class BrowserClient {
   #waiters: Array<{
     predicate: (msg: ServerMessage) => boolean;
     resolve: (msg: ServerMessage) => void;
-    timer: number;
+    timer: ReturnType<typeof setTimeout>;
   }> = [];
 
   /** Connect to the server's WebSocket endpoint. */
