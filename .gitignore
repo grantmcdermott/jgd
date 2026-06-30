@@ -13,10 +13,7 @@ r-pkg/src/symbols.rds
 *.Rcheck
 Rplots.pdf
 
-# VS Code extension
-vscode-ext/node_modules/
-vscode-ext/out/
-vscode-ext/dist/
+# VS Code extension artifacts
 *.vsix
 
 # OS
