@@ -21,7 +21,6 @@ License: MIT + file LICENSE
 Copyright: file inst/COPYRIGHTS
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.3
 NeedsCompilation: yes
 Suggests:
     callr,
@@ -33,3 +32,4 @@ Suggests:
 URL: https://github.com/grantmcdermott/jgd
 BugReports: https://github.com/grantmcdermott/jgd/issues
 Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0

@@ -23,6 +23,7 @@ Useful links:
 
 Authors:
 \itemize{
+  \item Grant McDermott \email{contact@grantmcdermott.com}
   \item Tatsuya Shima \email{ts1s1andn@gmail.com}
 }
 
