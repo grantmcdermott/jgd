@@ -17,8 +17,17 @@
     // --allow-net is the documented escape hatch for that case.
     "start": "deno run --allow-net --allow-read --allow-write --allow-env main.ts",
     "dev": "deno run --allow-net --allow-read --allow-write --allow-env --watch main.ts",
-    "test": "deno test --allow-net --allow-read --allow-write --allow-env --allow-run=deno --parallel --ignore=tests/e2e tests/",
-    "test:e2e": "deno test --allow-env --allow-net --allow-read --allow-write --allow-run tests/e2e/",
+    // -A is required here (not just --allow-net/read/write/env): on Windows,
+    // node:net's PipeWrap.bind/listen/connect (used for named pipes) routes
+    // any non-drive-letter path like \\.\pipe\... through Deno's permission
+    // checker's check_special_file, which demands every permission category
+    // (read/write/net/env/sys/run/ffi/import) be fully granted -- i.e. -A
+    // itself, with no narrower combination accepted. These tasks exercise
+    // that code path directly (in-process pipe tests) or indirectly (via
+    // TestServer spawning main.ts), so they need -A on Windows; -A here for
+    // all platforms keeps the task portable without OS-specific branching.
+    "test": "deno test -A --parallel --ignore=tests/e2e tests/",
+    "test:e2e": "deno test -A tests/e2e/",
     "test:all": "deno task test && deno task test:e2e"
   }
 }
