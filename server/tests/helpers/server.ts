@@ -64,10 +64,10 @@ export class TestServer {
       bin = "deno";
       prefixArgs = [
         "run",
-        "--allow-net=127.0.0.1",
-        "--allow-read",
-        "--allow-write",
-        "--allow-env",
+        // -A is required: see comment in server/deno.json on why Windows
+        // named pipe binding needs the full -A grant, not just
+        // --allow-net/read/write/env.
+        "-A",
         join(dirname(fromFileUrl(import.meta.url)), "..", "..", "main.ts"),
       ];
     }

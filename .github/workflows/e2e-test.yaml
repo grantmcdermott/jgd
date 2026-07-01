@@ -52,12 +52,7 @@ jobs:
 
       - uses: denoland/setup-deno@v2
         with:
-          # Pinned to 2.7.14: newer v2.x releases broke the native-transport
-          # E2E tests. A node:net server binding a named pipe (Windows) or
-          # unix socket now raises NotCapable despite --allow-read/--allow-write,
-          # demanding --allow-all. Same area as denoland/deno#33366 (the bug
-          # #52 pinned around). Revisit once resolved upstream.
-          deno-version: v2.7.14
+          deno-version: v2.x
 
       - name: Install arf
         run: |
