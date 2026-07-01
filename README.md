@@ -99,7 +99,11 @@ First [install Deno](https://docs.deno.com/runtime/getting_started/installation/
 then run directly (dependencies are fetched automatically):
 
 ```bash
-deno run https://raw.githubusercontent.com/grantmcdermott/jgd/refs/heads/main/server/main.ts
+# macOS / Linux
+deno run --allow-net --allow-read --allow-write --allow-env https://raw.githubusercontent.com/grantmcdermott/jgd/refs/heads/main/server/main.ts
+
+# Windows
+deno run -A https://raw.githubusercontent.com/grantmcdermott/jgd/refs/heads/main/server/main.ts
 ```
 
 Or, clone the repo and run locally:
@@ -108,6 +112,19 @@ Or, clone the repo and run locally:
 # git clone https://github.com/grantmcdermott/jgd.git ## clone first
 cd server && deno task start && cd ..
 ```
+
+> [!NOTE]
+> On **Windows**, R connections default to a named pipe, and Deno has no
+> permission combination narrower than `-A` (`--allow-all`) that can satisfy
+> binding one — that's why the Windows command above needs it (`deno task
+> start` above already grants `-A` for the same reason).
+>
+> To keep permissions scoped on Windows instead, add `--tcp <port>` (e.g.
+> `--tcp 8888`) to connect over localhost TCP rather than a named pipe:
+>
+> ```bash
+> deno run --allow-net --allow-read --allow-write --allow-env https://raw.githubusercontent.com/grantmcdermott/jgd/refs/heads/main/server/main.ts --tcp 8888
+> ```
 
 Once the Deno server is running, open `http://127.0.0.1:<port>/`
 in your browser (the URL is printed on startup). Then you start executing

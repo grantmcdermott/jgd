@@ -8,24 +8,22 @@
     "@astral/astral": "jsr:@astral/astral@^0.5"
   },
   "tasks": {
-    // --allow-net is unrestricted (not scoped to 127.0.0.1): since Deno
-    // PR denoland/deno#34395, Deno.listen/connect({transport:"unix"}) also
-    // requires an --allow-net=unix:<path> grant, in addition to
-    // --allow-read/--allow-write, to bind/connect the R unix socket. The
-    // socket path is randomly generated at runtime when --socket isn't
-    // passed explicitly, so it can't be allow-listed up front; unscoped
-    // --allow-net is the documented escape hatch for that case.
-    "start": "deno run --allow-net --allow-read --allow-write --allow-env main.ts",
-    "dev": "deno run --allow-net --allow-read --allow-write --allow-env --watch main.ts",
-    // -A is required here (not just --allow-net/read/write/env): on Windows,
-    // node:net's PipeWrap.bind/listen/connect (used for named pipes) routes
+    // -A (--allow-all) is required on Windows: R connections default to a
+    // named pipe there, and node:net's PipeWrap.bind/listen/connect routes
     // any non-drive-letter path like \\.\pipe\... through Deno's permission
     // checker's check_special_file, which demands every permission category
     // (read/write/net/env/sys/run/ffi/import) be fully granted -- i.e. -A
-    // itself, with no narrower combination accepted. These tasks exercise
-    // that code path directly (in-process pipe tests) or indirectly (via
-    // TestServer spawning main.ts), so they need -A on Windows; -A here for
-    // all platforms keeps the task portable without OS-specific branching.
+    // itself, with no narrower combination accepted. Separately, on
+    // Linux/macOS, Deno.listen({transport:"unix"}) requires an unscoped
+    // --allow-net (since denoland/deno#34395) because the R socket path is
+    // randomly generated at runtime and can't be allow-listed up front.
+    // -A satisfies both without OS-specific branching (deno.json tasks
+    // can't conditionally vary flags by platform). Passing --tcp <port> to
+    // these tasks avoids named pipes/unix sockets entirely and only needs
+    // --allow-net --allow-read --allow-write --allow-env, if narrower
+    // permissions are preferred over -A.
+    "start": "deno run -A main.ts",
+    "dev": "deno run -A --watch main.ts",
     "test": "deno test -A --parallel --ignore=tests/e2e tests/",
     "test:e2e": "deno test -A tests/e2e/",
     "test:all": "deno task test && deno task test:e2e"
